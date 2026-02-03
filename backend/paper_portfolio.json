@@ -1,5 +1,5 @@
 {
-    "cash": 46508.00000000001,
+    "cash": 46078.00000000001,
     "starting_cash": 100000.0,
     "positions": {
         "AAPL": {
@@ -7,7 +7,12 @@
             "avg_cost": 267.46
         }
     },
-    "options_positions": {},
+    "options_positions": {
+        "NFLX260220C00084000": {
+            "quantity": 2,
+            "avg_cost": 2.15
+        }
+    },
     "transactions": [
         {
             "date": "2025-11-17",
@@ -26,6 +31,14 @@
             "price": 267.46,
             "total": 53491.99999999999,
             "timestamp": "2025-11-17T22:47:33.870505"
+        },
+        {
+            "type": "BUY_OPTION",
+            "ticker": "NFLX260220C00084000",
+            "shares": 2,
+            "price": 2.15,
+            "total": 430.0,
+            "timestamp": "2026-01-30T16:51:51.632329"
         }
     ]
 }

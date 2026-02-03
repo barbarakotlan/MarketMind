@@ -464,10 +464,14 @@ def get_paper_portfolio():
     portfolio = load_portfolio()
     positions = portfolio.get("positions", {})
     options_positions = portfolio.get("options_positions", {})
+
     total_positions_value = 0
     total_cost_basis_stocks = 0
     total_daily_pl_stocks = 0
     positions_list = []
+
+    # --- 1. PROCESS STOCK POSITIONS ---
+    # We use yf.download for stocks because it's fast for multiple symbols
     tickers_to_fetch = list(positions.keys())
     if tickers_to_fetch:
         try:
@@ -475,71 +479,135 @@ def get_paper_portfolio():
             if not data.empty:
                 current_prices = data['Close'].iloc[-1]
                 prev_close_prices = data['Close'].iloc[0]
+
                 for ticker, pos in positions.items():
-                    shares = float(pos["shares"]);
+                    shares = float(pos["shares"])
                     avg_cost = float(pos["avg_cost"])
+
                     if len(tickers_to_fetch) == 1:
-                        current_price = float(current_prices);
+                        current_price = float(current_prices)
                         prev_close = float(prev_close_prices)
                     else:
-                        current_price = float(current_prices.get(ticker, 0));
+                        current_price = float(current_prices.get(ticker, 0))
                         prev_close = float(prev_close_prices.get(ticker, 0))
+
                     if pd.isna(current_price) or current_price == 0: current_price = avg_cost
                     if pd.isna(prev_close): prev_close = current_price
-                    cost_basis = shares * avg_cost;
+
+                    cost_basis = shares * avg_cost
                     current_value = shares * current_price
                     total_pl = current_value - cost_basis
                     total_pl_percent = (total_pl / cost_basis * 100) if cost_basis > 0 else 0
                     daily_pl = shares * (current_price - prev_close)
                     daily_pl_percent = ((current_price - prev_close) / prev_close * 100) if prev_close > 0 else 0
-                    total_positions_value += current_value;
+
+                    total_positions_value += current_value
                     total_cost_basis_stocks += cost_basis
                     total_daily_pl_stocks += daily_pl
+
                     positions_list.append({
-                        "ticker": ticker, "company_name": yf.Ticker(ticker).info.get('longName', 'N/A'),
-                        "shares": shares, "avg_cost": round(avg_cost, 2), "current_price": round(current_price, 2),
-                        "current_value": round(current_value, 2), "cost_basis": round(cost_basis, 2),
-                        "total_pl": round(total_pl, 2), "total_pl_percent": round(total_pl_percent, 2),
-                        "daily_pl": round(daily_pl, 2), "daily_pl_percent": round(daily_pl_percent, 2),
+                        "ticker": ticker,
+                        "company_name": yf.Ticker(ticker).info.get('longName', 'N/A'),
+                        "shares": shares,
+                        "avg_cost": round(avg_cost, 2),
+                        "current_price": round(current_price, 2),
+                        "current_value": round(current_value, 2),
+                        "cost_basis": round(cost_basis, 2),
+                        "total_pl": round(total_pl, 2),
+                        "total_pl_percent": round(total_pl_percent, 2),
+                        "daily_pl": round(daily_pl, 2),
+                        "daily_pl_percent": round(daily_pl_percent, 2),
                         "isOption": False
                     })
         except Exception as e:
             print(f"Error processing stock positions: {e}")
             for ticker, pos in positions.items():
                 positions_list.append({
-                    "ticker": ticker, "company_name": "N/A (Error fetching)", "shares": pos["shares"],
+                    "ticker": ticker, "company_name": "N/A (Error)", "shares": pos["shares"],
                     "avg_cost": round(pos["avg_cost"], 2), "current_price": round(pos["avg_cost"], 2),
                     "current_value": round(pos["shares"] * pos["avg_cost"], 2),
                     "cost_basis": round(pos["shares"] * pos["avg_cost"], 2),
                     "total_pl": 0, "total_pl_percent": 0, "daily_pl": 0, "daily_pl_percent": 0, "isOption": False
                 })
+
+    # --- 2. PROCESS OPTIONS POSITIONS (ENHANCED PRICE DISCOVERY) ---
     options_positions_list = []
     total_options_value = 0
+
     for contract_symbol, pos in options_positions.items():
-        current_price = pos["avg_cost"];
+        # Fallback to the original buy price (avg_cost) if all else fails
+        current_price = float(pos["avg_cost"])
+        fetched_successfully = False
+
+        try:
+            opt_ticker = yf.Ticker(contract_symbol)
+
+            # Strategy A: Use .history() - Often the most reliable way to get the real-time mark
+            # for specific OCC option symbols.
+            hist = opt_ticker.history(period="1d")
+            if not hist.empty:
+                current_price = float(hist['Close'].iloc[-1])
+                fetched_successfully = True
+
+            # Strategy B: If history is empty (market closed/illiquid), check live Bid/Ask
+            if not fetched_successfully:
+                info = opt_ticker.info
+                # We check Bid/Ask/Last in order of priority
+                live_val = info.get('bid') or info.get('ask') or info.get('regularMarketPrice') or info.get('lastPrice')
+
+                if live_val and live_val > 0:
+                    current_price = float(live_val)
+                    fetched_successfully = True
+
+            # Strategy C: Check the fast_info attribute as a final attempt
+            if not fetched_successfully:
+                fast_val = opt_ticker.fast_info.get('last_price')
+                if fast_val and fast_val > 0:
+                    current_price = float(fast_val)
+
+        except Exception as e:
+            print(f"Warning: Could not fetch live price for option {contract_symbol}: {e}")
+
+        # Standard Option Calculation: (Quantity * Price * 100 multiplier)
         current_value = pos["quantity"] * current_price * 100
         cost_basis = pos["quantity"] * pos["avg_cost"] * 100
-        total_pl = current_value - cost_basis;
+        total_pl = current_value - cost_basis
+        total_pl_percent = (total_pl / cost_basis * 100) if cost_basis > 0 else 0
+
         total_options_value += current_value
+
         options_positions_list.append({
-            "ticker": contract_symbol, "company_name": contract_symbol, "shares": pos["quantity"],
-            "avg_cost": round(pos["avg_cost"], 2), "current_price": round(current_price, 2),
-            "current_value": round(current_value, 2), "cost_basis": round(cost_basis, 2),
-            "total_pl": round(total_pl, 2), "total_pl_percent": 0, "daily_pl": 0, "daily_pl_percent": 0,
+            "ticker": contract_symbol,
+            "company_name": contract_symbol,
+            "shares": pos["quantity"],
+            "avg_cost": round(pos["avg_cost"], 2),
+            "current_price": round(current_price, 2),  # This should now show 0.86
+            "current_value": round(current_value, 2),
+            "cost_basis": round(cost_basis, 2),
+            "total_pl": round(total_pl, 2),
+            "total_pl_percent": round(total_pl_percent, 2),
+            "daily_pl": 0,
+            "daily_pl_percent": 0,
             "isOption": True
         })
+
+    # --- 3. AGGREGATE TOTALS ---
     total_portfolio_value = portfolio["cash"] + total_positions_value + total_options_value
-    total_pl = total_portfolio_value - portfolio.get("starting_cash", 100000.0)
-    total_return = (total_pl / portfolio.get("starting_cash", 100000.0) * 100) if portfolio.get("starting_cash",
-                                                                                                100000.0) > 0 else 0
+    starting_cash = portfolio.get("starting_cash", 100000.0)
+    total_pl = total_portfolio_value - starting_cash
+    total_return = (total_pl / starting_cash * 100) if starting_cash > 0 else 0
+
     return jsonify({
-        "cash": round(portfolio["cash"], 2), "positions_value": round(total_positions_value, 2),
-        "options_value": round(total_options_value, 2), "total_value": round(total_portfolio_value, 2),
-        "starting_value": portfolio.get("starting_cash", 100000.0), "total_pl": round(total_pl, 2),
-        "total_return": round(total_return, 2), "positions": positions_list,
+        "cash": round(portfolio["cash"], 2),
+        "positions_value": round(total_positions_value, 2),
+        "options_value": round(total_options_value, 2),
+        "total_value": round(total_portfolio_value, 2),
+        "starting_value": starting_cash,
+        "total_pl": round(total_pl, 2),
+        "total_return": round(total_return, 2),
+        "positions": positions_list,
         "options_positions": options_positions_list
     })
-
 
 @app.route('/paper/buy', methods=['POST'])
 def buy_stock():
