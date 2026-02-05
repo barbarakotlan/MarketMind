@@ -20,12 +20,6 @@ const ForexPage = () => {
         { from: 'USD', to: 'CAD', label: 'USD → CAD' },
     ];
 
-    // Fetch available currencies on mount
-    useEffect(() => {
-        fetchCurrencies();
-        handleConvert(); // Initial conversion
-    }, []);
-
     const fetchCurrencies = async () => {
         try {
             const response = await fetch('http://localhost:5001/forex/currencies');
@@ -62,14 +56,24 @@ const ForexPage = () => {
     const handleSwap = () => {
         setFromCurrency(toCurrency);
         setToCurrency(fromCurrency);
-        setTimeout(handleConvert, 100);
     };
 
     const handleQuickPair = (from, to) => {
         setFromCurrency(from);
         setToCurrency(to);
-        setTimeout(handleConvert, 100);
     };
+
+    // Fetch available currencies on mount
+    useEffect(() => {
+        fetchCurrencies();
+    }, []);
+
+    // Automatically convert when currencies are loaded or when from/to currency changes
+    useEffect(() => {
+        if (currencies.length > 0) {
+            handleConvert();
+        }
+    }, [currencies, fromCurrency, toCurrency]);
 
     const convertedAmount = exchangeData ? (amount * exchangeData.exchange_rate).toFixed(2) : '0.00';
 
@@ -139,7 +143,7 @@ const ForexPage = () => {
                             To
                         </label>
                         <div className="space-y-2">
-                            <div className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg bg-gray-50 dark:bg-gray-800 font-bold text-lg">
+                            <div className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg bg-gray-50 font-bold text-lg">
                                 {loading ? '...' : convertedAmount}
                             </div>
                             <select
