@@ -53,12 +53,7 @@ const ForexPage = () => {
         }
     };
 
-    const handleSwap = () => {
-        setFromCurrency(toCurrency);
-        setToCurrency(fromCurrency);
-    };
-
-    const handleQuickPair = (from, to) => {
+    const handleSwap = (from, to) => {
         setFromCurrency(from);
         setToCurrency(to);
     };
@@ -129,7 +124,7 @@ const ForexPage = () => {
                     {/* Swap Button */}
                     <div className="flex justify-center">
                         <button
-                            onClick={handleSwap}
+                            onClick={() => handleSwap(fromCurrency, toCurrency)}
                             className="p-3 bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-900/50 rounded-full transition-all active:scale-95"
                             aria-label="Swap currencies"
                         >
@@ -239,7 +234,7 @@ const ForexPage = () => {
                     {popularPairs.map((pair, index) => (
                         <button
                             key={index}
-                            onClick={() => handleQuickPair(pair.from, pair.to)}
+                            onClick={() => handleSwap(pair.from, pair.to)}
                             className={`px-4 py-3 rounded-lg font-semibold transition-all ${
                                 fromCurrency === pair.from && toCurrency === pair.to
                                     ? 'bg-blue-600 text-white'
