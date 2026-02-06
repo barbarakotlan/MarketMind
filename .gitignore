@@ -5,6 +5,8 @@ frontend/node_modules/
 # Caches
 .cache/
 frontend/.cache/
+frontend/build/
+frontend/package-lock.json
 
 # Python bytecode
 backend/__pycache__/
