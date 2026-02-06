@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import StockPredictionCard from './ui/StockPredictionCard';
 import PredictionChart from './charts/PredictionChart';
 import ModelComparisonCard from './ui/ModelComparisonCard';
-import { SearchIcon } from './Icons';
 
 const PredictionsPage = ({ initialTicker }) => {
     const [ticker, setTicker] = useState('');
@@ -79,7 +78,15 @@ const PredictionsPage = ({ initialTicker }) => {
                                 placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
                                 className="w-full px-4 py-3 pl-12 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-lg"
                             />
-                            <SearchIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                            {/* Inlined SVG to ensure positioning works correctly */}
+                            <svg 
+                                className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                viewBox="0 0 24 24"
+                            >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
                         </div>
                     </div>
                     <button
