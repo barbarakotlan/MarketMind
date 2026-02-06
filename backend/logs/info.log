@@ -1,0 +1,41 @@
+2025-11-20 23:10:06 UTC | [32mINFO[0m | marketmind_api.<module>:32 | 🚀 MarketMind API Starting...
+2025-11-20 23:10:06 UTC | [32mINFO[0m | marketmind_api.<module>:47 | 🔒 Rate limiting enabled
+2025-11-20 23:10:06 UTC | [32mINFO[0m | marketmind_api.<module>:50 | ✅ Flask app initialized with CORS enabled
+2025-11-20 23:10:06 UTC | [32mINFO[0m | marketmind_api.<module>:55 | ✅ Database initialized
+2025-11-20 23:10:06 UTC | [32mINFO[0m | database.create_default_user:360 | ✅ Created default demo user
+2025-11-20 23:10:06 UTC | [32mINFO[0m | database.create_default_user:372 | ✅ Created default demo portfolio
+2025-11-20 23:10:06 UTC | [32mINFO[0m | database.create_default_user:387 | ✅ Created default demo watchlist
+2025-11-20 23:10:06 UTC | [32mINFO[0m | marketmind_api.<module>:60 | ✅ Default user ready: demo
+2025-11-20 23:10:42 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /watchlist | Status: completed
+2025-11-20 23:10:42 UTC | [33mWARNING[0m | marketmind_api.get_stock_data:453 | Invalid ticker format: [object Object] | Error: Ticker must be 10 characters or less
+2025-11-20 23:10:42 UTC | [33mWARNING[0m | marketmind_api.get_stock_data:453 | Invalid ticker format: [object Object] | Error: Ticker must be 10 characters or less
+2025-11-20 23:10:42 UTC | [33mWARNING[0m | marketmind_api.get_stock_data:453 | Invalid ticker format: [object Object] | Error: Ticker must be 10 characters or less
+2025-11-20 23:10:42 UTC | [33mWARNING[0m | marketmind_api.get_stock_data:453 | Invalid ticker format: [object Object] | Error: Ticker must be 10 characters or less
+2025-11-20 23:10:42 UTC | [33mWARNING[0m | marketmind_api.get_stock_data:453 | Invalid ticker format: [object Object] | Error: Ticker must be 10 characters or less
+2025-11-20 23:10:43 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /watchlist | Status: completed
+2025-11-20 23:10:43 UTC | [33mWARNING[0m | marketmind_api.get_stock_data:453 | Invalid ticker format: [object Object] | Error: Ticker must be 10 characters or less
+2025-11-20 23:10:43 UTC | [33mWARNING[0m | marketmind_api.get_stock_data:453 | Invalid ticker format: [object Object] | Error: Ticker must be 10 characters or less
+2025-11-20 23:10:43 UTC | [33mWARNING[0m | marketmind_api.get_stock_data:453 | Invalid ticker format: [object Object] | Error: Ticker must be 10 characters or less
+2025-11-20 23:10:43 UTC | [33mWARNING[0m | marketmind_api.get_stock_data:453 | Invalid ticker format: [object Object] | Error: Ticker must be 10 characters or less
+2025-11-20 23:10:43 UTC | [33mWARNING[0m | marketmind_api.get_stock_data:453 | Invalid ticker format: [object Object] | Error: Ticker must be 10 characters or less
+2025-11-20 23:10:44 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /paper/portfolio | Status: completed
+2025-11-20 23:10:44 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /paper/history | Status: completed
+2025-11-20 23:10:44 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /paper/history | Status: completed
+2025-11-20 23:10:44 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /paper/portfolio | Status: completed
+2025-11-20 23:10:46 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /search/suggestions | Status: completed
+2025-11-20 23:10:46 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /search/suggestions | Status: cache_hit
+2025-11-20 23:10:55 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /search/suggestions | Status: cache_hit
+2025-11-20 23:10:55 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /search/suggestions | Status: cache_hit
+2025-11-20 23:11:00 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /stock/AAPL | Status: started
+2025-11-20 23:11:00 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /predict/AAPL | Status: started
+2025-11-20 23:11:01 UTC | [32mINFO[0m | marketmind_api.predict_stock:542 | ✅ Prediction completed for AAPL | Recent: $266.25 | Predicted: $267.60
+2025-11-20 23:11:01 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /predict/AAPL | Status: started
+2025-11-20 23:11:01 UTC | [32mINFO[0m | marketmind_api.predict_stock:542 | ✅ Prediction completed for AAPL | Recent: $266.25 | Predicted: $267.60
+2025-11-20 23:16:42 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /stock/AAPL | Status: started
+2025-11-20 23:16:43 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /predict/AAPL | Status: started
+2025-11-20 23:16:44 UTC | [32mINFO[0m | marketmind_api.predict_stock:542 | ✅ Prediction completed for AAPL | Recent: $266.25 | Predicted: $267.60
+2025-11-20 23:16:44 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /predict/AAPL | Status: started
+2025-11-20 23:16:44 UTC | [32mINFO[0m | marketmind_api.predict_stock:542 | ✅ Prediction completed for AAPL | Recent: $266.25 | Predicted: $267.60
+2025-11-20 23:24:34 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /paper/portfolio | Status: completed
+2025-11-20 23:25:24 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /paper/portfolio | Status: completed
+2025-11-20 23:29:12 UTC | [32mINFO[0m | marketmind_api.log_api_request:122 | API GET /paper/portfolio | Status: completed

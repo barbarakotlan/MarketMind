@@ -1178,16 +1178,73 @@ def get_fundamentals(ticker):
         sanitized_ticker = ticker.split(':')[0]
         if not ALPHA_VANTAGE_API_KEY:
             return jsonify({"error": "Alpha Vantage API key not configured"}), 500
+            
         url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={sanitized_ticker.upper()}&apikey={ALPHA_VANTAGE_API_KEY}'
         response = requests.get(url)
         data = response.json()
+        
         if not data or 'Symbol' not in data:
             return jsonify({"error": f"No fundamental data found for {ticker}"}), 404
-        return jsonify(data)
+
+        # Map Alpha Vantage keys (PascalCase) to Frontend keys (snake_case)
+        formatted_data = {
+            "symbol": data.get("Symbol"),
+            "name": data.get("Name"),
+            "description": data.get("Description"),
+            "exchange": data.get("Exchange"),
+            "currency": data.get("Currency"),
+            "sector": data.get("Sector"),
+            "industry": data.get("Industry"),
+            "country": data.get("Country"),
+            
+            # Key Metrics
+            "market_cap": clean_value(data.get("MarketCapitalization")),
+            "pe_ratio": clean_value(data.get("PERatio")),
+            "forward_pe": clean_value(data.get("ForwardPE")),
+            "trailing_pe": clean_value(data.get("TrailingPE")),
+            "peg_ratio": clean_value(data.get("PEGRatio")),
+            "eps": clean_value(data.get("EPS")),
+            "beta": clean_value(data.get("Beta")),
+            "book_value": clean_value(data.get("BookValue")),
+            
+            # Dividends
+            "dividend_per_share": clean_value(data.get("DividendPerShare")),
+            "dividend_yield": clean_value(data.get("DividendYield")),
+            "dividend_date": data.get("DividendDate"),
+            "ex_dividend_date": data.get("ExDividendDate"),
+            
+            # Profitability
+            "profit_margin": clean_value(data.get("ProfitMargin")),
+            "operating_margin_ttm": clean_value(data.get("OperatingMarginTTM")),
+            "return_on_assets_ttm": clean_value(data.get("ReturnOnAssetsTTM")),
+            "return_on_equity_ttm": clean_value(data.get("ReturnOnEquityTTM")),
+            
+            # Financials
+            "revenue_ttm": clean_value(data.get("RevenueTTM")),
+            "gross_profit_ttm": clean_value(data.get("GrossProfitTTM")),
+            "diluted_eps_ttm": clean_value(data.get("DilutedEPSTTM")),
+            "revenue_per_share_ttm": clean_value(data.get("RevenuePerShareTTM")),
+            "quarterly_earnings_growth_yoy": clean_value(data.get("QuarterlyEarningsGrowthYOY")),
+            "quarterly_revenue_growth_yoy": clean_value(data.get("QuarterlyRevenueGrowthYOY")),
+            
+            # Valuation & Price
+            "analyst_target_price": clean_value(data.get("AnalystTargetPrice")),
+            "price_to_sales_ratio_ttm": clean_value(data.get("PriceToSalesRatioTTM")),
+            "price_to_book_ratio": clean_value(data.get("PriceToBookRatio")),
+            "ev_to_revenue": clean_value(data.get("EVToRevenue")),
+            "ev_to_ebitda": clean_value(data.get("EVToEBITDA")),
+            "week_52_high": clean_value(data.get("52WeekHigh")),
+            "week_52_low": clean_value(data.get("52WeekLow")),
+            "day_50_moving_average": clean_value(data.get("50DayMovingAverage")),
+            "day_200_moving_average": clean_value(data.get("200DayMovingAverage")),
+            "shares_outstanding": clean_value(data.get("SharesOutstanding")),
+        }
+        
+        return jsonify(formatted_data)
+
     except Exception as e:
         print(f"Fundamentals error for {ticker}: {e}")
         return jsonify({"error": f"Failed to fetch fundamentals: {str(e)}"}), 500
-
 
 @app.route('/search-symbols')
 def search_symbols():
