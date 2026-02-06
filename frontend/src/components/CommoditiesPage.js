@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, Droplets, Hammer, Wheat, AlertTriangle } from 'lucide-react';
+import { BarChart3, TrendingUp, Droplets, Hammer, Wheat, AlertTriangle, Search, X } from 'lucide-react';
 import StockChart from './charts/StockChart';
 
 const timeFrames = [
@@ -14,18 +14,18 @@ const CommoditiesPage = () => {
     const [chartData, setChartData] = useState(null);
     const [loadingList, setLoadingList] = useState(true);
     const [loadingChart, setLoadingChart] = useState(false);
-    const [activeTimeFrame, setActiveTimeFrame] = useState(timeFrames[1]); // Default 6M
+    const [activeTimeFrame, setActiveTimeFrame] = useState(timeFrames[1]); 
+    const [searchTerm, setSearchTerm] = useState('');
 
     const tickerMap = {
         'WTI Oil': 'CL=F', 'Brent Oil': 'BZ=F', 'Natural Gas': 'NG=F',
         'Gold': 'GC=F', 'Silver': 'SI=F', 'Copper': 'HG=F',
         'Corn': 'ZC=F', 'Wheat': 'ZW=F', 'Soybean': 'ZS=F',
-        'Coffee': 'KC=F', 'Sugar': 'SB=F'
+        'Coffee': 'KC=F', 'Sugar': 'SB=F', 'Platinum': 'PL=F', 'Palladium': 'PA=F'
     };
 
     useEffect(() => {
         fetchCommodities();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const fetchCommodities = async () => {
@@ -38,13 +38,11 @@ const CommoditiesPage = () => {
     };
 
     const loadCommodity = async (code) => {
-        // 1. Fetch Details (Always needed when switching commodities)
         try {
             const res = await fetch(`http://localhost:5001/commodities/price/${code}`);
             const data = await res.json();
             if (!data.error) {
                 setSelectedCommodity(data);
-                // 2. Fetch Chart
                 fetchChart(data.name, activeTimeFrame.value);
             }
         } catch (err) { console.error(err); }
@@ -85,6 +83,12 @@ const CommoditiesPage = () => {
         return <Wheat className="w-4 h-4 text-yellow-500" />;
     };
 
+    // Filter Logic
+    const filteredCommodities = commodities.filter(c => 
+        c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        c.category.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
         <div className="container mx-auto px-4 py-8 max-w-7xl">
             <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white mb-8 flex items-center gap-3">
@@ -93,26 +97,64 @@ const CommoditiesPage = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-auto lg:h-[800px]">
                 
-                {/* List Sidebar */}
-                <div className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-[500px] lg:h-full">
-                    <div className="p-4 bg-gray-50 dark:bg-gray-700 font-bold border-b dark:border-gray-600">Market List</div>
+                {/* Searchable Sidebar */}
+                <div className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-[600px] lg:h-full">
+                    {/* Fixed Header with Search */}
+                    <div className="p-4 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 space-y-3">
+                        <div className="font-bold text-gray-700 dark:text-gray-200">Market List</div>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input 
+                                type="text"
+                                placeholder="Search markets..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-9 pr-8 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                            />
+                            {searchTerm && (
+                                <button 
+                                    onClick={() => setSearchTerm('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Scrollable List */}
                     <div className="overflow-y-auto flex-1">
-                        {loadingList ? <div className="p-4 text-center">Loading...</div> : commodities.map((comm) => (
-                            <button
-                                key={comm.code}
-                                onClick={() => loadCommodity(comm.code)}
-                                className={`w-full text-left p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex justify-between items-center ${
-                                    selectedCommodity?.code === comm.code ? 'bg-orange-50 dark:bg-orange-900/20 border-l-4 border-l-orange-500' : ''
-                                }`}
-                            >
-                                <div>
-                                    <div className="font-bold text-gray-800 dark:text-white">{comm.name}</div>
-                                    <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                                        {getCategoryIcon(comm.category)} {comm.category}
+                        {loadingList ? (
+                            <div className="p-8 text-center text-gray-400">Loading assets...</div>
+                        ) : filteredCommodities.length > 0 ? (
+                            filteredCommodities.map((comm) => (
+                                <button
+                                    key={comm.code}
+                                    onClick={() => loadCommodity(comm.code)}
+                                    className={`w-full text-left p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex justify-between items-center group ${
+                                        selectedCommodity?.code === comm.code 
+                                            ? 'bg-orange-50 dark:bg-orange-900/20 border-l-4 border-l-orange-500' 
+                                            : 'border-l-4 border-l-transparent'
+                                    }`}
+                                >
+                                    <div>
+                                        <div className={`font-bold transition-colors ${
+                                            selectedCommodity?.code === comm.code ? 'text-orange-700 dark:text-orange-400' : 'text-gray-800 dark:text-white'
+                                        }`}>
+                                            {comm.name}
+                                        </div>
+                                        <div className="text-xs text-gray-500 flex items-center gap-1 mt-1 group-hover:text-gray-600 dark:group-hover:text-gray-400">
+                                            {getCategoryIcon(comm.category)} {comm.category}
+                                        </div>
                                     </div>
-                                </div>
-                            </button>
-                        ))}
+                                </button>
+                            ))
+                        ) : (
+                            <div className="p-8 text-center text-gray-400">
+                                <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                                No markets found
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -166,14 +208,13 @@ const CommoditiesPage = () => {
                                         />
                                     </>
                                 ) : (
-                                    /* Graceful Fallback UI */
                                     <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-100 dark:border-gray-700">
                                         <div className="bg-white dark:bg-gray-800 p-4 rounded-full shadow-sm mb-4">
                                             <AlertTriangle className="w-8 h-8 text-orange-400" />
                                         </div>
                                         <h3 className="text-lg font-bold text-gray-900 dark:text-white">Chart Preview Unavailable</h3>
                                         <p className="text-gray-500 max-w-sm mt-2">
-                                            Real-time charting for {selectedCommodity.name} is currently limited. Please refer to the price cards above for the latest market data.
+                                            Real-time charting for {selectedCommodity.name} is limited. Please refer to price cards.
                                         </p>
                                     </div>
                                 )}
