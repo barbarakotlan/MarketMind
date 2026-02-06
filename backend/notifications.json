@@ -1,5 +1,16 @@
 {
-    "active": [],
+    "active": [
+        {
+            "id": "79599149-d4ee-4079-8e2a-ec42ef8fde04",
+            "ticker": "TSLA",
+            "condition": "below",
+            "target_price": 393.24632499999996,
+            "type": "price",
+            "prompt": "tell me when tesla stock drop 5%",
+            "active": true,
+            "created_at": "2026-02-06T15:18:43.380702"
+        }
+    ],
     "triggered": [
         {
             "id": "74a602a5-7f7d-4cfd-a1f1-c4365c719deb",
@@ -18,6 +29,12 @@
             "message": "AAPL is now $259.48 (below your target of $267.46)",
             "seen": true,
             "timestamp": "2026-01-30T16:44:58.940410"
+        },
+        {
+            "id": "39e54e0f-6f08-48cc-b763-23fe371316a7",
+            "message": "AAPL is now $277.83 (above your target of $275.00)",
+            "seen": true,
+            "timestamp": "2026-02-06T15:19:57.044858"
         }
     ]
 }
