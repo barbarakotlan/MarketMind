@@ -11,6 +11,9 @@
 # production
 /build
 
+#local files
+paper_portfolio.json marketmind.db
+
 # misc
 .DS_Store
 .env.local

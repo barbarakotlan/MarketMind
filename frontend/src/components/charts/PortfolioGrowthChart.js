@@ -2,14 +2,14 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title,
-  Tooltip, Legend, TimeScale, Filler,
+  Tooltip, Legend, Filler,
 } from 'chart.js';
-import 'chartjs-adapter-date-fns';
 
 // Register all Chart.js components and controllers
+// Removed TimeScale and the adapter to prevent build errors
 ChartJS.register(
   CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip,
-  Legend, TimeScale, Filler
+  Legend, Filler
 );
 
 // Define the time frames for the portfolio chart
@@ -56,9 +56,14 @@ function PortfolioGrowthChart({ onDataFetched }) {
     const chartConfig = useMemo(() => {
         if (!history) return null;
 
-        const labels = history.dates.map(d => new Date(d));
+        // Format dates manually since we aren't using the time adapter
+        const labels = history.dates.map(d => {
+            const date = new Date(d);
+            return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        });
+
         const values = history.values;
-        const isUp = values[values.length - 1] >= values[0];
+        const isUp = values.length > 0 && values[values.length - 1] >= values[0];
 
         const data = {
             labels: labels,
@@ -76,19 +81,55 @@ function PortfolioGrowthChart({ onDataFetched }) {
                 borderColor: isUp ? '#22C55E' : '#EF4444', // Green/Red
                 borderWidth: 2,
                 tension: 0.1,
+                pointRadius: 0, // Hide points by default
+                pointHoverRadius: 4, // Show points on hover
             }]
         };
 
         const options = {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { type: 'time', time: { unit: 'day' }, grid: { display: false }, ticks: { display: true, color: '#6B7280' } }, // Light text for dark mode
-                y: { grid: { color: 'rgba(200, 200, 200, 0.1)' }, ticks: { display: true, color: '#6B7280' } } // Light text for dark mode
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                            }
+                            return label;
+                        }
+                    }
+                }
             },
-            interaction: { intersect: false, mode: 'index' },
-            elements: { point: { radius: 0 } }
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        display: true,
+                        color: '#6B7280',
+                        maxTicksLimit: 6, // Limit x-axis labels to prevent overcrowding
+                        maxRotation: 0
+                    }
+                },
+                y: {
+                    grid: { color: 'rgba(200, 200, 200, 0.1)' },
+                    ticks: {
+                        display: true,
+                        color: '#6B7280',
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            },
+            interaction: { intersect: false, mode: 'nearest', axis: 'x' },
         };
         return { data, options };
     }, [history]);
@@ -153,7 +194,7 @@ function PortfolioGrowthChart({ onDataFetched }) {
 
                     {/* Chart */}
                     <div className="md:col-span-2 h-80">
-                        <Line data={chartConfig.data} options={chartConfig.options} />
+                        {chartConfig && <Line data={chartConfig.data} options={chartConfig.options} />}
                     </div>
                 </div>
             )}

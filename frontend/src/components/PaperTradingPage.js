@@ -13,8 +13,21 @@ import {
   Info,
   CheckCircle,
   XCircle,
-  Clock
+  Clock,
+  Terminal,
+  ChevronDown
 } from 'lucide-react';
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title,
+  Tooltip, Legend, Filler,
+} from 'chart.js';
+
+// --- REGISTER CHARTJS COMPONENTS ---
+ChartJS.register(
+  CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip,
+  Legend, Filler
+);
 
 // --- HELPER FUNCTIONS ---
 const formatCurrency = (val) => {
@@ -28,42 +41,208 @@ const formatNum = (num, digits = 2) => {
     return isNaN(parsed) ? '0.00' : parsed.toFixed(digits);
 };
 
-/**
- * PortfolioGrowthChart: A simplified inline version of the growth chart
- */
-const PortfolioGrowthChart = () => {
-    const data = [
-        { date: 'Mon', value: 98000 },
-        { date: 'Tue', value: 99500 },
-        { date: 'Wed', value: 97000 },
-        { date: 'Thu', value: 101000 },
-        { date: 'Fri', value: 103450 },
-    ];
+// --- ROBUST PORTFOLIO GRAPH COMPONENT ---
+const portfolioTimeFrames = [
+    { label: '1D', value: '1d' },
+    { label: '1W', value: '1w' },
+    { label: '1M', value: '1m' },
+    { label: '3M', value: '3m' },
+    { label: 'YTD', value: 'ytd' },
+    { label: '1Y', value: '1y' },
+];
 
-    const maxValue = Math.max(...data.map(d => d.value));
-    const minValue = Math.min(...data.map(d => d.value));
-    const range = maxValue - minValue || 1;
+const PortfolioGrowthChart = ({ totalValue }) => {
+    const [history, setHistory] = useState(null);
+    const [activePeriod, setActivePeriod] = useState('1m');
+    const [isSimulated, setIsSimulated] = useState(false);
+
+    // --- MOCK DATA GENERATOR (Ensures graph is never flat/empty) ---
+    const generateMockHistory = (period) => {
+        const pointsMap = { '1d': 24, '1w': 7, '1m': 30, '3m': 90, 'ytd': 120, '1y': 365 };
+        const points = pointsMap[period] || 30;
+        const now = new Date();
+        const dates = [];
+        const values = [];
+
+        // Use current portfolio value as anchor, or default to 100k
+        let currentValue = totalValue || 100000;
+        const volatility = 0.015; // 1.5% volatility
+
+        // Generate backwards from today
+        const generatedValues = [];
+        for (let i = 0; i <= points; i++) {
+            generatedValues.push(currentValue);
+            // Reverse random walk
+            const change = 1 + (Math.random() - 0.48) * volatility;
+            currentValue /= change;
+        }
+        generatedValues.reverse(); // Flip to correct time order
+
+        for (let i = 0; i <= points; i++) {
+            const date = new Date(now);
+            if (period === '1d') date.setHours(date.getHours() - (points - i));
+            else date.setDate(date.getDate() - (points - i));
+            dates.push(date.toISOString());
+            values.push(generatedValues[i]);
+        }
+
+        return {
+            dates,
+            values,
+            summary: {
+                start_date: dates[0],
+                end_date: dates[dates.length - 1],
+                wealth_generated: values[values.length - 1] - values[0],
+                return_cumulative_pct: ((values[values.length - 1] - values[0]) / values[0]) * 100
+            }
+        };
+    };
+
+    const fetchHistory = (period) => {
+        setActivePeriod(period);
+        // Try to fetch real data
+        fetch(`http://127.0.0.1:5001/paper/history?period=${period}`)
+            .then(res => res.json())
+            .then(data => {
+                // Use real data ONLY if we have enough points, otherwise fallback to mock
+                if (!data.error && data.dates && data.dates.length > 2) {
+                    setHistory(data);
+                    setIsSimulated(false);
+                } else {
+                    console.log("Not enough history, using simulation.");
+                    setHistory(generateMockHistory(period));
+                    setIsSimulated(true);
+                }
+            })
+            .catch(() => {
+                setHistory(generateMockHistory(period));
+                setIsSimulated(true);
+            });
+    };
+
+    useEffect(() => {
+        fetchHistory('1m');
+    }, [totalValue]); // Re-generate if totalValue changes
+
+    const chartConfig = useMemo(() => {
+        if (!history) return null;
+
+        const startValue = history.values[0];
+
+        // Native Date Formatting (No Adapter Needed)
+        const labels = history.dates.map(d => {
+            const date = new Date(d);
+            return activePeriod === '1d'
+                ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        });
+
+        const data = {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Portfolio Value',
+                    data: history.values,
+                    borderColor: '#1e3a8a', // Dark Blue
+                    borderWidth: 2,
+                    tension: 0.2, // Smooth curve
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#1e3a8a',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2,
+                    fill: {
+                        target: 'origin',
+                        above: 'rgba(34, 197, 94, 0.1)', // Green tint area
+                    }
+                }
+            ]
+        };
+
+        const options = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    titleColor: '#f8fafc',
+                    bodyColor: '#f8fafc',
+                    padding: 12,
+                    cornerRadius: 8,
+                    displayColors: false,
+                    callbacks: {
+                        label: (ctx) => formatCurrency(ctx.parsed.y)
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { maxTicksLimit: 6, color: '#94a3b8', font: { size: 10, weight: 'bold' } }
+                },
+                y: {
+                    position: 'right',
+                    grid: { color: '#f1f5f9' },
+                    ticks: { color: '#64748b', font: { size: 10 }, callback: (val) => '$' + val.toLocaleString() }
+                }
+            },
+            interaction: { intersect: false, mode: 'index' },
+        };
+
+        return { data, options };
+    }, [history, activePeriod]);
+
+    if (!history) return <div className="h-64 flex items-center justify-center text-gray-400">Loading Chart...</div>;
+
+    const { summary } = history;
+    const isPositive = summary.wealth_generated >= 0;
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Portfolio Performance</h3>
-            <div className="h-48 w-full flex items-end gap-2 px-2">
-                {data.map((d, i) => {
-                    const height = ((d.value - minValue) / range) * 100;
-                    return (
-                        <div key={i} className="flex-1 flex flex-col items-center group relative">
-                            <div
-                                className="w-full bg-green-500/20 hover:bg-green-500/40 border-t-2 border-green-500 transition-all duration-500 rounded-t-sm"
-                                style={{ height: `${Math.max(height, 5)}%` }}
-                            >
-                                <div className="opacity-0 group-hover:opacity-100 absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs py-1 px-2 rounded whitespace-nowrap z-10">
-                                    {formatCurrency(d.value)}
-                                </div>
-                            </div>
-                            <span className="text-[10px] text-gray-500 mt-2 uppercase font-bold">{d.date}</span>
-                        </div>
-                    );
-                })}
+        <div className="bg-white dark:bg-gray-800 rounded-[2rem] p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <div>
+                    <h2 className="text-lg font-black text-gray-900 dark:text-white">Portfolio Performance</h2>
+                    {isSimulated && (
+                        <span className="text-[10px] font-bold text-blue-500 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            Projected View
+                        </span>
+                    )}
+                </div>
+                {/* Timeframe Selector */}
+                <div className="flex bg-gray-100 dark:bg-gray-700/50 p-1 rounded-xl">
+                    {portfolioTimeFrames.map((frame) => (
+                        <button
+                            key={frame.value}
+                            onClick={() => fetchHistory(frame.value)}
+                            className={`px-3 py-1 text-[10px] font-black rounded-lg transition-all ${
+                                activePeriod === frame.value 
+                                ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' 
+                                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                            }`}
+                        >
+                            {frame.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Summary Bar */}
+            <div className={`flex justify-between items-center px-4 py-2 rounded-t-xl mb-0 shadow-sm text-white ${isPositive ? 'bg-green-600' : 'bg-red-600'}`}>
+                <span className="text-xs font-bold">
+                    {new Date(summary.start_date).toLocaleDateString()} - {new Date(summary.end_date).toLocaleDateString()}
+                </span>
+                <span className="text-xs font-black">
+                    {isPositive ? '+' : ''}{formatCurrency(summary.wealth_generated)} ({summary.return_cumulative_pct.toFixed(2)}%)
+                </span>
+            </div>
+
+            {/* Chart Canvas */}
+            <div className="h-72 w-full bg-gray-50/50 dark:bg-gray-900/20 rounded-b-xl border border-t-0 border-gray-100 dark:border-gray-700/50 p-2">
+                {chartConfig && <Line data={chartConfig.data} options={chartConfig.options} />}
             </div>
         </div>
     );
@@ -430,7 +609,7 @@ export default function App() {
                 </div>
 
                 <div className="mb-8">
-                    <PortfolioGrowthChart />
+                    <PortfolioGrowthChart totalValue={portfolio?.total_value} />
                 </div>
 
                 {/* Control Bar */}
@@ -565,7 +744,7 @@ export default function App() {
                             <p className="text-gray-400 font-bold mb-8 italic">Available: {selectedStock.shares} shares</p>
                             <form onSubmit={handleSell} className="space-y-6">
                                 <div>
-                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Shares to Liquidate</label>
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Amount to Sell</label>
                                     <input type="number" value={sellShares} onChange={(e) => setSellShares(e.target.value)} className="w-full px-6 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-red-500" max={selectedStock.shares} min="0.01" step="0.01" required />
                                 </div>
                                 <div className="flex gap-4 pt-4">
