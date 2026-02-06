@@ -23,7 +23,48 @@ const FundamentalsPage = () => {
                 throw new Error(data.error || 'Failed to fetch fundamentals');
             }
 
-            setFundamentals(data);
+            const mappedData = {
+                name: data.Name,
+                symbol: data.Symbol,
+                exchange: data.Exchange,
+                currency: data.Currency,
+                sector: data.Sector,
+                industry: data.Industry,
+                description: data.Description,
+                market_cap: data.MarketCapitalization,
+                pe_ratio: data.PERatio,
+                forward_pe: data.ForwardPE,
+                trailing_pe: data.TrailingPE,
+                peg_ratio: data.PEGRatio,
+                eps: data.EPS,
+                beta: data.Beta,
+                revenue_ttm: data.RevenueTTM,
+                gross_profit_ttm: data.GrossProfitTTM,
+                diluted_eps_ttm: data.DilutedEPSTTM,
+                revenue_per_share_ttm: data.RevenuePerShareTTM,
+                profit_margin: data.ProfitMargin,
+                operating_margin_ttm: data.OperatingMarginTTM,
+                return_on_assets_ttm: data.ReturnOnAssetsTTM,
+                return_on_equity_ttm: data.ReturnOnEquityTTM,
+                price_to_sales_ratio_ttm: data.PriceToSalesRatioTTM,
+                price_to_book_ratio: data.PriceToBookRatio,
+                ev_to_revenue: data.EVToRevenue,
+                ev_to_ebitda: data.EVToEBITDA,
+                week_52_high: data["52WeekHigh"],
+                week_52_low: data["52WeekLow"],
+                day_50_moving_average: data["50DayMovingAverage"],
+                day_200_moving_average: data["200DayMovingAverage"],
+                dividend_per_share: data.DividendPerShare,
+                dividend_yield: data.DividendYield,
+                dividend_date: data.DividendDate,
+                ex_dividend_date: data.ExDividendDate,
+                shares_outstanding: data.SharesOutstanding,
+                book_value: data.BookValue,
+                analyst_target_price: data.AnalystTargetPrice,
+                country: data.Country,
+            };
+
+            setFundamentals(mappedData);
         } catch (err) {
             setError(err.message || 'Could not fetch company fundamentals');
             console.error('Fundamentals error:', err);
