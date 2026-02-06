@@ -1,0 +1,47 @@
+2025-11-15 03:33:38 UTC | [31mERROR[0m | test.<module>:180 | This is an error message
+2025-11-15 03:33:38 UTC | [35mCRITICAL[0m | test.<module>:181 | This is a critical message
+2025-11-15 03:33:38 UTC | [31mERROR[0m | test.log_api_error:136 | API Error /predict/AAPL | Ticker: AAPL | Test exception
+Traceback (most recent call last):
+  File "/Users/tazeemmahashin/slider-calculator/MarketMind/backend/logger_config.py", line 189, in <module>
+    raise ValueError("Test exception")
+ValueError: Test exception
+2025-11-18 21:41:25 UTC | [31mERROR[0m | marketmind_api.log_api_error:136 | API Error /paper/history | type object 'Trade' has no attribute 'timestamp'
+Traceback (most recent call last):
+  File "/Users/tazeemmahashin/slider-calculator/MarketMind/backend/api.py", line 725, in get_trade_history
+    trades = Trade.query.filter_by(portfolio_id=portfolio.id).order_by(Trade.timestamp.desc()).limit(50).all()
+AttributeError: type object 'Trade' has no attribute 'timestamp'
+2025-11-18 21:41:54 UTC | [31mERROR[0m | marketmind_api.log_api_error:136 | API Error /paper/history | type object 'Trade' has no attribute 'timestamp'
+Traceback (most recent call last):
+  File "/Users/tazeemmahashin/slider-calculator/MarketMind/backend/api.py", line 725, in get_trade_history
+    trades = Trade.query.filter_by(portfolio_id=portfolio.id).order_by(Trade.timestamp.desc()).limit(50).all()
+AttributeError: type object 'Trade' has no attribute 'timestamp'
+2025-11-18 21:42:47 UTC | [31mERROR[0m | marketmind_api.log_api_error:136 | API Error /paper/history | type object 'Trade' has no attribute 'timestamp'
+Traceback (most recent call last):
+  File "/Users/tazeemmahashin/slider-calculator/MarketMind/backend/api.py", line 725, in get_trade_history
+    trades = Trade.query.filter_by(portfolio_id=portfolio.id).order_by(Trade.timestamp.desc()).limit(50).all()
+AttributeError: type object 'Trade' has no attribute 'timestamp'
+2025-11-18 21:43:13 UTC | [31mERROR[0m | marketmind_api.log_api_error:136 | API Error /paper/history | type object 'Trade' has no attribute 'timestamp'
+Traceback (most recent call last):
+  File "/Users/tazeemmahashin/slider-calculator/MarketMind/backend/api.py", line 725, in get_trade_history
+    trades = Trade.query.filter_by(portfolio_id=portfolio.id).order_by(Trade.timestamp.desc()).limit(50).all()
+AttributeError: type object 'Trade' has no attribute 'timestamp'
+2025-11-18 21:43:38 UTC | [31mERROR[0m | marketmind_api.log_api_error:136 | API Error /paper/history | type object 'Trade' has no attribute 'timestamp'
+Traceback (most recent call last):
+  File "/Users/tazeemmahashin/slider-calculator/MarketMind/backend/api.py", line 725, in get_trade_history
+    trades = Trade.query.filter_by(portfolio_id=portfolio.id).order_by(Trade.timestamp.desc()).limit(50).all()
+AttributeError: type object 'Trade' has no attribute 'timestamp'
+2025-11-18 21:44:12 UTC | [31mERROR[0m | marketmind_api.log_api_error:136 | API Error /paper/history | type object 'Trade' has no attribute 'timestamp'
+Traceback (most recent call last):
+  File "/Users/tazeemmahashin/slider-calculator/MarketMind/backend/api.py", line 725, in get_trade_history
+    trades = Trade.query.filter_by(portfolio_id=portfolio.id).order_by(Trade.created_at.desc()).limit(50).all()
+AttributeError: type object 'Trade' has no attribute 'timestamp'
+2025-11-18 21:44:37 UTC | [31mERROR[0m | marketmind_api.log_api_error:136 | API Error /paper/history | type object 'Trade' has no attribute 'timestamp'
+Traceback (most recent call last):
+  File "/Users/tazeemmahashin/slider-calculator/MarketMind/backend/api.py", line 725, in get_trade_history
+    trades = Trade.query.filter_by(portfolio_id=portfolio.id).order_by(Trade.created_at.desc()).limit(50).all()
+AttributeError: type object 'Trade' has no attribute 'timestamp'
+2025-11-18 21:44:46 UTC | [31mERROR[0m | marketmind_api.log_api_error:136 | API Error /paper/history | type object 'Trade' has no attribute 'timestamp'
+Traceback (most recent call last):
+  File "/Users/tazeemmahashin/slider-calculator/MarketMind/backend/api.py", line 725, in get_trade_history
+    trades = Trade.query.filter_by(portfolio_id=portfolio.id).order_by(Trade.created_at.desc()).limit(50).all()
+AttributeError: type object 'Trade' has no attribute 'timestamp'
