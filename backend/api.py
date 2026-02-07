@@ -25,12 +25,12 @@ load_dotenv()
 # --- Tazeem's Imports ---
 from model import create_dataset, estimate_week, try_today, estimate_new, good_model
 from news_fetcher import get_general_news
-from ensemble_model import ensemble_predict, calculate_metrics
+from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
 from commodities_fetcher import get_commodity_price, get_commodity_list, get_commodities_by_category
-from logger_config import setup_logger
+from logger_config import setup_logger, log_api_error
 
 #Emoji Fix
 import sys
@@ -457,16 +457,23 @@ def get_option_suggestion(ticker):
 
 
 # --- ML Endpoints ---
-@app.route('/predict/<string:ticker>')
+@app.route('/predict/<string:model>/<string:ticker>')
 @limiter.limit(RateLimits.STANDARD)
-def predict_stock(ticker):
+def predict_stock(model, ticker):
+    
     try:
         sanitized_ticker = ticker.split(':')[0]
         stock = yf.Ticker(sanitized_ticker)
         info = stock.info
         df = create_dataset(sanitized_ticker, period="15d")
         if df.empty: return jsonify({"error": "No historical data available."}), 404
-        current_df = estimate_week(df)
+        current_df 
+        if model=="LinReg":
+            current_df = linear_regression_predict(df, 7)
+        if model=="RandomForest":
+            current_df = random_forest_predict(df, 7)
+        if model=="XGBoost":
+            current_df = xgboost_predict(df, 7)
         prediction_df = current_df.tail(6)
         recent_close_df = df[df["Close"].notna()].tail(1)
         recent_close = recent_close_df["Close"].iloc[0] if not recent_close_df.empty else 0
