@@ -68,3 +68,4 @@ xgboost==2.1.4
 yarl==1.22.0
 yfinance==0.2.66
 zipp==3.23.0
+dr-manhattan

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     Search, Star, Briefcase, Building2, TrendingUp, Target, Globe, DollarSign,
-    Bitcoin, BarChart3, Newspaper, HelpCircle, Sun, Moon, ChevronDown, Bell
+    Bitcoin, BarChart3, Newspaper, HelpCircle, Sun, Moon, ChevronDown, Bell, Layers
 } from 'lucide-react';
 import { useDarkMode } from '../context/DarkModeContext';
 
@@ -112,7 +112,7 @@ const Header = ({ activePage, setActivePage }) => {
                             <button
                                 onClick={() => setShowOtherMenu(!showOtherMenu)}
                                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 whitespace-nowrap flex items-center space-x-1 ${
-                                    ['forex', 'crypto', 'commodities'].includes(activePage)
+                                    ['forex', 'crypto', 'commodities', 'predictionMarkets'].includes(activePage)
                                         ? 'bg-blue-600 text-white shadow-md'
                                         : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                                 }`}
@@ -126,7 +126,7 @@ const Header = ({ activePage, setActivePage }) => {
                             <div
                                 className={`absolute top-full left-0 mt-2 bg-gray-900 dark:bg-gray-800 rounded-lg shadow-xl border border-gray-700 overflow-hidden transition-all duration-300 ease-out z-50 ${
                                     showOtherMenu 
-                                        ? 'opacity-100 translate-y-0 max-h-48' 
+                                        ? 'opacity-100 translate-y-0 max-h-64'
                                         : 'opacity-0 -translate-y-2 max-h-0 pointer-events-none'
                                 }`}
                                 style={{ minWidth: '180px' }}
@@ -158,6 +158,15 @@ const Header = ({ activePage, setActivePage }) => {
                                 >
                                     <BarChart3 className="w-4 h-4" />
                                     <span>Commodities</span>
+                                </button>
+                                <button
+                                    onClick={() => { handleNavClick('predictionMarkets'); setShowOtherMenu(false); }}
+                                    className={`w-full px-4 py-3 text-left text-sm font-medium transition-colors duration-150 flex items-center space-x-2 ${
+                                        activePage === 'predictionMarkets' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                    }`}
+                                >
+                                    <Layers className="w-4 h-4" />
+                                    <span>Prediction Mkt</span>
                                 </button>
                             </div>
                         </div>

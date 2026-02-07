@@ -15,6 +15,7 @@ import NewsPage from './components/NewsPage';
 
 // 1. Import the new page
 import NotificationsPage from './components/NotificationsPage';
+import PredictionMarketsPage from './components/PredictionMarketsPage';
 
 function App() {
     const [activePage, setActivePage] = useState('search');
@@ -56,6 +57,7 @@ function App() {
 
                 {/* --- THIS IS THE NEW PAGE --- */}
                 {activePage === 'notifications' && <NotificationsPage onClearAlerts={handleClearAlerts} />}
+                {activePage === 'predictionMarkets' && <PredictionMarketsPage />}
 
                 {activePage === 'gettingStarted' && <GettingStartedPage />}
             </main>
