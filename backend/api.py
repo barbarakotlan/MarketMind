@@ -30,6 +30,7 @@ from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
 from commodities_fetcher import get_commodity_price, get_commodity_list, get_commodities_by_category
+from logger_config import setup_logger
 from prediction_markets_fetcher import (
     fetch_markets as pm_fetch_markets,
     search_markets as pm_search_markets,
@@ -48,9 +49,45 @@ from sklearn.linear_model import LinearRegression
 logger = setup_logger('marketmind_api')
 logger.info("🚀 MarketMind API Starting...")
 
+def log_api_error(log, route, error):
+    log.error(f"Error in {route}: {error}")
+
 # Initialize the Flask application
 app = Flask(__name__)
 CORS(app)
+
+# --- Rate Limiting Setup ---
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[],
+    app=app
+)
+
+class RateLimits:
+    LIGHT = "10/minute"
+    STANDARD = "20/minute"
+    HEAVY = "2/minute"
+    WRITE = "5/minute"
+
+from functools import wraps
+
+def validate_request_json(required_fields):
+    """Decorator to ensure incoming JSON has all required fields."""
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if not request.is_json:
+                return jsonify({"error": "Request must be JSON"}), 400
+            data = request.get_json()
+            missing = [field for field in required_fields if field not in data]
+            if missing:
+                return jsonify({"error": f"Missing required fields: {missing}"}), 400
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
 
 # --- CONFIGURATION ---
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
@@ -71,6 +108,13 @@ def init_db():
         cursor = conn.cursor()
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS portfolio_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                portfolio_value REAL NOT NULL
+            );
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS prediction_portfolio_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME NOT NULL,
                 portfolio_value REAL NOT NULL
@@ -101,12 +145,13 @@ def load_prediction_portfolio():
                 data.setdefault('starting_cash', 10000.0)
                 data.setdefault('positions', {})
                 data.setdefault('trade_history', [])
+                data.setdefault('watchlist', [])
                 return data
         except json.JSONDecodeError:
             pass
     return {
         "cash": 10000.0, "starting_cash": 10000.0,
-        "positions": {}, "trade_history": []
+        "positions": {}, "trade_history": [], "watchlist": []
     }
 
 
@@ -114,6 +159,24 @@ def save_prediction_portfolio(portfolio):
     """Saves the prediction markets portfolio to its own JSON file."""
     with open(PREDICTION_PORTFOLIO_FILE, 'w') as f:
         json.dump(portfolio, f, indent=4)
+
+
+def record_prediction_snapshot(portfolio_data):
+    """Records a snapshot of the prediction portfolio value for the growth chart."""
+    total_value = portfolio_data['cash']
+    for key, pos in portfolio_data.get("positions", {}).items():
+        total_value += pos['contracts'] * pos['avg_cost']
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO prediction_portfolio_history (timestamp, portfolio_value) VALUES (?, ?)",
+                       (datetime.now(), total_value))
+        conn.commit()
+    except Exception as e:
+        print(f"Failed to record prediction snapshot: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 
 def load_portfolio():
@@ -1192,6 +1255,142 @@ def list_prediction_exchanges():
     return jsonify(pm_get_exchanges())
 
 
+@app.route('/prediction-markets/portfolio/history', methods=['GET'])
+@limiter.limit(RateLimits.LIGHT)
+def get_prediction_portfolio_history():
+    """Get prediction portfolio value history for the growth chart."""
+    try:
+        period = request.args.get('period', 'ytd')
+        today = date.today()
+        if period == '1m':
+            start_date = today - timedelta(days=30)
+        elif period == '3m':
+            start_date = today - timedelta(days=90)
+        elif period == '1y':
+            start_date = today - timedelta(days=365)
+        elif period == 'ytd':
+            start_date = date(today.year, 1, 1)
+        else:
+            start_date = date(2020, 1, 1)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT timestamp, portfolio_value FROM prediction_portfolio_history WHERE timestamp >= ? ORDER BY timestamp",
+            (start_date.isoformat(),)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return jsonify({"dates": [], "values": [], "summary": {}})
+
+        dates = [row[0][:10] for row in rows]
+        values = [round(row[1], 2) for row in rows]
+
+        start_value = values[0]
+        end_value = values[-1]
+        wealth_generated = end_value - start_value
+        return_pct = (wealth_generated / start_value * 100) if start_value > 0 else 0
+
+        return jsonify({
+            "dates": dates,
+            "values": values,
+            "summary": {
+                "period": period,
+                "start_date": dates[0] if dates else "",
+                "end_date": dates[-1] if dates else "",
+                "start_value": round(start_value, 2),
+                "end_value": round(end_value, 2),
+                "wealth_generated": round(wealth_generated, 2),
+                "return_cumulative_pct": round(return_pct, 2),
+            }
+        })
+    except Exception as e:
+        log_api_error(logger, '/prediction-markets/portfolio/history', e)
+        return jsonify({"error": "Failed to fetch portfolio history"}), 500
+
+
+@app.route('/prediction-markets/stats', methods=['GET'])
+@limiter.limit(RateLimits.LIGHT)
+def get_prediction_stats():
+    """Get prediction markets trading performance stats."""
+    try:
+        portfolio = load_prediction_portfolio()
+        history = portfolio.get("trade_history", [])
+
+        buys = [t for t in history if t.get("type") == "BUY"]
+        sells = [t for t in history if t.get("type") == "SELL"]
+        sell_profits = [t.get("profit", 0) for t in sells]
+        wins = [p for p in sell_profits if p > 0]
+
+        total_profit = sum(sell_profits) if sell_profits else 0
+        win_rate = (len(wins) / len(sells) * 100) if sells else 0
+        best_trade = max(sell_profits) if sell_profits else 0
+        worst_trade = min(sell_profits) if sell_profits else 0
+        avg_profit = (total_profit / len(sells)) if sells else 0
+
+        return jsonify({
+            "total_trades": len(history),
+            "buy_count": len(buys),
+            "sell_count": len(sells),
+            "total_profit": round(total_profit, 2),
+            "win_rate": round(win_rate, 1),
+            "best_trade": round(best_trade, 2),
+            "worst_trade": round(worst_trade, 2),
+            "avg_trade_profit": round(avg_profit, 2),
+        })
+    except Exception as e:
+        log_api_error(logger, '/prediction-markets/stats', e)
+        return jsonify({"error": "Failed to compute stats"}), 500
+
+
+@app.route('/prediction-markets/watchlist', methods=['GET', 'POST'])
+@limiter.limit(RateLimits.WRITE)
+def prediction_watchlist():
+    """Get or add to the prediction markets watchlist."""
+    portfolio = load_prediction_portfolio()
+
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            if not data or 'market_id' not in data:
+                return jsonify({"error": "market_id is required"}), 400
+
+            existing_ids = {item['market_id'] for item in portfolio['watchlist']}
+            if data['market_id'] in existing_ids:
+                return jsonify({"message": "Already in watchlist"}), 200
+
+            entry = {
+                "market_id": data['market_id'],
+                "question": data.get('question', ''),
+                "exchange": data.get('exchange', 'polymarket'),
+                "added_at": datetime.now().isoformat()
+            }
+            portfolio['watchlist'].append(entry)
+            save_prediction_portfolio(portfolio)
+            return jsonify(entry), 201
+        except Exception as e:
+            log_api_error(logger, '/prediction-markets/watchlist POST', e)
+            return jsonify({"error": "Failed to add to watchlist"}), 500
+
+    return jsonify(portfolio.get('watchlist', []))
+
+
+@app.route('/prediction-markets/watchlist/<path:market_id>', methods=['DELETE'])
+@limiter.limit(RateLimits.WRITE)
+def remove_from_prediction_watchlist(market_id):
+    """Remove a market from the prediction watchlist."""
+    try:
+        portfolio = load_prediction_portfolio()
+        portfolio['watchlist'] = [w for w in portfolio['watchlist'] if w['market_id'] != market_id]
+        save_prediction_portfolio(portfolio)
+        return jsonify({"message": "Removed from watchlist"}), 200
+    except Exception as e:
+        log_api_error(logger, f'/prediction-markets/watchlist/{market_id} DELETE', e)
+        return jsonify({"error": "Failed to remove from watchlist"}), 500
+
+
 @app.route('/prediction-markets/<path:market_id>', methods=['GET'])
 @limiter.limit(RateLimits.STANDARD)
 def get_prediction_market(market_id):
@@ -1334,6 +1533,7 @@ def buy_prediction_contract():
         }
         portfolio["trade_history"].append(trade)
         save_prediction_portfolio(portfolio)
+        record_prediction_snapshot(portfolio)
 
         return jsonify({
             "success": True,
@@ -1394,6 +1594,7 @@ def sell_prediction_contract():
         }
         portfolio["trade_history"].append(trade)
         save_prediction_portfolio(portfolio)
+        record_prediction_snapshot(portfolio)
 
         return jsonify({
             "success": True,
@@ -1421,9 +1622,22 @@ def reset_prediction_portfolio():
         "cash": 10000.0,
         "starting_cash": 10000.0,
         "positions": {},
-        "trade_history": []
+        "trade_history": [],
+        "watchlist": []
     }
     save_prediction_portfolio(new_portfolio)
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM prediction_portfolio_history")
+        cursor.execute("INSERT INTO prediction_portfolio_history (timestamp, portfolio_value) VALUES (?, ?)",
+                       (datetime.now(), 10000.0))
+        conn.commit()
+    except Exception as e:
+        print(f"Failed to reset prediction_portfolio_history table: {e}")
+    finally:
+        if conn:
+            conn.close()
     return jsonify({
         "success": True,
         "message": "Prediction markets portfolio reset to starting state",
