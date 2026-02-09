@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Prevent overscroll/bounce on all pages */
+html, body {
+    overscroll-behavior: none;
+}
+
 /* Autocomplete dropdown animation */
 @keyframes fade-in {
     from {
