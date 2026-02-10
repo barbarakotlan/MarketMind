@@ -139,7 +139,7 @@ className={`px-3 py-2 rounded-md transition-all ${
     : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
 }`}
       >
-        Model A
+        Linear Regression
       </button>
 
       <button
@@ -150,18 +150,18 @@ className={`px-3 py-2 rounded-md transition-all ${
     : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
 }`}
       >
-        Model B
+        Random Forest
       </button>
 
       <button
         onClick={() => setUseModel("XGBoost")}
 className={`px-3 py-2 rounded-md transition-all ${
-  useModel === "ModelC"
+  useModel === "XGBoost"
     ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
     : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
 }`}
       >
-        Model C
+        XGBoost
       </button>
     </div>
   )}
@@ -206,13 +206,14 @@ className={`px-3 py-2 rounded-md transition-all ${
 
                     <PredictionChart predictionData={predictionData} />
 
-                    {useEnsemble && predictionData.RandomForestreakdown && (
-                        <ModelComparisonCard 
-                            RandomForestreakdown={predictionData.RandomForestreakdown}
-                            modelsUsed={predictionData.modelsUsed}
-                            confidence={predictionData.confidence}
-                        />
-                    )}
+                    {useEnsemble && predictionData.modelBreakdown && (
+  <ModelComparisonCard 
+    modelBreakdown={predictionData.modelBreakdown}
+    modelsUsed={predictionData.modelsUsed}
+    confidence={predictionData.confidence}
+  />
+)}
+
 
                     <StockPredictionCard data={predictionData} />
 
