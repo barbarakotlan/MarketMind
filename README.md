@@ -72,6 +72,8 @@ pip install -r requirements.txt
 python migrate.py init
 python migrate.py seed
 
+brew install libomp #For Mac homebrew
+
 # Start the API server
 python api.py
 ```
