@@ -1,4 +1,217 @@
-// This file holds the static content for the "Getting Started" page.
+// --- QUIZ DATA ---
+export const QUESTION_BANK = {
+    easy: [
+        {
+            id: 1,
+            type: 'multiple',
+            question: "What is a 'Bull Market'?",
+            options: ["A period of rising prices", "A period of falling prices", "A market with no movement", "A market for trading livestock"],
+            answer: "A period of rising prices"
+        },
+        {
+            id: 2,
+            type: 'multiple',
+            question: "What does a 'Stock' represent?",
+            options: ["A loan to a company", "A share of ownership in a company", "A government bond", "An insurance policy"],
+            answer: "A share of ownership in a company"
+        },
+        {
+            id: 3,
+            type: 'text',
+            question: "Fill in the blank: A portion of a company's profits paid to shareholders is called a ______.",
+            answer: "dividend"
+        },
+        {
+            id: 4,
+            type: 'checkbox',
+            question: "Which of the following are types of stocks? (Select all that apply)",
+            options: ["Common Stocks", "Preferred Stocks", "Loan Stocks", "Future Stocks"],
+            answer: ["Common Stocks", "Preferred Stocks"]
+        },
+        {
+            id: 5,
+            type: 'multiple',
+            question: "What is the primary risk of investing in stocks?",
+            options: ["Guaranteed profit", "Loss of capital", "Too much liquidity", "Fixed interest rates"],
+            answer: "Loss of capital"
+        },
+        {
+            id: 6,
+            type: 'multiple',
+            question: "Which option gives you the right to BUY an asset?",
+            options: ["Call Option", "Put Option", "Strike Option", "Bid Option"],
+            answer: "Call Option"
+        },
+        {
+            id: 7,
+            type: 'text',
+            question: "Fill in the blank: The acronym for Initial Public Offering is ______.",
+            answer: "ipo"
+        },
+        {
+            id: 8,
+            type: 'multiple',
+            question: "What is a Portfolio?",
+            options: ["A collection of investments", "A type of tax document", "A single stock", "A bank account"],
+            answer: "A collection of investments"
+        },
+        {
+            id: 9,
+            type: 'multiple',
+            question: "Which index tracks 500 large companies in the US?",
+            options: ["S&P 500", "Dow Jones 30", "Nasdaq 100", "Russell 2000"],
+            answer: "S&P 500"
+        },
+        {
+            id: 10,
+            type: 'multiple',
+            question: "What represents the price a buyer is willing to pay?",
+            options: ["Bid", "Ask", "Spread", "Volume"],
+            answer: "Bid"
+        }
+    ],
+    medium: [
+        {
+            id: 1,
+            type: 'multiple',
+            question: "What is Market Capitalization?",
+            options: ["Stock Price x Total Shares Outstanding", "Total Revenue / Net Income", "Assets - Liabilities", "Dividends x Yield"],
+            answer: "Stock Price x Total Shares Outstanding"
+        },
+        {
+            id: 2,
+            type: 'checkbox',
+            question: "Select the tools commonly used in Technical Analysis:",
+            options: ["Moving Averages (MA)", "Income Statements", "Relative Strength Index (RSI)", "P/E Ratio"],
+            answer: ["Moving Averages (MA)", "Relative Strength Index (RSI)"]
+        },
+        {
+            id: 3,
+            type: 'text',
+            question: "Fill in the blank: The price at which an option asset can be bought or sold is called the ______ price.",
+            answer: "strike"
+        },
+        {
+            id: 4,
+            type: 'multiple',
+            question: "What does 'Short Selling' mean?",
+            options: ["Selling a stock you own", "Selling a borrowed stock expecting price to fall", "Buying a stock for a short time", "Selling stock to a friend"],
+            answer: "Selling a borrowed stock expecting price to fall"
+        },
+        {
+            id: 5,
+            type: 'multiple',
+            question: "Which analysis method evaluates financial statements and economic factors?",
+            options: ["Fundamental Analysis", "Technical Analysis", "Sentiment Analysis", "Chart Analysis"],
+            answer: "Fundamental Analysis"
+        },
+        {
+            id: 6,
+            type: 'checkbox',
+            question: "Why might someone trade options? (Select all that apply)",
+            options: ["Leverage", "Hedging", "Risk-free profits", "Speculation"],
+            answer: ["Leverage", "Hedging", "Speculation"]
+        },
+        {
+            id: 7,
+            type: 'multiple',
+            question: "What is 'Liquidity'?",
+            options: ["How easily an asset can be bought/sold without affecting price", "The amount of cash a company has", "The dividend yield", "The volatility of a stock"],
+            answer: "How easily an asset can be bought/sold without affecting price"
+        },
+        {
+            id: 8,
+            type: 'text',
+            question: "Fill in the blank: P/E Ratio stands for Price-to-______ Ratio.",
+            answer: "earnings"
+        },
+        {
+            id: 9,
+            type: 'multiple',
+            question: "What is the difference between American and European options?",
+            options: ["American can be exercised anytime; European only at expiration", "European can be exercised anytime; American only at expiration", "American are cheaper", "No difference"],
+            answer: "American can be exercised anytime; European only at expiration"
+        },
+        {
+            id: 10,
+            type: 'multiple',
+            question: "Which is a risk management tool?",
+            options: ["Stop-Loss Order", "Market Order", "Leverage", "Going All In"],
+            answer: "Stop-Loss Order"
+        }
+    ],
+    hard: [
+        {
+            id: 1,
+            type: 'multiple',
+            question: "What does it mean if an option is 'Out-of-the-Money' (OTM)?",
+            options: ["It has no intrinsic value", "It is profitable to exercise", "The premium is zero", "It has expired"],
+            answer: "It has no intrinsic value"
+        },
+        {
+            id: 2,
+            type: 'checkbox',
+            question: "Which factors affect an option's Premium? (Select all that apply)",
+            options: ["Underlying Price", "Time to Expiration", "Volatility", "CEO's Name"],
+            answer: ["Underlying Price", "Time to Expiration", "Volatility"]
+        },
+        {
+            id: 3,
+            type: 'text',
+            question: "Fill in the blank: ______ Analysis assumes that past price action and volume predict future movements.",
+            answer: "technical"
+        },
+        {
+            id: 4,
+            type: 'multiple',
+            question: "In Fundamental Analysis, what does the Debt-to-Equity ratio measure?",
+            options: ["Financial Leverage", "Profitability", "Asset Turnover", "Market Sentiment"],
+            answer: "Financial Leverage"
+        },
+        {
+            id: 5,
+            type: 'multiple',
+            question: "What is a 'Candlestick Pattern' used for?",
+            options: ["Visualizing price movement", "Calculating dividends", "Predicting inflation", "Measuring GDP"],
+            answer: "Visualizing price movement"
+        },
+        {
+            id: 6,
+            type: 'multiple',
+            question: "Which strategy involves selling a borrowed asset?",
+            options: ["Short Selling", "Long Position", "Call Buying", "Value Investing"],
+            answer: "Short Selling"
+        },
+        {
+            id: 7,
+            type: 'checkbox',
+            question: "What are the limitations of Technical Analysis? (Select all that apply)",
+            options: ["Can be subjective", "Produces false signals in volatile markets", "Requires zero practice", "Past performance doesn't guarantee future results"],
+            answer: ["Can be subjective", "Produces false signals in volatile markets", "Past performance doesn't guarantee future results"]
+        },
+        {
+            id: 8,
+            type: 'text',
+            question: "Fill in the blank: ______ is a method where you buy an asset to reduce the risk of adverse price movements in another asset.",
+            answer: "hedging"
+        },
+        {
+            id: 9,
+            type: 'multiple',
+            question: "What happens to the seller of an option if the market moves against them?",
+            options: ["They face potentially unlimited risk (for naked calls)", "They lose only the premium", "They make a profit", "Nothing happens"],
+            answer: "They face potentially unlimited risk (for naked calls)"
+        },
+        {
+            id: 10,
+            type: 'multiple',
+            question: "Which financial statement shows a company's assets, liabilities, and shareholders' equity?",
+            options: ["Balance Sheet", "Income Statement", "Cash Flow Statement", "Annual Report"],
+            answer: "Balance Sheet"
+        }
+    ]
+};
+
 
 export const gettingStartedContent = [
     {
