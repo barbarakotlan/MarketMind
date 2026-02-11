@@ -11,22 +11,22 @@ import {
   CheckCircle,
   RefreshCw,
   ChevronRight,
-  Brain
+  Brain,
+  Layers // Icon for Modules
 } from 'lucide-react';
-import { gettingStartedContent, QUESTION_BANK } from '../data/content';
+import { learningModules, QUESTION_BANK } from '../data/content';
 
-// --- QUIZ COMPONENT ---
+// --- QUIZ COMPONENT (Unchanged Logic) ---
 const QuizSection = () => {
     const [difficulty, setDifficulty] = useState(null);
     const [questions, setQuestions] = useState([]);
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [userAnswers, setUserAnswers] = useState({}); // { questionId: answer }
+    const [userAnswers, setUserAnswers] = useState({});
     const [showResults, setShowResults] = useState(false);
     const [score, setScore] = useState(0);
 
     const startQuiz = (level) => {
         setDifficulty(level);
-        // Shuffle and pick 10 (or use all available if less than 10)
         const shuffled = [...QUESTION_BANK[level]].sort(() => 0.5 - Math.random());
         setQuestions(shuffled.slice(0, 10));
         setCurrentIndex(0);
@@ -37,16 +37,13 @@ const QuizSection = () => {
 
     const handleAnswer = (answer) => {
         const currentQ = questions[currentIndex];
-
         if (currentQ.type === 'checkbox') {
-            // Handle multiple selections
             const currentSelection = userAnswers[currentQ.id] || [];
             const newSelection = currentSelection.includes(answer)
                 ? currentSelection.filter(item => item !== answer)
                 : [...currentSelection, answer];
             setUserAnswers({ ...userAnswers, [currentQ.id]: newSelection });
         } else {
-            // Handle text or single choice
             setUserAnswers({ ...userAnswers, [currentQ.id]: answer });
         }
     };
@@ -65,9 +62,7 @@ const QuizSection = () => {
         questions.forEach(q => {
             const userAns = userAnswers[q.id];
             if (!userAns) return;
-
             if (q.type === 'checkbox') {
-                // Sort both arrays to compare strictly
                 const correct = [...q.answer].sort();
                 const user = [...userAns].sort();
                 if (JSON.stringify(correct) === JSON.stringify(user)) newScore++;
@@ -86,7 +81,6 @@ const QuizSection = () => {
         setScore(0);
     };
 
-    // 1. Difficulty Selection Screen
     if (!difficulty) {
         return (
             <div className="flex flex-col items-center justify-center py-12 animate-in fade-in zoom-in duration-500">
@@ -117,7 +111,6 @@ const QuizSection = () => {
         );
     }
 
-    // 2. Results Screen
     if (showResults) {
         const percentage = (score / questions.length) * 100;
         let message = "Good effort!";
@@ -130,104 +123,58 @@ const QuizSection = () => {
                 <Award className={`w-24 h-24 mb-6 ${percentage >= 80 ? 'text-yellow-500' : 'text-blue-500'}`} />
                 <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">Quiz Complete</h2>
                 <p className="text-xl text-gray-600 dark:text-gray-300 mb-6">{message}</p>
-
                 <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-xl border border-gray-200 dark:border-gray-700 mb-8 w-full max-w-md">
                     <div className="text-6xl font-black text-blue-600 dark:text-blue-400 mb-2">{score}/{questions.length}</div>
                     <div className="text-sm font-bold text-gray-400 uppercase tracking-widest">Correct Answers</div>
                 </div>
-
-                <button
-                    onClick={resetQuiz}
-                    className="px-8 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:opacity-90 transition-all flex items-center gap-2"
-                >
+                <button onClick={resetQuiz} className="px-8 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:opacity-90 transition-all flex items-center gap-2">
                     <RefreshCw className="w-5 h-5" /> Take Another Quiz
                 </button>
             </div>
         );
     }
 
-    // 3. Question Screen
     const currentQ = questions[currentIndex];
 
     return (
         <div className="max-w-3xl mx-auto py-8">
-            {/* Progress Bar */}
             <div className="mb-8">
                 <div className="flex justify-between text-xs font-bold uppercase text-gray-400 mb-2">
                     <span>Question {currentIndex + 1} of {questions.length}</span>
                     <span>{difficulty} Mode</span>
                 </div>
                 <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                        className="h-full bg-blue-500 transition-all duration-500"
-                        style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
-                    />
+                    <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} />
                 </div>
             </div>
-
-            {/* Question Card */}
             <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 mb-8 animate-in slide-in-from-right duration-300" key={currentQ.id}>
                 <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">{currentQ.question}</h3>
-
                 {currentQ.type === 'multiple' && (
                     <div className="space-y-3">
                         {currentQ.options.map((option) => (
-                            <button
-                                key={option}
-                                onClick={() => handleAnswer(option)}
-                                className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium ${
-                                    userAnswers[currentQ.id] === option 
-                                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 
-                                    : 'border-gray-100 dark:border-gray-700 hover:border-blue-200 dark:hover:border-gray-600'
-                                }`}
-                            >
-                                {option}
-                            </button>
+                            <button key={option} onClick={() => handleAnswer(option)} className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium ${userAnswers[currentQ.id] === option ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'border-gray-100 dark:border-gray-700 hover:border-blue-200 dark:hover:border-gray-600'}`}>{option}</button>
                         ))}
                     </div>
                 )}
-
                 {currentQ.type === 'checkbox' && (
                     <div className="space-y-3">
                         {currentQ.options.map((option) => {
                             const isSelected = (userAnswers[currentQ.id] || []).includes(option);
                             return (
-                                <button
-                                    key={option}
-                                    onClick={() => handleAnswer(option)}
-                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium flex items-center gap-3 ${
-                                        isSelected 
-                                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 
-                                        : 'border-gray-100 dark:border-gray-700 hover:border-blue-200'
-                                    }`}
-                                >
-                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300'}`}>
-                                        {isSelected && <CheckCircle className="w-3 h-3" />}
-                                    </div>
+                                <button key={option} onClick={() => handleAnswer(option)} className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium flex items-center gap-3 ${isSelected ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'border-gray-100 dark:border-gray-700 hover:border-blue-200'}`}>
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300'}`}>{isSelected && <CheckCircle className="w-3 h-3" />}</div>
                                     {option}
                                 </button>
                             );
                         })}
                     </div>
                 )}
-
                 {currentQ.type === 'text' && (
-                    <input
-                        type="text"
-                        value={userAnswers[currentQ.id] || ''}
-                        onChange={(e) => handleAnswer(e.target.value)}
-                        placeholder="Type your answer here..."
-                        className="w-full p-4 text-lg border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none bg-transparent dark:text-white"
-                    />
+                    <input type="text" value={userAnswers[currentQ.id] || ''} onChange={(e) => handleAnswer(e.target.value)} placeholder="Type your answer here..." className="w-full p-4 text-lg border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none bg-transparent dark:text-white" />
                 )}
             </div>
-
             <div className="flex justify-end">
-                <button
-                    onClick={nextQuestion}
-                    disabled={!userAnswers[currentQ.id] || (Array.isArray(userAnswers[currentQ.id]) && userAnswers[currentQ.id].length === 0)}
-                    className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
+                <button onClick={nextQuestion} disabled={!userAnswers[currentQ.id] || (Array.isArray(userAnswers[currentQ.id]) && userAnswers[currentQ.id].length === 0)} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
                     {currentIndex === questions.length - 1 ? 'Finish Quiz' : 'Next Question'}
                     <ChevronRight className="w-5 h-5" />
                 </button>
@@ -237,14 +184,12 @@ const QuizSection = () => {
 };
 
 // --- INFO CARD COMPONENT ---
-// Renders the structured content from content.js
 const InfoCard = ({ item }) => {
-    // Dynamic Icon selection based on title keywords
     let Icon = Activity;
-    if (item.title.includes("Stock Market")) Icon = TrendingUp;
+    if (item.title.includes("Market")) Icon = TrendingUp;
     if (item.title.includes("Fundamental")) Icon = Search;
     if (item.title.includes("Risk")) Icon = ShieldAlert;
-    if (item.title.includes("Vocabulary")) Icon = DollarSign;
+    if (item.title.includes("Mechanics")) Icon = Layers;
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1">
@@ -267,7 +212,6 @@ const InfoCard = ({ item }) => {
                                 <ul key={index} className="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-300 text-sm pl-2">
                                     {el.items.map((li, i) => (
                                         <li key={i}>
-                                            {/* Simple bolding for terms like "Term: Definition" */}
                                             {li.split(':').length > 1 ? (
                                                 <>
                                                     <span className="font-semibold text-gray-800 dark:text-gray-200">{li.split(':')[0]}:</span>
@@ -300,43 +244,41 @@ const GettingStartedPage = () => {
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-6xl animate-in fade-in duration-500">
-            {/* Header */}
             <div className="text-center mb-10">
                 <h1 className="text-4xl font-black text-gray-900 dark:text-white mb-2">Learning Center</h1>
-                <p className="text-gray-500 dark:text-gray-400">Master the markets with our comprehensive guides and quizzes.</p>
+                <p className="text-gray-500 dark:text-gray-400">Master the markets with our comprehensive deep-dive modules.</p>
             </div>
 
-            {/* Tab Navigation */}
-            <div className="flex justify-center mb-10">
+            <div className="flex justify-center mb-12">
                 <div className="bg-gray-100 dark:bg-gray-800 p-1.5 rounded-2xl flex gap-1">
-                    <button
-                        onClick={() => setActiveTab('learn')}
-                        className={`px-8 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-                            activeTab === 'learn' 
-                            ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' 
-                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                        }`}
-                    >
-                        <BookOpen className="w-4 h-4" /> Knowledge Base
+                    <button onClick={() => setActiveTab('learn')} className={`px-8 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'learn' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                        <BookOpen className="w-4 h-4" /> Modules
                     </button>
-                    <button
-                        onClick={() => setActiveTab('quiz')}
-                        className={`px-8 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-                            activeTab === 'quiz' 
-                            ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm' 
-                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                        }`}
-                    >
+                    <button onClick={() => setActiveTab('quiz')} className={`px-8 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'quiz' ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
                         <HelpCircle className="w-4 h-4" /> Market Quiz
                     </button>
                 </div>
             </div>
 
-            {/* Content Area */}
             {activeTab === 'learn' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {gettingStartedContent.map((item, index) => (
-                        <InfoCard key={index} item={item} />
+                <div className="space-y-16 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {learningModules.map((module) => (
+                        <div key={module.id} className="border-b border-gray-100 dark:border-gray-800 pb-12 last:border-0 last:pb-0">
+                            <div className="mb-6">
+                                <h2 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
+                                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold shadow-sm">
+                                        {module.id.toUpperCase()}
+                                    </div>
+                                    {module.title}
+                                </h2>
+                                <p className="text-gray-500 dark:text-gray-400 ml-12 mt-1 max-w-2xl">{module.description}</p>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 ml-0 md:ml-12">
+                                {module.chapters.map((chapter, idx) => (
+                                    <InfoCard key={idx} item={chapter} />
+                                ))}
+                            </div>
+                        </div>
                     ))}
                 </div>
             ) : (
