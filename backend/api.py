@@ -25,7 +25,7 @@ load_dotenv()
 # --- Tazeem's Imports ---
 from model import create_dataset, estimate_week, try_today, estimate_new, good_model
 from news_fetcher import get_general_news
-from ensemble_model import ensemble_predict, calculate_metrics
+from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
@@ -37,7 +37,7 @@ from prediction_markets_fetcher import (
     get_exchange_list as pm_get_exchanges,
     get_current_prices as pm_get_prices,
 )
-from logger_config import setup_logger
+from logger_config import setup_logger, log_api_error
 
 #Emoji Fix
 import sys
@@ -490,32 +490,71 @@ def get_option_suggestion(ticker):
 
 
 # --- ML Endpoints ---
-@app.route('/predict/<string:ticker>')
+@app.route('/predict/<string:model>/<string:ticker>')
 @limiter.limit(RateLimits.STANDARD)
-def predict_stock(ticker):
+def predict_stock(model, ticker):
     try:
         sanitized_ticker = ticker.split(':')[0]
         stock = yf.Ticker(sanitized_ticker)
         info = stock.info
-        df = create_dataset(sanitized_ticker, period="15d")
-        if df.empty: return jsonify({"error": "No historical data available."}), 404
-        current_df = estimate_week(df)
-        prediction_df = current_df.tail(6)
-        recent_close_df = df[df["Close"].notna()].tail(1)
-        recent_close = recent_close_df["Close"].iloc[0] if not recent_close_df.empty else 0
-        recent_date = recent_close_df.index[0] if not recent_close_df.empty else current_df.index[0]
-        recent_predicted = current_df["Predicted"].iloc[0]
+
+        # --- Model-specific history ---
+        if model == "LinReg":
+            period = "15d"
+            min_rows = 7
+        elif model in ("RandomForest", "XGBoost"):
+            period = "6mo"
+            min_rows = 40
+        else:
+            return jsonify({"error": "Unknown model"}), 400
+
+        df = create_dataset(sanitized_ticker, period=period)
+
+        if df.empty or len(df) < min_rows:
+            return jsonify({"error": "Insufficient historical data."}), 404
+
+        # --- Run model ---
+        if model == "LinReg":
+            preds = linear_regression_predict(df, days_ahead=7)
+        elif model == "RandomForest":
+            preds = random_forest_predict(df, days_ahead=7)
+        else:  # XGBoost
+            preds = xgboost_predict(df, days_ahead=7)
+
+        if preds is None or len(preds) == 0:
+            return jsonify({
+                "error": f"{model} prediction failed."
+            }), 400
+
+        recent_close = float(df["Close"].iloc[-1])
+        recent_date = df.index[-1]
+
+        future_dates = [
+            recent_date + pd.Timedelta(days=i + 1)
+            for i in range(len(preds))
+        ]
+
         response = {
-            "symbol": info.get('symbol', ticker.upper()), "companyName": info.get('longName', 'N/A'),
-            "recentDate": recent_date.strftime('%Y-%m-%d'), "recentClose": round(float(recent_close), 2),
-            "recentPredicted": round(float(recent_predicted), 2),
-            "predictions": [{"date": date.strftime('%Y-%m-%d'), "predictedClose": round(float(pred), 2)}
-                            for date, pred in zip(prediction_df.index, prediction_df["Predicted"])]
+            "symbol": info.get('symbol', sanitized_ticker.upper()),
+            "companyName": info.get('longName', 'N/A'),
+            "recentDate": recent_date.strftime('%Y-%m-%d'),
+            "recentClose": round(recent_close, 2),
+            "recentPredicted": round(float(preds[0]), 2),
+            "predictions": [
+                {
+                    "date": date.strftime('%Y-%m-%d'),
+                    "predictedClose": round(float(pred), 2)
+                }
+                for date, pred in zip(future_dates, preds)
+            ]
         }
+
         return jsonify(response)
+
     except Exception as e:
         log_api_error(logger, f'/predict/{ticker}', e, ticker)
         return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
+
 
 
 @app.route('/predict/ensemble/<string:ticker>')
