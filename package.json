@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "activate": "^0.0.1",
+    "base": "^3.0.0",
+    "react-sparklines": "^1.7.0",
+    "yfinance": "^0.0.6"
+  }
+}
