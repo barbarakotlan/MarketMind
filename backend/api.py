@@ -1846,30 +1846,6 @@ def get_fundamentals(ticker):
         print(f"Fundamentals error for {ticker}: {e}")
         return jsonify({"error": f"Failed to fetch fundamentals: {str(e)}"}), 500
 # --- NEW: Autocomplete Symbol Search (from Jimmy's branch) ---
-def get_symbol_suggestions(query):
-    if not ALPHA_VANTAGE_API_KEY:
-        print("Alpha Vantage key not configured. Cannot get suggestions.")
-        return []
-        
-    try:
-        url = f'https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords={query}&apikey={ALPHA_VANTAGE_API_KEY}'
-        r = requests.get(url)
-        data = r.json()
-        
-        matches = data.get('bestMatches', [])
-        formatted_matches = []
-        for match in matches:
-            # Filter for US stocks
-            if "." not in match.get('1. symbol') and match.get('4. region') == "United States":
-                formatted_matches.append({
-                    "symbol": match.get('1. symbol'),
-                    "name": match.get('2. name')
-                })
-        return formatted_matches
-    except Exception as e:
-        print(f"Error in get_symbol_suggestions: {e}")
-        return []
-
 @app.route('/search-symbols')
 def search_symbols():
     query = request.args.get('q')
