@@ -15,6 +15,7 @@ import schedule
 import time
 import threading
 import uuid  # For unique notification IDs
+import re  # Added for Smart Alert parsing
 
 # --- DOTENV MUST BE FIRST ---
 from dotenv import load_dotenv
@@ -759,6 +760,7 @@ def get_paper_portfolio():
         "options_positions": options_positions_list
     })
 
+
 @app.route('/paper/buy', methods=['POST'])
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
@@ -1096,6 +1098,142 @@ def handle_notifications():
     return jsonify(notifications.get('active', []))
 
 
+@app.route('/notifications/smart', methods=['POST'])
+def create_smart_alert():
+    try:
+        data = request.json
+        prompt = data.get('prompt', '').strip()  # Keep case for now
+
+        # --- 1. IMPROVED AI PARSING LOGIC ---
+
+        # A. Detect Ticker
+        # Common Name Mapping
+        ticker_map = {
+            'apple': 'AAPL', 'tesla': 'TSLA', 'microsoft': 'MSFT',
+            'nvidia': 'NVDA', 'amazon': 'AMZN', 'google': 'GOOGL',
+            'bitcoin': 'BTC-USD', 'meta': 'META', 'netflix': 'NFLX',
+            'ai': 'NVDA', 'artificial intelligence': 'NVDA',  # Proxy for AI queries
+            'sp500': '^GSPC', 'market': '^GSPC'
+        }
+
+        detected_ticker = None
+        prompt_lower = prompt.lower()
+
+        # 1. Check known names first (multi-word aware)
+        for name, symbol in ticker_map.items():
+            if name in prompt_lower:
+                detected_ticker = symbol
+                break
+
+        # 2. If no name found, look for explicit uppercase tickers in original prompt
+        if not detected_ticker:
+            # Filter out common stopwords that might look like tickers
+            stop_tickers = {
+                'ME', 'MY', 'I', 'WE', 'US', 'THE', 'IS', 'AT', 'ON', 'IN', 'TO',
+                'FOR', 'OF', 'BY', 'AN', 'UP', 'DO', 'GO', 'OR', 'IF', 'BE',
+                'ARE', 'IT', 'AS', 'HI', 'LO', 'NEW', 'OLD', 'BIG', 'BUY', 'SELL',
+                'ALERT', 'NOTIFY', 'TELL', 'SHOW', 'WHEN', 'WHAT', 'WHERE',
+                'HOW', 'WHY', 'WHO', 'DROP', 'FALL', 'RISE', 'GAIN', 'TODAY',
+                'NEWS', 'REPORT', 'DATA', 'INFO', 'THIS', 'THAT', 'THESE', 'THOSE'
+            }
+
+            words = re.findall(r'\b[A-Z]{1,5}\b', prompt)  # Only uppercase words 1-5 chars
+            for word in words:
+                if word not in stop_tickers:
+                    # Validate if it's likely a ticker (simple heuristic: not a common word)
+                    detected_ticker = word
+                    break
+
+        if not detected_ticker:
+            return jsonify({
+                               'error': 'Could not identify a specific stock or asset. Try mentioning "Apple", "TSLA", or "Bitcoin".'}), 400
+
+        # B. Detect Intent & Targets
+        alert_type = 'price'
+        condition = 'above'
+        target_price = 0.0
+
+        # Check for News intent
+        if any(x in prompt_lower for x in
+               ['news', 'earnings', 'report', 'releasing', 'announce', 'article', 'headline']):
+            alert_type = 'news'
+            condition = 'news_release'
+            target_price = 0
+        else:
+            # Price Intent
+            # Check direction
+            is_drop = any(
+                x in prompt_lower for x in ['drop', 'fall', 'below', 'less', 'under', 'loss', 'down', 'crash'])
+            condition = 'below' if is_drop else 'above'
+
+            # Check for Percentage
+            pct_match = re.search(r'(\d+(?:\.\d+)?)%', prompt)
+            price_match = re.search(r'\$\s?(\d+(?:\.\d+)?)', prompt)
+            number_match = re.search(r'\b(\d+(?:\.\d+)?)\b', prompt)
+
+            current_price = 0.0
+            # Fetch current price for calculations
+            try:
+                ticker_obj = yf.Ticker(detected_ticker)
+                # fast_info is faster/reliable
+                current_price = ticker_obj.fast_info.get('last_price', 0)
+                if current_price == 0:
+                    current_price = ticker_obj.info.get('regularMarketPrice', 0)
+            except:
+                pass
+
+            if pct_match and current_price > 0:
+                pct = float(pct_match.group(1))
+                if is_drop:
+                    target_price = current_price * (1 - (pct / 100))
+                else:
+                    target_price = current_price * (1 + (pct / 100))
+            elif price_match:
+                target_price = float(price_match.group(1))
+            elif number_match:
+                # If just a raw number is found (e.g. "hits 100"), assume it's the price
+                # But filter out numbers that look like dates or small quantities if necessary
+                # For simplicity, take the first number
+                val = float(number_match.group(1))
+                # Heuristic: if value is < 5 and stock is > 100, might be % without sign?
+                # Let's trust user input for now unless it matches the percentage logic
+                target_price = val
+            else:
+                # Default if no number found but price intent detected (e.g. "alert if apple drops")
+                # Set target slightly below current
+                if is_drop:
+                    target_price = current_price * 0.99
+                else:
+                    target_price = current_price * 1.01
+
+        # --- 2. CREATE AND SAVE ALERT ---
+        notifications = load_notifications()  # returns {'active': [], 'triggered': []}
+
+        new_alert = {
+            "id": str(uuid.uuid4()),
+            "ticker": detected_ticker,
+            "condition": condition,
+            "target_price": target_price,
+            "type": alert_type,  # 'price' or 'news'
+            "prompt": prompt,  # Save original text for reference
+            "active": True,
+            "created_at": datetime.now().isoformat()
+        }
+
+        notifications['active'].append(new_alert)
+        save_notifications(notifications)
+
+        return jsonify({
+            'message': 'Smart alert created successfully',
+            'interpretation': f"Watching {detected_ticker} for {condition} events.",
+            'alert': new_alert
+        })
+
+    except Exception as e:
+        print(f"Smart Alert Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/notifications/<string:alert_id>', methods=['DELETE'])
 def delete_notification(alert_id):
     notifications = load_notifications()
@@ -1164,6 +1302,34 @@ def check_alerts():
         triggered_ids = []
         for alert in active_alerts_copy:
             try:
+                # Check for NEWS alerts first
+                if alert.get('type') == 'news':
+                    # Use yfinance news
+                    try:
+                        ticker_obj = yf.Ticker(alert['ticker'])
+                        news_items = ticker_obj.news
+                        if news_items:
+                            latest_news = news_items[0]
+                            # Check if news is from today (or very recent)
+                            pub_time = latest_news.get('providerPublishTime')
+                            if pub_time:
+                                pub_dt = datetime.fromtimestamp(pub_time)
+                                # Trigger if news is from last 24 hours
+                                if (datetime.now() - pub_dt).total_seconds() < 86400:  # 24 hours
+                                    # Trigger alert
+                                    triggered_alert = {
+                                        "id": str(uuid.uuid4()),
+                                        "message": f"NEWS: {latest_news.get('title')} ({alert['ticker']})",
+                                        "seen": False,
+                                        "timestamp": datetime.now().isoformat()
+                                    }
+                                    notifications_data['triggered'].append(triggered_alert)
+                                    triggered_ids.append(alert['id'])
+                    except Exception as news_err:
+                        print(f"News check error: {news_err}")
+                    continue  # Skip price check for news alerts
+
+                # Price Check Logic
                 if len(tickers_to_check) == 1:
                     current_price = float(current_prices)
                 else:
