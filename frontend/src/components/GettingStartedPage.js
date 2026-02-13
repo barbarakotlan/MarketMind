@@ -24,10 +24,7 @@ import {
     Play,
     RotateCcw,
     X,
-    Moon,
-    Sun,
-    Keyboard,
-    Command
+    Keyboard
 } from 'lucide-react';
 import { learningModules, QUESTION_BANK, getTotalChapters, getEstimatedCourseTime } from '../data/content';
 
@@ -42,7 +39,7 @@ const getMasteryLevel = (progress) => {
 
 // --- PROGRESS STORAGE UTILITIES ---
 const STORAGE_KEY = 'marketmind_course_progress';
-const THEME_KEY = 'marketmind_reading_theme';
+
 
 const loadProgress = () => {
     try {
@@ -61,47 +58,8 @@ const saveProgress = (progress) => {
     }
 };
 
-const loadTheme = () => {
-    try {
-        const saved = localStorage.getItem(THEME_KEY);
-        const validThemes = ['light', 'dark', 'sepia', 'midnight'];
-        return validThemes.includes(saved) ? saved : 'dark';
-    } catch {
-        return 'dark';
-    }
-};
 
-// --- READING THEME OPTIONS ---
-const READING_THEMES = {
-    light: {
-        bg: 'bg-white',
-        text: 'text-gray-900',
-        subtext: 'text-gray-600',
-        border: 'border-gray-200',
-        card: 'bg-white'
-    },
-    dark: {
-        bg: 'bg-gray-900',
-        text: 'text-gray-100',
-        subtext: 'text-gray-400',
-        border: 'border-gray-800',
-        card: 'bg-gray-800'
-    },
-    sepia: {
-        bg: 'bg-[#f4ecd8]',
-        text: 'text-[#5b4636]',
-        subtext: 'text-[#8b7355]',
-        border: 'border-[#d4c5a9]',
-        card: 'bg-[#faf6ed]'
-    },
-    midnight: {
-        bg: 'bg-[#0f172a]',
-        text: 'text-[#e2e8f0]',
-        subtext: 'text-[#94a3b8]',
-        border: 'border-[#1e293b]',
-        card: 'bg-[#1e293b]'
-    }
-};
+
 
 // --- SCROLL PROGRESS HOOK ---
 const useScrollProgress = (ref) => {
@@ -295,8 +253,7 @@ const QuizSection = () => {
 };
 
 // --- CHAPTER CONTENT COMPONENT ---
-const ChapterContent = ({ chapter, isCompleted, onToggleComplete, readingTheme }) => {
-    const theme = READING_THEMES[readingTheme] || READING_THEMES.dark;
+const ChapterContent = ({ chapter, isCompleted, onToggleComplete }) => {
     const contentRef = useRef(null);
     const scrollProgress = useScrollProgress(contentRef);
     const minutesLeft = Math.max(1, Math.round((chapter.estimatedMinutes || 20) * (1 - scrollProgress / 100)));
@@ -313,17 +270,17 @@ const ChapterContent = ({ chapter, isCompleted, onToggleComplete, readingTheme }
 
             {/* Reading Stats */}
             <div className="flex items-center justify-between mb-6 text-sm">
-                <div className="flex items-center gap-2 text-gray-500">
+                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
                     <Clock className="w-4 h-4" />
                     <span>{chapter.estimatedMinutes || 20} min read</span>
                     {scrollProgress > 0 && (
                         <>
-                            <span className="text-gray-300">•</span>
+                            <span className="text-gray-300 dark:text-gray-600">•</span>
                             <span className="text-blue-600 font-medium">~{minutesLeft} min left</span>
                         </>
                     )}
                 </div>
-                <div className="text-gray-400 text-xs">
+                <div className="text-gray-400 dark:text-gray-500 text-xs">
                     {Math.round(scrollProgress)}% read
                 </div>
             </div>
@@ -331,23 +288,23 @@ const ChapterContent = ({ chapter, isCompleted, onToggleComplete, readingTheme }
             {/* Content */}
             <div 
                 ref={contentRef}
-                className={`prose prose-lg max-w-none ${theme.text} max-h-[calc(100vh-300px)] overflow-y-auto pr-4`}
+                className="prose prose-lg max-w-none text-gray-900 dark:text-gray-100 max-h-[calc(100vh-300px)] overflow-y-auto pr-4"
                 style={{ scrollbarWidth: 'thin' }}
             >
                 {chapter.content.map((el, index) => {
                     switch (el.type) {
                         case 'paragraph':
-                            return <p key={index} className={`${theme.subtext} leading-relaxed mb-4`}>{el.text}</p>;
+                            return <p key={index} className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">{el.text}</p>;
                         case 'heading':
-                            return <h3 key={index} className={`text-xl font-bold ${theme.text} mt-8 mb-4 flex items-center gap-2`}>{el.text}</h3>;
+                            return <h3 key={index} className="text-xl font-bold text-gray-900 dark:text-white mt-8 mb-4 flex items-center gap-2">{el.text}</h3>;
                         case 'list':
                             return (
-                                <ul key={index} className={`list-disc list-outside space-y-2 ${theme.subtext} ml-5 mb-6`}>
+                                <ul key={index} className="list-disc list-outside space-y-2 text-gray-600 dark:text-gray-300 ml-5 mb-6">
                                     {el.items.map((li, i) => (
                                         <li key={i} className="leading-relaxed">
                                             {li.split(':').length > 1 ? (
                                                 <>
-                                                    <span className={`font-semibold ${theme.text}`}>{li.split(':')[0]}:</span>
+                                                    <span className="font-semibold text-gray-900 dark:text-white">{li.split(':')[0]}:</span>
                                                     {li.split(':').slice(1).join(':')}
                                                 </>
                                             ) : li}
@@ -535,7 +492,6 @@ const GettingStartedPage = () => {
     const [selectedModule, setSelectedModule] = useState(null);
     const [selectedChapter, setSelectedChapter] = useState(null);
     const [progress, setProgress] = useState({});
-    const [readingTheme, setReadingTheme] = useState(() => loadTheme());
     const [showSearch, setShowSearch] = useState(false);
     const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
 
@@ -663,9 +619,6 @@ const GettingStartedPage = () => {
     // Determine if we're in an immersive view (inside a module)
     const isImmersive = selectedModule !== null;
 
-    // Apply reading theme
-    const theme = READING_THEMES[readingTheme] || READING_THEMES.dark;
-
     return (
         <div className={`container mx-auto px-4 max-w-6xl animate-in fade-in duration-500 ${isImmersive ? 'py-4' : 'py-8'}`}>
             {/* Header - Hidden when inside a module for immersive reading */}
@@ -703,28 +656,6 @@ const GettingStartedPage = () => {
                         <Search className="w-4 h-4" />
                         {isImmersive && <span className="text-xs">/</span>}
                     </button>
-
-                    {/* Theme Toggle - Only in immersive */}
-                    {isImmersive && (
-                        <div className="flex items-center gap-1 pl-2 border-l border-gray-300 dark:border-gray-600 ml-1">
-                            {['light', 'sepia', 'dark', 'midnight'].map((t) => (
-                                <button
-                                    key={t}
-                                    onClick={() => {
-                                        setReadingTheme(t);
-                                        localStorage.setItem(THEME_KEY, t);
-                                    }}
-                                    className={`p-2 rounded-lg transition-colors ${readingTheme === t ? 'bg-blue-100 dark:bg-blue-900 text-blue-600' : 'hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                                    title={`${t} mode`}
-                                >
-                                    {t === 'light' && <Sun className="w-4 h-4" />}
-                                    {t === 'dark' && <Moon className="w-4 h-4" />}
-                                    {t === 'sepia' && <BookOpen className="w-4 h-4 text-amber-700" />}
-                                    {t === 'midnight' && <Command className="w-4 h-4" />}
-                                </button>
-                            ))}
-                        </div>
-                    )}
 
                     {/* Keyboard Help */}
                     <button 
@@ -1018,7 +949,7 @@ const GettingStartedPage = () => {
                         </div>
                     ) : (
                         // Individual Chapter Reading View
-                        <div className={`animate-in fade-in slide-in-from-right duration-300 ${theme.card} rounded-2xl shadow-sm border ${theme.border}`}>
+                        <div className="animate-in fade-in slide-in-from-right duration-300 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
                             {/* Navigation */}
                             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
                                 <button 
@@ -1051,27 +982,26 @@ const GettingStartedPage = () => {
                             </div>
 
                             {/* Chapter Header */}
-                            <div className={`px-8 pt-8 pb-4 ${theme.bg}`}>
+                            <div className="px-8 pt-8 pb-4 bg-white dark:bg-gray-800">
                                 <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">
                                     {selectedModule.title.replace(/Module \d+: /, '')}
                                 </span>
-                                <h1 className={`text-3xl font-bold ${theme.text} mt-1`}>
+                                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mt-1">
                                     {selectedChapter.title}
                                 </h1>
                             </div>
 
                             {/* Chapter Content */}
-                            <div className={`p-8 ${theme.bg}`}>
+                            <div className="p-8 bg-white dark:bg-gray-800">
                                 <ChapterContent 
                                     chapter={selectedChapter}
                                     isCompleted={progress[selectedChapter.id]}
                                     onToggleComplete={() => toggleChapterComplete(selectedChapter.id)}
-                                    readingTheme={readingTheme}
                                 />
                             </div>
 
                             {/* Chapter Navigation Footer */}
-                            <div className={`flex items-center justify-between p-6 border-t ${theme.border} ${theme.bg}`}>
+                            <div className="flex items-center justify-between p-6 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
                                 {(() => {
                                     const currentIdx = selectedModule.chapters.findIndex(ch => ch.id === selectedChapter.id);
                                     const prevChapter = currentIdx > 0 ? selectedModule.chapters[currentIdx - 1] : null;
