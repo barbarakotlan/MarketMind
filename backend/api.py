@@ -51,8 +51,6 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 from options_suggester import generate_suggestion
 
 # --- Import for Price Prediction ---
-from sklearn.linear_model import LinearRegression
-
 # Initialize logger
 import logging
 
@@ -120,7 +118,6 @@ def init_db():
             conn.close()
 
 from functools import wraps
-from flask import request, jsonify
 
 def validate_request_json(required_fields):
     """
