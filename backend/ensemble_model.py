@@ -1,11 +1,17 @@
+import warnings
+warnings.filterwarnings('ignore')
 import yfinance as yf
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.preprocessing import StandardScaler
 from statsmodels.tsa.ar_model import AutoReg
-import warnings
-warnings.filterwarnings('ignore')
+import os
+import torch
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
+
 
 # Try to import XGBoost, fallback if not available
 try:
@@ -21,25 +27,25 @@ def create_features(df, lookback=14):
     Create features for ML models including lagged prices and basic technical indicators
     """
     df = df.copy()
-    
+
     # Lagged features (previous days' prices)
     for i in range(1, lookback + 1):
         df[f'lag_{i}'] = df['Close'].shift(i)
-    
+
     # Moving averages
     df['ma_7'] = df['Close'].rolling(window=7).mean()
     df['ma_14'] = df['Close'].rolling(window=14).mean()
     df['ma_30'] = df['Close'].rolling(window=30).mean() if len(df) > 30 else df['Close'].mean()
-    
+
     # Volatility (standard deviation)
     df['volatility'] = df['Close'].rolling(window=7).std()
-    
+
     # Price change
     df['price_change'] = df['Close'].pct_change()
-    
+
     # Drop rows with NaN values
     df = df.dropna()
-    
+
     return df
 
 
@@ -48,12 +54,12 @@ def prepare_ml_data(df, lookback=14):
     Prepare data for ML models
     """
     df_features = create_features(df, lookback)
-    
+
     # Features (X) and target (y)
     feature_cols = [col for col in df_features.columns if col not in ['Close']]
     X = df_features[feature_cols].values
     y = df_features['Close'].values
-    
+
     return X, y, df_features
 
 
@@ -65,23 +71,23 @@ def linear_regression_predict(df, days_ahead=7):
         df = df.copy()
         today = pd.Timestamp.today().normalize()
         df["Predicted_LR"] = np.nan
-        
+
         # Get the last available date
         last_date = df.index[-1]
-        
+
         for day in range(days_ahead):
             values = df["Predicted_LR"].fillna(df["Close"]).dropna().values
-            
+
             # Use AutoReg model
             model = AutoReg(values, lags=min(5, len(values)-1))
             model_fit = model.fit()
-            
+
             next_pred = model_fit.predict(start=len(values), end=len(values))[0]
             next_date = last_date + pd.Timedelta(days=day+1)
-            
+
             df.loc[next_date] = [np.nan, next_pred]
             last_date = next_date
-        
+
         predictions = df[df["Predicted_LR"].notna()].tail(days_ahead)
         return predictions["Predicted_LR"].values
     except Exception as e:
@@ -96,10 +102,10 @@ def random_forest_predict(df, days_ahead=7, lookback=14):
     try:
         # Prepare data
         X, y, df_features = prepare_ml_data(df, lookback)
-        
+
         if len(X) < 30:  # Need minimum data
             return None
-        
+
         # Train Random Forest
         rf_model = RandomForestRegressor(
             n_estimators=100,
@@ -108,25 +114,25 @@ def random_forest_predict(df, days_ahead=7, lookback=14):
             n_jobs=-1
         )
         rf_model.fit(X, y)
-        
+
         # Predict next days
         predictions = []
         last_known = df['Close'].iloc[-lookback:].values
         current_features = df_features.iloc[-1][1:].values  # Exclude Close
-        
+
         for _ in range(days_ahead):
             # Reshape for prediction
             current_X = current_features.reshape(1, -1)
             next_pred = rf_model.predict(current_X)[0]
             predictions.append(next_pred)
-            
+
             # Update features for next prediction (simple rolling)
             last_known = np.append(last_known[1:], next_pred)
             # Update lagged features (simplified)
             current_features[0] = next_pred  # lag_1
             if len(current_features) > 1:
                 current_features[1] = current_features[0]  # lag_2
-        
+
         return np.array(predictions)
     except Exception as e:
         print(f"Random Forest error: {e}")
@@ -139,14 +145,14 @@ def xgboost_predict(df, days_ahead=7, lookback=14):
     """
     if not XGBOOST_AVAILABLE:
         return None
-    
+
     try:
         # Prepare data
         X, y, df_features = prepare_ml_data(df, lookback)
-        
+
         if len(X) < 30:  # Need minimum data
             return None
-        
+
         # Train XGBoost
         xgb_model = xgb.XGBRegressor(
             n_estimators=100,
@@ -156,28 +162,128 @@ def xgboost_predict(df, days_ahead=7, lookback=14):
             n_jobs=-1
         )
         xgb_model.fit(X, y)
-        
+
         # Predict next days
         predictions = []
         last_known = df['Close'].iloc[-lookback:].values
         current_features = df_features.iloc[-1][1:].values  # Exclude Close
-        
+
         for _ in range(days_ahead):
             # Reshape for prediction
             current_X = current_features.reshape(1, -1)
             next_pred = xgb_model.predict(current_X)[0]
             predictions.append(next_pred)
-            
+
             # Update features for next prediction
             last_known = np.append(last_known[1:], next_pred)
             current_features[0] = next_pred  # lag_1
             if len(current_features) > 1:
                 current_features[1] = current_features[0]  # lag_2
-        
+
         return np.array(predictions)
     except Exception as e:
         print(f"XGBoost error: {e}")
         return None
+
+# Neural Network Class
+class NeuralNetwork(nn.Module):
+    """
+    Neural Network
+    """
+    def __init__(self, input_size, hidden_sizes):
+        super().__init__()
+        layers = []
+        prev_size = input_size
+
+        # Create hidden layers
+        for h in hidden_sizes:
+            layers.append(nn.Linear(prev_size, h))
+            layers.append(nn.ReLU())
+            prev_size = h
+
+        layers.append(nn.Linear(prev_size, 1))  # output layer
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        """
+        Forward pass
+        """
+        return self.net(x)
+
+# Artificial Neural Network prediction function
+def ann_predict(df, days_ahead=7, epochs=1000):
+    """
+    Neural Network prediction
+    """
+    # Setup data
+    df = df.copy()
+    df['H-L'] = df["High"] - df["Low"]
+    df['O-C'] = df["Open"] - df["Close"]
+    df['ma_7'] = df["Close"].rolling(window=7).mean()
+    df['ma_14'] = df["Close"].rolling(window=14).mean()
+    df['ma_21'] = df["Close"].rolling(window=21).mean()
+    df['std_7'] = df["Close"].rolling(window=7).std()
+
+    # Drop Today's data 
+    df = df[df.index < pd.Timestamp.today().normalize()]
+
+    # Drop rows with NaN values
+    df = df.dropna()
+
+    df["Target"] = df["Close"].shift(-days_ahead)
+
+    # Setup df for ML
+    features = ['H-L','O-C','ma_7', 'ma_14', 'ma_21', 'std_7']
+    x = df[features].values
+    y = df["Target"].values
+
+    # Scale features
+    x_scaler = StandardScaler()
+    y_scaler = StandardScaler()
+    x = x_scaler.fit_transform(x)
+    y = y_scaler.fit_transform(y.reshape(-1, 1))
+
+    # Convert to tensors
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    x = torch.tensor(x, dtype=torch.float32).to(device)
+    y = torch.tensor(y, dtype=torch.float32).to(device)
+
+    # Model setup
+    hidden_sizes = [3]
+    model = NeuralNetwork(6, hidden_sizes).to(device)
+
+    # Create DataLoader for batching
+    train_loader = DataLoader(TensorDataset(x, y), batch_size=32, shuffle=False)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+    # Train the model
+    for epoch in range(1000):
+        model.train()
+        total_loss = 0
+
+        for xb, yb in train_loader:
+            preds = model(xb)
+            loss = criterion(preds, yb)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+
+    print(f"Epoch {epoch+1}, Loss: {total_loss/len(train_loader):.6f}")
+    
+    # Run ANN
+    # try:
+
+    #     df["Predicted_ANN"] = np.nan
+    #     # Get the last available date
+    #     last_date = df.index[-1]
+
+    # except Exception as e:
+    #     print(f"ANN error: {e}")
+    #     return None
 
 
 def ensemble_predict(df, days_ahead=7):
@@ -185,12 +291,12 @@ def ensemble_predict(df, days_ahead=7):
     Ensemble prediction - average of all available models
     """
     predictions = {}
-    
+
     # Get predictions from each model
     lr_pred = linear_regression_predict(df, days_ahead)
     rf_pred = random_forest_predict(df, days_ahead)
     xgb_pred = xgboost_predict(df, days_ahead)
-    
+
     # Store individual predictions
     if lr_pred is not None:
         predictions['linear_regression'] = lr_pred
@@ -198,14 +304,14 @@ def ensemble_predict(df, days_ahead=7):
         predictions['random_forest'] = rf_pred
     if xgb_pred is not None:
         predictions['xgboost'] = xgb_pred
-    
+
     # Calculate ensemble (weighted average)
     if len(predictions) == 0:
         return None, {}
-    
+
     # Simple average for now (can be weighted later based on historical performance)
     ensemble = np.mean(list(predictions.values()), axis=0)
-    
+
     return ensemble, predictions
 
 
@@ -216,7 +322,7 @@ def calculate_metrics(actual, predicted):
     mae = mean_absolute_error(actual, predicted)
     rmse = np.sqrt(mean_squared_error(actual, predicted))
     mape = np.mean(np.abs((actual - predicted) / actual)) * 100
-    
+
     return {
         'mae': round(float(mae), 2),
         'rmse': round(float(rmse), 2),
@@ -226,18 +332,19 @@ def calculate_metrics(actual, predicted):
 
 if __name__ == "__main__":
     # Test the models
-    ticker = "AAPL"
+    ticker = 'AAPL'
     print(f"Testing ensemble model for {ticker}...")
-    
+
     # Download data
     data = yf.download(ticker, period="1y", auto_adjust=False)
     df = data[['Close']].copy()
-    
-    # Get predictions
-    ensemble, individual = ensemble_predict(df, days_ahead=7)
-    
-    print("\nPredictions:")
-    print(f"Ensemble: {ensemble}")
-    print(f"\nIndividual models:")
-    for model_name, preds in individual.items():
-        print(f"  {model_name}: {preds}")
+
+    # # Get predictions
+    # ensemble, individual = ensemble_predict(df, days_ahead=7)
+
+    # print("\nPredictions:")
+    # print(f"Ensemble: {ensemble}")
+    # print(f"\nIndividual models:")
+    # for model_name, preds in individual.items():
+    #     print(f"  {model_name}: {preds}")
+    ann_predict(data)  # Placeholder call for ANN

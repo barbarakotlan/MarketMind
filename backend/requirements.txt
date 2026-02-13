@@ -55,6 +55,9 @@ sseclient-py==1.8.0
 statsmodels==0.14.5
 schedule==1.2.2
 threadpoolctl==3.6.0
+torch>=2.0
+torchvision>=0.15
+torchaudio>=2.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.2
