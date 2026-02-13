@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     BookOpen,
     HelpCircle,
@@ -22,7 +22,12 @@ import {
     Square,
     Lock,
     Play,
-    RotateCcw
+    RotateCcw,
+    X,
+    Moon,
+    Sun,
+    Keyboard,
+    Command
 } from 'lucide-react';
 import { learningModules, QUESTION_BANK, getTotalChapters, getEstimatedCourseTime } from '../data/content';
 
@@ -37,6 +42,7 @@ const getMasteryLevel = (progress) => {
 
 // --- PROGRESS STORAGE UTILITIES ---
 const STORAGE_KEY = 'marketmind_course_progress';
+const THEME_KEY = 'marketmind_reading_theme';
 
 const loadProgress = () => {
     try {
@@ -53,6 +59,70 @@ const saveProgress = (progress) => {
     } catch {
         // Silently fail if localStorage is unavailable
     }
+};
+
+const loadTheme = () => {
+    try {
+        return localStorage.getItem(THEME_KEY) || 'auto';
+    } catch {
+        return 'auto';
+    }
+};
+
+// --- READING THEME OPTIONS ---
+const READING_THEMES = {
+    light: {
+        bg: 'bg-white',
+        text: 'text-gray-900',
+        subtext: 'text-gray-600',
+        border: 'border-gray-200',
+        card: 'bg-white'
+    },
+    dark: {
+        bg: 'bg-gray-900',
+        text: 'text-gray-100',
+        subtext: 'text-gray-400',
+        border: 'border-gray-800',
+        card: 'bg-gray-800'
+    },
+    sepia: {
+        bg: 'bg-[#f4ecd8]',
+        text: 'text-[#5b4636]',
+        subtext: 'text-[#8b7355]',
+        border: 'border-[#d4c5a9]',
+        card: 'bg-[#faf6ed]'
+    },
+    midnight: {
+        bg: 'bg-[#0f172a]',
+        text: 'text-[#e2e8f0]',
+        subtext: 'text-[#94a3b8]',
+        border: 'border-[#1e293b]',
+        card: 'bg-[#1e293b]'
+    }
+};
+
+// --- SCROLL PROGRESS HOOK ---
+const useScrollProgress = (ref) => {
+    const [progress, setProgress] = useState(0);
+
+    useEffect(() => {
+        const element = ref.current;
+        if (!element) return;
+
+        const handleScroll = () => {
+            const scrollTop = element.scrollTop;
+            const scrollHeight = element.scrollHeight - element.clientHeight;
+            const scrollProgress = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
+            setProgress(Math.min(100, Math.max(0, scrollProgress)));
+        };
+
+        element.addEventListener('scroll', handleScroll, { passive: true });
+        handleScroll();
+
+        return () => element.removeEventListener('scroll', handleScroll);
+    }, [ref]);
+
+    return progress;
 };
 
 // --- QUIZ COMPONENT ---
@@ -223,29 +293,59 @@ const QuizSection = () => {
 };
 
 // --- CHAPTER CONTENT COMPONENT ---
-const ChapterContent = ({ chapter, isCompleted, onToggleComplete }) => {
+const ChapterContent = ({ chapter, isCompleted, onToggleComplete, readingTheme }) => {
+    const theme = READING_THEMES[readingTheme];
+    const contentRef = useRef(null);
+    const scrollProgress = useScrollProgress(contentRef);
+    const minutesLeft = Math.max(1, Math.round((chapter.estimatedMinutes || 20) * (1 - scrollProgress / 100)));
+
     return (
-        <div className="max-w-3xl mx-auto">
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
-                <Clock className="w-4 h-4" />
-                <span>{chapter.estimatedMinutes || 20} min read</span>
+        <div className="relative">
+            {/* Reading Progress Bar */}
+            <div className="sticky top-0 z-10 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-6">
+                <div 
+                    className="h-full bg-blue-500 transition-all duration-150 ease-out"
+                    style={{ width: `${scrollProgress}%` }}
+                />
             </div>
 
-            <div className="prose prose-lg max-w-none dark:prose-invert">
+            {/* Reading Stats */}
+            <div className="flex items-center justify-between mb-6 text-sm">
+                <div className="flex items-center gap-2 text-gray-500">
+                    <Clock className="w-4 h-4" />
+                    <span>{chapter.estimatedMinutes || 20} min read</span>
+                    {scrollProgress > 0 && (
+                        <>
+                            <span className="text-gray-300">•</span>
+                            <span className="text-blue-600 font-medium">~{minutesLeft} min left</span>
+                        </>
+                    )}
+                </div>
+                <div className="text-gray-400 text-xs">
+                    {Math.round(scrollProgress)}% read
+                </div>
+            </div>
+
+            {/* Content */}
+            <div 
+                ref={contentRef}
+                className={`prose prose-lg max-w-none ${theme.text} max-h-[calc(100vh-300px)] overflow-y-auto pr-4`}
+                style={{ scrollbarWidth: 'thin' }}
+            >
                 {chapter.content.map((el, index) => {
                     switch (el.type) {
                         case 'paragraph':
-                            return <p key={index} className="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">{el.text}</p>;
+                            return <p key={index} className={`${theme.subtext} leading-relaxed mb-4`}>{el.text}</p>;
                         case 'heading':
-                            return <h3 key={index} className="text-xl font-bold text-gray-900 dark:text-white mt-8 mb-4 flex items-center gap-2">{el.text}</h3>;
+                            return <h3 key={index} className={`text-xl font-bold ${theme.text} mt-8 mb-4 flex items-center gap-2`}>{el.text}</h3>;
                         case 'list':
                             return (
-                                <ul key={index} className="list-disc list-outside space-y-2 text-gray-700 dark:text-gray-300 ml-5 mb-6">
+                                <ul key={index} className={`list-disc list-outside space-y-2 ${theme.subtext} ml-5 mb-6`}>
                                     {el.items.map((li, i) => (
                                         <li key={i} className="leading-relaxed">
                                             {li.split(':').length > 1 ? (
                                                 <>
-                                                    <span className="font-semibold text-gray-900 dark:text-gray-100">{li.split(':')[0]}:</span>
+                                                    <span className={`font-semibold ${theme.text}`}>{li.split(':')[0]}:</span>
                                                     {li.split(':').slice(1).join(':')}
                                                 </>
                                             ) : li}
@@ -266,27 +366,166 @@ const ChapterContent = ({ chapter, isCompleted, onToggleComplete }) => {
                             return null;
                     }
                 })}
+                
+                {/* Spacer for FAB */}
+                <div className="h-24" />
             </div>
 
-            {/* Completion Checkbox */}
-            <div className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-700">
+            {/* Floating Action Button for Completion */}
+            <div className="fixed bottom-8 right-8 z-50">
                 <button
                     onClick={onToggleComplete}
-                    className={`flex items-center gap-3 px-6 py-4 rounded-xl border-2 transition-all ${
+                    className={`flex items-center gap-3 px-6 py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 ${
                         isCompleted 
-                            ? 'bg-green-50 dark:bg-green-900/20 border-green-500 text-green-700 dark:text-green-400' 
-                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-blue-400'
+                            ? 'bg-green-500 text-white shadow-green-500/30' 
+                            : 'bg-blue-600 text-white shadow-blue-600/30 hover:bg-blue-700'
                     }`}
                 >
-                    {isCompleted ? <CheckSquare className="w-6 h-6" /> : <Square className="w-6 h-6" />}
+                    {isCompleted ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
                     <span className="font-semibold">
-                        {isCompleted ? 'Chapter Completed' : 'Mark as Complete'}
+                        {isCompleted ? 'Completed' : 'Mark Complete'}
                     </span>
+                    {/* Keyboard shortcut hint */}
+                    <span className="ml-2 px-2 py-0.5 bg-white/20 rounded text-xs">Space</span>
                 </button>
             </div>
         </div>
     );
 };
+
+// --- CHAPTER SEARCH COMPONENT ---
+const ChapterSearch = ({ onSelectResult, onClose }) => {
+    const [query, setQuery] = useState('');
+    const [results, setResults] = useState([]);
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+        inputRef.current?.focus();
+    }, []);
+
+    useEffect(() => {
+        if (!query.trim()) {
+            setResults([]);
+            return;
+        }
+
+        const searchResults = [];
+        const lowerQuery = query.toLowerCase();
+
+        learningModules.forEach(module => {
+            module.chapters.forEach(chapter => {
+                const matchTitle = chapter.title.toLowerCase().includes(lowerQuery);
+                const matchContent = chapter.content.some(el => 
+                    el.text?.toLowerCase().includes(lowerQuery) ||
+                    el.items?.some(item => item.toLowerCase().includes(lowerQuery))
+                );
+
+                if (matchTitle || matchContent) {
+                    searchResults.push({
+                        module,
+                        chapter,
+                        type: matchTitle ? 'title' : 'content'
+                    });
+                }
+            });
+        });
+
+        setResults(searchResults.slice(0, 8));
+    }, [query]);
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-32 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-2xl mx-4 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden">
+                <div className="flex items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
+                    <Search className="w-5 h-5 text-gray-400" />
+                    <input
+                        ref={inputRef}
+                        type="text"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Search chapters, topics, or keywords..."
+                        className="flex-1 bg-transparent text-lg outline-none text-gray-900 dark:text-white placeholder-gray-400"
+                    />
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                        <X className="w-5 h-5 text-gray-400" />
+                    </button>
+                </div>
+                
+                <div className="max-h-96 overflow-y-auto">
+                    {results.length > 0 ? (
+                        results.map(({ module, chapter, type }, idx) => (
+                            <button
+                                key={`${module.id}-${chapter.id}-${idx}`}
+                                onClick={() => {
+                                    onSelectResult(module, chapter);
+                                    onClose();
+                                }}
+                                className="w-full text-left p-4 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-0 transition-colors"
+                            >
+                                <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+                                    <span>{module.title.replace(/Module \d+: /, '')}</span>
+                                    {type === 'title' && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded">Title Match</span>}
+                                </div>
+                                <h4 className="font-semibold text-gray-900 dark:text-white">{chapter.title}</h4>
+                            </button>
+                        ))
+                    ) : query.trim() ? (
+                        <div className="p-8 text-center text-gray-500">
+                            No results found for "{query}"
+                        </div>
+                    ) : (
+                        <div className="p-8 text-center text-gray-400">
+                            Type to search across all {getTotalChapters()} chapters...
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-3 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 flex items-center justify-between">
+                    <span>{results.length} results</span>
+                    <div className="flex items-center gap-1">
+                        <span>Press</span>
+                        <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 rounded border">ESC</kbd>
+                        <span>to close</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- KEYBOARD SHORTCUTS HELP ---
+const KeyboardHelp = ({ onClose }) => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+        <div className="w-full max-w-md mx-4 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Keyboard className="w-5 h-5" />
+                    Keyboard Shortcuts
+                </h3>
+                <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                    <X className="w-5 h-5 text-gray-400" />
+                </button>
+            </div>
+            
+            <div className="space-y-3">
+                {[
+                    { key: '← / →', desc: 'Previous / Next chapter' },
+                    { key: 'Space', desc: 'Mark chapter complete' },
+                    { key: 'Esc', desc: 'Exit to module view' },
+                    { key: '/', desc: 'Open search' },
+                    { key: '?', desc: 'Show this help' },
+                ].map(({ key, desc }) => (
+                    <div key={key} className="flex items-center justify-between py-2">
+                        <span className="text-gray-600 dark:text-gray-300">{desc}</span>
+                        <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm font-mono text-gray-700 dark:text-gray-300">
+                            {key}
+                        </kbd>
+                    </div>
+                ))}
+            </div>
+        </div>
+    </div>
+);
 
 // --- MAIN PAGE COMPONENT ---
 const GettingStartedPage = () => {
@@ -294,6 +533,9 @@ const GettingStartedPage = () => {
     const [selectedModule, setSelectedModule] = useState(null);
     const [selectedChapter, setSelectedChapter] = useState(null);
     const [progress, setProgress] = useState({});
+    const [readingTheme, setReadingTheme] = useState(() => loadTheme());
+    const [showSearch, setShowSearch] = useState(false);
+    const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
 
     // Load progress on mount
     useEffect(() => {
@@ -306,6 +548,68 @@ const GettingStartedPage = () => {
             saveProgress(progress);
         }
     }, [progress]);
+
+    // Keyboard navigation
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Don't capture if user is typing in an input
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            // Show search on /
+            if (e.key === '/' && !showSearch) {
+                e.preventDefault();
+                setShowSearch(true);
+                return;
+            }
+
+            // Show keyboard help on ?
+            if (e.key === '?' && !showKeyboardHelp) {
+                e.preventDefault();
+                setShowKeyboardHelp(true);
+                return;
+            }
+
+            // Only handle navigation when reading a chapter
+            if (!selectedChapter || !selectedModule) return;
+
+            const currentIdx = selectedModule.chapters.findIndex(ch => ch.id === selectedChapter.id);
+
+            switch (e.key) {
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    if (currentIdx > 0) {
+                        setSelectedChapter(selectedModule.chapters[currentIdx - 1]);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    if (currentIdx < selectedModule.chapters.length - 1) {
+                        setSelectedChapter(selectedModule.chapters[currentIdx + 1]);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                    break;
+                case ' ':
+                case 'Spacebar':
+                    e.preventDefault();
+                    toggleChapterComplete(selectedChapter.id);
+                    break;
+                case 'Escape':
+                    e.preventDefault();
+                    if (selectedChapter) {
+                        setSelectedChapter(null);
+                    } else if (selectedModule) {
+                        backToModules();
+                    }
+                    break;
+                default:
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedChapter, selectedModule, showSearch, showKeyboardHelp]);
 
     // Calculate stats
     const totalChapters = getTotalChapters();
@@ -323,12 +627,12 @@ const GettingStartedPage = () => {
     };
 
     // Toggle chapter completion
-    const toggleChapterComplete = (chapterId) => {
+    const toggleChapterComplete = useCallback((chapterId) => {
         setProgress(prev => ({
             ...prev,
             [chapterId]: !prev[chapterId]
         }));
-    };
+    }, []);
 
     // Calculate module progress
     const getModuleProgress = (module) => {
@@ -357,6 +661,9 @@ const GettingStartedPage = () => {
     // Determine if we're in an immersive view (inside a module)
     const isImmersive = selectedModule !== null;
 
+    // Apply reading theme
+    const theme = READING_THEMES[readingTheme];
+
     return (
         <div className={`container mx-auto px-4 max-w-6xl animate-in fade-in duration-500 ${isImmersive ? 'py-4' : 'py-8'}`}>
             {/* Header - Hidden when inside a module for immersive reading */}
@@ -383,6 +690,47 @@ const GettingStartedPage = () => {
                         className={`rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'quiz' ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'} ${isImmersive ? 'px-4 py-2' : 'px-8 py-3'}`}
                     >
                         <HelpCircle className="w-4 h-4" /> Quiz
+                    </button>
+                    
+                    {/* Search Button */}
+                    <button 
+                        onClick={() => setShowSearch(true)}
+                        className={`rounded-xl text-sm font-bold transition-all flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 ${isImmersive ? 'px-4 py-2' : 'px-6 py-3'}`}
+                        title="Search chapters (/)"
+                    >
+                        <Search className="w-4 h-4" />
+                        {isImmersive && <span className="text-xs">/</span>}
+                    </button>
+
+                    {/* Theme Toggle - Only in immersive */}
+                    {isImmersive && (
+                        <div className="flex items-center gap-1 pl-2 border-l border-gray-300 dark:border-gray-600 ml-1">
+                            {['light', 'sepia', 'dark', 'midnight'].map((t) => (
+                                <button
+                                    key={t}
+                                    onClick={() => {
+                                        setReadingTheme(t);
+                                        localStorage.setItem(THEME_KEY, t);
+                                    }}
+                                    className={`p-2 rounded-lg transition-colors ${readingTheme === t ? 'bg-blue-100 dark:bg-blue-900 text-blue-600' : 'hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                                    title={`${t} mode`}
+                                >
+                                    {t === 'light' && <Sun className="w-4 h-4" />}
+                                    {t === 'dark' && <Moon className="w-4 h-4" />}
+                                    {t === 'sepia' && <BookOpen className="w-4 h-4 text-amber-700" />}
+                                    {t === 'midnight' && <Command className="w-4 h-4" />}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Keyboard Help */}
+                    <button 
+                        onClick={() => setShowKeyboardHelp(true)}
+                        className={`rounded-xl text-sm font-bold transition-all flex items-center gap-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ${isImmersive ? 'px-3 py-2' : 'px-4 py-3'}`}
+                        title="Keyboard shortcuts (?)"
+                    >
+                        <Keyboard className="w-4 h-4" />
                     </button>
                 </div>
             </div>
@@ -420,6 +768,19 @@ const GettingStartedPage = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Search Modal */}
+            {showSearch && (
+                <ChapterSearch 
+                    onSelectResult={navigateToChapter}
+                    onClose={() => setShowSearch(false)}
+                />
+            )}
+
+            {/* Keyboard Help Modal */}
+            {showKeyboardHelp && (
+                <KeyboardHelp onClose={() => setShowKeyboardHelp(false)} />
             )}
 
             {activeTab === 'learn' ? (
@@ -546,24 +907,27 @@ const GettingStartedPage = () => {
                                     <div>
                                         <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">1. Progress at Your Pace</h4>
                                         <p className="text-sm text-gray-600 dark:text-gray-400">
-                                            Each module contains {Math.round(totalChapters / learningModules.length)} chapters. 
-                                            Read through the content and mark chapters as complete to track your progress.
+                                            Each module contains chapters. Read through content and mark chapters complete to track progress.
                                         </p>
                                     </div>
                                     <div>
                                         <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">2. Unlock New Modules</h4>
                                         <p className="text-sm text-gray-600 dark:text-gray-400">
-                                            Complete at least 50% of a module to unlock the next. This ensures you build 
-                                            knowledge sequentially.
+                                            Complete at least 50% of a module to unlock the next. Build knowledge sequentially.
                                         </p>
                                     </div>
                                     <div>
                                         <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">3. Test Your Knowledge</h4>
                                         <p className="text-sm text-gray-600 dark:text-gray-400">
-                                            Use the Quiz tab to test your understanding with questions at easy, medium, 
-                                            and hard difficulty levels.
+                                            Use the Quiz tab to test understanding with questions at easy, medium, and hard levels.
                                         </p>
                                     </div>
+                                </div>
+                                
+                                {/* Keyboard shortcuts hint */}
+                                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-xs text-gray-500">
+                                    <span>Press <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-700 rounded border">/</kbd> to search chapters</span>
+                                    <span>Press <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-700 rounded border">?</kbd> for keyboard shortcuts</span>
                                 </div>
                             </div>
                         </>
@@ -652,15 +1016,15 @@ const GettingStartedPage = () => {
                         </div>
                     ) : (
                         // Individual Chapter Reading View
-                        <div className="animate-in fade-in slide-in-from-right duration-300">
+                        <div className={`animate-in fade-in slide-in-from-right duration-300 ${theme.card} rounded-2xl shadow-sm border ${theme.border}`}>
                             {/* Navigation */}
-                            <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
                                 <button 
                                     onClick={backToModuleOverview}
                                     className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
                                 >
                                     <ChevronLeft className="w-4 h-4" />
-                                    Back to {selectedModule.title.replace(/Module \d+: /, '')}
+                                    Back
                                 </button>
                                 
                                 {/* Chapter Navigation */}
@@ -676,6 +1040,7 @@ const GettingStartedPage = () => {
                                                         ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                                                         : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200'
                                                 }`}
+                                            title={`${ch.title} (${idx + 1}/${selectedModule.chapters.length})`}
                                         >
                                             {idx + 1}
                                         </button>
@@ -684,26 +1049,27 @@ const GettingStartedPage = () => {
                             </div>
 
                             {/* Chapter Header */}
-                            <div className="mb-8">
+                            <div className={`px-8 pt-8 pb-4 ${theme.bg}`}>
                                 <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">
                                     {selectedModule.title.replace(/Module \d+: /, '')}
                                 </span>
-                                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mt-1">
+                                <h1 className={`text-3xl font-bold ${theme.text} mt-1`}>
                                     {selectedChapter.title}
                                 </h1>
                             </div>
 
                             {/* Chapter Content */}
-                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-sm border border-gray-200 dark:border-gray-700">
+                            <div className={`p-8 ${theme.bg}`}>
                                 <ChapterContent 
                                     chapter={selectedChapter}
                                     isCompleted={progress[selectedChapter.id]}
                                     onToggleComplete={() => toggleChapterComplete(selectedChapter.id)}
+                                    readingTheme={readingTheme}
                                 />
                             </div>
 
                             {/* Chapter Navigation Footer */}
-                            <div className="flex items-center justify-between mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+                            <div className={`flex items-center justify-between p-6 border-t ${theme.border} ${theme.bg}`}>
                                 {(() => {
                                     const currentIdx = selectedModule.chapters.findIndex(ch => ch.id === selectedChapter.id);
                                     const prevChapter = currentIdx > 0 ? selectedModule.chapters[currentIdx - 1] : null;
@@ -718,6 +1084,7 @@ const GettingStartedPage = () => {
                                                 >
                                                     <ChevronLeft className="w-4 h-4" />
                                                     Previous
+                                                    <span className="hidden sm:inline text-xs text-gray-400">←</span>
                                                 </button>
                                             ) : <div />}
                                             
@@ -727,6 +1094,7 @@ const GettingStartedPage = () => {
                                                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                                                 >
                                                     Next Chapter
+                                                    <span className="hidden sm:inline text-xs text-blue-200">→</span>
                                                     <ChevronRight className="w-4 h-4" />
                                                 </button>
                                             ) : (
