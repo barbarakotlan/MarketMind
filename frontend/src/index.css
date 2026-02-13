@@ -17,3 +17,15 @@
 .animate-fade-in {
     animation: fade-in 0.2s ease-out;
 }
+
+/* Prevent overscroll/bounce effect */
+html,
+body {
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+}
+
+/* Smooth scrolling but no bounce */
+* {
+    overscroll-behavior: contain;
+}

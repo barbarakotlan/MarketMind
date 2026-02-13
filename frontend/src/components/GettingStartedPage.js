@@ -63,9 +63,11 @@ const saveProgress = (progress) => {
 
 const loadTheme = () => {
     try {
-        return localStorage.getItem(THEME_KEY) || 'auto';
+        const saved = localStorage.getItem(THEME_KEY);
+        const validThemes = ['light', 'dark', 'sepia', 'midnight'];
+        return validThemes.includes(saved) ? saved : 'dark';
     } catch {
-        return 'auto';
+        return 'dark';
     }
 };
 
@@ -294,7 +296,7 @@ const QuizSection = () => {
 
 // --- CHAPTER CONTENT COMPONENT ---
 const ChapterContent = ({ chapter, isCompleted, onToggleComplete, readingTheme }) => {
-    const theme = READING_THEMES[readingTheme];
+    const theme = READING_THEMES[readingTheme] || READING_THEMES.dark;
     const contentRef = useRef(null);
     const scrollProgress = useScrollProgress(contentRef);
     const minutesLeft = Math.max(1, Math.round((chapter.estimatedMinutes || 20) * (1 - scrollProgress / 100)));
@@ -662,7 +664,7 @@ const GettingStartedPage = () => {
     const isImmersive = selectedModule !== null;
 
     // Apply reading theme
-    const theme = READING_THEMES[readingTheme];
+    const theme = READING_THEMES[readingTheme] || READING_THEMES.dark;
 
     return (
         <div className={`container mx-auto px-4 max-w-6xl animate-in fade-in duration-500 ${isImmersive ? 'py-4' : 'py-8'}`}>
