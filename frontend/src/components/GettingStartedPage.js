@@ -7,12 +7,11 @@ import {
   ShieldAlert,
   Activity,
   Search,
-  DollarSign,
   CheckCircle,
   RefreshCw,
   ChevronRight,
   Brain,
-  Layers // Icon for Modules
+  Layers
 } from 'lucide-react';
 import { learningModules, QUESTION_BANK } from '../data/content';
 
@@ -183,7 +182,106 @@ const QuizSection = () => {
     );
 };
 
-// --- INFO CARD COMPONENT ---
+// --- MASTERY LEVEL HELPER ---
+const getMasteryLevel = (progress) => {
+    if (progress === 0) return { label: 'Not Started', color: 'bg-gray-100 text-gray-400', barColor: 'bg-gray-200' };
+    if (progress < 30) return { label: 'Beginner', color: 'bg-blue-50 text-blue-600', barColor: 'bg-blue-300' };
+    if (progress < 60) return { label: 'Learning', color: 'bg-blue-100 text-blue-700', barColor: 'bg-blue-400' };
+    if (progress < 85) return { label: 'Proficient', color: 'bg-indigo-100 text-indigo-700', barColor: 'bg-indigo-500' };
+    return { label: 'Mastered', color: 'bg-green-100 text-green-700', barColor: 'bg-green-500' };
+};
+
+// --- MODULE CARD COMPONENT ---
+const ModuleCard = ({ module, progress, isLocked, onClick }) => {
+    const mastery = getMasteryLevel(progress);
+    const isCompleted = progress >= 85;
+    const chapterCount = module.chapters?.length || 0;
+    
+    // Determine module icon based on title
+    let Icon = BookOpen;
+    if (module.title.includes("Foundations")) Icon = TrendingUp;
+    if (module.title.includes("Analysis")) Icon = Search;
+    if (module.title.includes("Options")) Icon = Activity;
+    if (module.title.includes("Risk")) Icon = ShieldAlert;
+
+    return (
+        <div 
+            onClick={onClick}
+            className={`relative bg-white dark:bg-gray-800 rounded-xl border p-5 transition-all duration-300 h-full flex flex-col
+                ${isLocked 
+                    ? 'border-gray-100 dark:border-gray-700 opacity-60 cursor-not-allowed' 
+                    : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md hover:-translate-y-1 cursor-pointer'
+                }`
+            }
+        >
+            {/* Lock indicator */}
+            {isLocked && (
+                <div className="absolute top-3 right-3">
+                    <svg className="w-5 h-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                </div>
+            )}
+
+            {/* Completed checkmark */}
+            {isCompleted && !isLocked && (
+                <div className="absolute top-3 right-3">
+                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                </div>
+            )}
+
+            {/* Module header */}
+            <div className="flex items-start gap-3 mb-4">
+                <div className={`p-2.5 rounded-lg ${isLocked ? 'bg-gray-100 text-gray-400' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'}`}>
+                    <Icon className="w-6 h-6" />
+                </div>
+                <div className="flex-1 pr-8">
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Module {module.id.replace('m', '')}</span>
+                    <h3 className={`font-bold text-lg ${isLocked ? 'text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                        {module.title.replace('Module ' + module.id.replace('m', '') + ': ', '')}
+                    </h3>
+                </div>
+            </div>
+
+            {/* Description */}
+            <p className={`text-sm mb-4 flex-grow ${isLocked ? 'text-gray-300' : 'text-gray-600 dark:text-gray-300'}`}>
+                {module.description}
+            </p>
+
+            {/* Progress bar */}
+            <div className="mt-auto">
+                <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className={`font-medium ${isLocked ? 'text-gray-300' : 'text-gray-500'}`}>{mastery.label}</span>
+                    <span className="text-gray-400">{progress}%</span>
+                </div>
+                <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div 
+                        className={`h-full transition-all duration-500 ${mastery.barColor}`}
+                        style={{ width: `${progress}%` }}
+                    />
+                </div>
+                
+                {/* Meta info */}
+                <div className="flex items-center justify-between mt-3 text-xs text-gray-400">
+                    <span>{chapterCount} chapters</span>
+                    {isLocked ? (
+                        <span>Complete previous module</span>
+                    ) : (
+                        <span className="text-blue-600 dark:text-blue-400 font-medium">
+                            {isCompleted ? 'Review' : progress > 0 ? 'Continue' : 'Start'}
+                        </span>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- INFO CARD COMPONENT (For detailed chapter view) ---
 const InfoCard = ({ item }) => {
     let Icon = Activity;
     if (item.title.includes("Market")) Icon = TrendingUp;
@@ -241,6 +339,28 @@ const InfoCard = ({ item }) => {
 // --- MAIN PAGE COMPONENT ---
 const GettingStartedPage = () => {
     const [activeTab, setActiveTab] = useState('learn');
+    const [selectedModule, setSelectedModule] = useState(null);
+    
+    // Mock progress data - in a real app, this would come from a backend or localStorage
+    const [moduleProgress] = useState({
+        'm1': 100, // Completed
+        'm2': 65,  // In progress
+        'm3': 0,   // Not started
+        'm4': 0    // Locked
+    });
+
+    // Calculate stats
+    const totalModules = learningModules.length;
+    const completedModules = Object.values(moduleProgress).filter(p => p >= 85).length;
+    const inProgressModules = Object.values(moduleProgress).filter(p => p > 0 && p < 85).length;
+
+    // Check if module is locked (previous must be at least 50% complete)
+    const isModuleLocked = (moduleId) => {
+        const moduleIndex = learningModules.findIndex(m => m.id === moduleId);
+        if (moduleIndex === 0) return false;
+        const prevModuleId = learningModules[moduleIndex - 1].id;
+        return moduleProgress[prevModuleId] < 50;
+    };
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-6xl animate-in fade-in duration-500">
@@ -251,7 +371,7 @@ const GettingStartedPage = () => {
 
             <div className="flex justify-center mb-12">
                 <div className="bg-gray-100 dark:bg-gray-800 p-1.5 rounded-2xl flex gap-1">
-                    <button onClick={() => setActiveTab('learn')} className={`px-8 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'learn' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                    <button onClick={() => {setActiveTab('learn'); setSelectedModule(null);}} className={`px-8 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'learn' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
                         <BookOpen className="w-4 h-4" /> Modules
                     </button>
                     <button onClick={() => setActiveTab('quiz')} className={`px-8 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'quiz' ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
@@ -261,25 +381,131 @@ const GettingStartedPage = () => {
             </div>
 
             {activeTab === 'learn' ? (
-                <div className="space-y-16 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {learningModules.map((module) => (
-                        <div key={module.id} className="border-b border-gray-100 dark:border-gray-800 pb-12 last:border-0 last:pb-0">
-                            <div className="mb-6">
-                                <h2 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
-                                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold shadow-sm">
-                                        {module.id.toUpperCase()}
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {!selectedModule ? (
+                        // Modules Grid View
+                        <>
+                            {/* Stats Header */}
+                            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+                                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Course Modules</h2>
+                                <div className="flex items-center gap-2">
+                                    <div className="px-3 py-1.5 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                        <span className="text-green-700 dark:text-green-400 font-semibold text-sm">{completedModules}</span>
+                                        <span className="text-green-600 dark:text-green-500 text-xs ml-1">completed</span>
                                     </div>
-                                    {module.title}
-                                </h2>
-                                <p className="text-gray-500 dark:text-gray-400 ml-12 mt-1 max-w-2xl">{module.description}</p>
+                                    <div className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                        <span className="text-blue-700 dark:text-blue-400 font-semibold text-sm">{inProgressModules}</span>
+                                        <span className="text-blue-600 dark:text-blue-500 text-xs ml-1">in progress</span>
+                                    </div>
+                                    <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                                        <span className="text-gray-700 dark:text-gray-300 font-semibold text-sm">{totalModules - completedModules - inProgressModules}</span>
+                                        <span className="text-gray-500 dark:text-gray-400 text-xs ml-1">to go</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 ml-0 md:ml-12">
-                                {module.chapters.map((chapter, idx) => (
+
+                            {/* Modules Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-10">
+                                {learningModules.map((module) => (
+                                    <ModuleCard
+                                        key={module.id}
+                                        module={module}
+                                        progress={moduleProgress[module.id] || 0}
+                                        isLocked={isModuleLocked(module.id)}
+                                        onClick={() => !isModuleLocked(module.id) && setSelectedModule(module)}
+                                    />
+                                ))}
+                            </div>
+
+                            {/* Help Section - How Learning Works */}
+                            <div className="mt-12 border-t border-gray-200 dark:border-gray-700 pt-8">
+                                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-6">
+                                    <div className="flex items-center gap-2 mb-5">
+                                        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                            <HelpCircle className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                        </div>
+                                        <h3 className="font-bold text-gray-900 dark:text-white text-lg">How Learning Modules Work</h3>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                                                Module Structure
+                                            </h4>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                                Each module contains comprehensive chapters covering key concepts. Work through them sequentially to build your market knowledge from foundations to advanced strategies.
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                                                Prerequisites & Progression
+                                            </h4>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                                Complete at least 50% of a module to unlock the next. Aim for 85% mastery to fully complete a module. Each chapter builds on previous knowledge.
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                                                Mastery Levels
+                                            </h4>
+                                            <div className="flex flex-wrap gap-2 text-xs">
+                                                <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-400 rounded">Not Started</span>
+                                                <span className="px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 rounded">Beginner</span>
+                                                <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 rounded">Learning</span>
+                                                <span className="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 rounded">Proficient</span>
+                                                <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 rounded">Mastered</span>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                                                Test Your Knowledge
+                                            </h4>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                                Use the <strong>Market Quiz</strong> tab to test your understanding with questions ranging from easy to hard. Perfect for reinforcing what you've learned.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-5 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            <strong>Pro Tip:</strong> Click on any unlocked module card to view detailed chapters. Review completed modules anytime to refresh your knowledge.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        // Module Detail View
+                        <div className="animate-in fade-in slide-in-from-right duration-300">
+                            <button 
+                                onClick={() => setSelectedModule(null)}
+                                className="mb-6 flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                                Back to Modules
+                            </button>
+                            
+                            <div className="mb-6">
+                                <h2 className="text-2xl font-black text-gray-900 dark:text-white">{selectedModule.title}</h2>
+                                <p className="text-gray-500 dark:text-gray-400 mt-1">{selectedModule.description}</p>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {selectedModule.chapters.map((chapter, idx) => (
                                     <InfoCard key={idx} item={chapter} />
                                 ))}
                             </div>
                         </div>
-                    ))}
+                    )}
                 </div>
             ) : (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-500">
