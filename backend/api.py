@@ -50,7 +50,6 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 # --- New Imports for Options Suggester ---
 from options_suggester import generate_suggestion
 
-# --- Import for Price Prediction ---
 # Initialize logger
 import logging
 
@@ -110,9 +109,9 @@ def init_db():
             );
         ''')
         conn.commit()
-        print("Database initialized.")
+        logger.info("Database initialized.")
     except Exception as e:
-        print(f"An error occurred during DB initialization: {e}")
+        logger.error(f"An error occurred during DB initialization: {e}")
     finally:
         if conn:
             conn.close()
@@ -243,7 +242,7 @@ def clean_value(val):
 # --- Helper Function ---
 def get_symbol_suggestions(query):
     if not ALPHA_VANTAGE_API_KEY:
-        print("Alpha Vantage key not configured. Cannot get suggestions.")
+        logger.warning("Alpha Vantage key not configured. Cannot get suggestions.")
         return []
     try:
         url = f'https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords={query}&apikey={ALPHA_VANTAGE_API_KEY}'
@@ -256,7 +255,7 @@ def get_symbol_suggestions(query):
                 formatted_matches.append({"symbol": match.get('1. symbol'), "name": match.get('2. name')})
         return formatted_matches
     except Exception as e:
-        print(f"Error in get_symbol_suggestions: {e}")
+        logger.error(f"Error in get_symbol_suggestions: {e}")
         return []
 
 
@@ -313,7 +312,7 @@ def get_stock_data(ticker):
             if not hist.empty:
                 sparkline = [clean_value(p) for p in hist['Close']]
         except Exception as e:
-            print(f"Could not fetch sparkline data: {e}")
+            logger.warning(f"Could not fetch sparkline data: {e}")
         fundamentals = {}
         if not ALPHA_VANTAGE_API_KEY:
             fundamentals = {
@@ -339,7 +338,7 @@ def get_stock_data(ticker):
                 else:
                     raise Exception("No data from Alpha Vantage")
             except Exception as e:
-                print(f"Could not fetch fundamentals from Alpha Vantage: {e}. Falling back to yfinance.")
+                logger.warning(f"Could not fetch fundamentals from Alpha Vantage: {e}. Falling back to yfinance.")
                 fundamentals = {
                     "peRatio": clean_value(info.get('trailingPE')),
                     "week52High": clean_value(info.get('fiftyTwoWeekHigh')),
@@ -389,7 +388,7 @@ def get_chart_data(ticker):
                     "close": pred["predictedClose"], "volume": None
                 })
         except Exception as e:
-            print(f"Could not append prediction to chart: {e}")
+            logger.warning(f"Could not append prediction to chart: {e}")
         return jsonify(chart_data)
     except Exception as e:
         return jsonify({"error": f"An error occurred while fetching chart data: {str(e)}"}), 500
@@ -470,7 +469,7 @@ def get_option_chain(ticker):
         return jsonify(
             {"calls": format_chain(chain.calls), "puts": format_chain(chain.puts), "stock_price": clean_value(price)})
     except Exception as e:
-        print(f"Error getting option chain: {e}")
+        logger.error(f"Error getting option chain: {e}")
         return jsonify({"error": "Could not retrieve option chain for this date."}), 404
 
 
@@ -483,7 +482,7 @@ def get_option_suggestion(ticker):
         if "error" in suggestion: return jsonify(suggestion), 404
         return jsonify(suggestion)
     except Exception as e:
-        print(f"Error in suggestion endpoint for {ticker}: {e}")
+        logger.error(f"Error in suggestion endpoint for {ticker}: {e}")
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
 
@@ -583,7 +582,7 @@ def predict_ensemble(ticker):
         }
         return jsonify(response)
     except Exception as e:
-        print(f"Error in ensemble prediction for {ticker}: {e}")
+        logger.error(f"Error in ensemble prediction for {ticker}: {e}")
         return jsonify({"error": f"Ensemble prediction failed: {str(e)}"}), 500
 
 
@@ -602,7 +601,7 @@ def record_portfolio_snapshot(portfolio_data):
                        (datetime.now(), total_value))
         conn.commit()
     except Exception as e:
-        print(f"Failed to record portfolio snapshot: {e}")
+        logger.error(f"Failed to record portfolio snapshot: {e}")
     finally:
         if conn: conn.close()
 
@@ -668,7 +667,7 @@ def get_paper_portfolio():
                         "isOption": False
                     })
         except Exception as e:
-            print(f"Error processing stock positions: {e}")
+            logger.error(f"Error processing stock positions: {e}")
             for ticker, pos in positions.items():
                 positions_list.append({
                     "ticker": ticker, "company_name": "N/A (Error)", "shares": pos["shares"],
@@ -714,7 +713,7 @@ def get_paper_portfolio():
                     current_price = float(fast_val)
 
         except Exception as e:
-            print(f"Warning: Could not fetch live price for option {contract_symbol}: {e}")
+            logger.warning(f"Could not fetch live price for option {contract_symbol}: {e}")
 
         # Standard Option Calculation: (Quantity * Price * 100 multiplier)
         current_value = pos["quantity"] * current_price * 100
@@ -1027,7 +1026,7 @@ def get_paper_history():
             "summary": summary
         })
     except Exception as e:
-        print(f"Error in /paper/history: {e}")
+        logger.error(f"Error in /paper/history: {e}")
         return jsonify({"error": f"Failed to build history: {str(e)}"}), 500
 
 
@@ -1052,7 +1051,7 @@ def reset_portfolio():
                        (datetime.now(), 100000.0))
         conn.commit()
     except Exception as e:
-        print(f"Failed to reset portfolio_history table: {e}")
+        logger.error(f"Failed to reset portfolio_history table: {e}")
     finally:
         if conn: conn.close()
     return jsonify({"success": True, "message": "Portfolio reset to starting state",
@@ -1227,7 +1226,7 @@ def create_smart_alert():
         })
 
     except Exception as e:
-        print(f"Smart Alert Error: {e}")
+        logger.error(f"Smart Alert Error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1280,7 +1279,7 @@ def delete_triggered_notification(alert_id):
 
 # --- NEW: Background Price Checker ---
 def check_alerts():
-    print(f"[{datetime.now()}] Running price alert check...")
+    logger.info(f"Running price alert check...")
     notifications_data = load_notifications()
     if not notifications_data['active']:
         return  # No active alerts, do nothing
@@ -1291,7 +1290,7 @@ def check_alerts():
     try:
         data = yf.download(tickers_to_check, period="1d")
         if data.empty:
-            print("Price check: yfinance returned no data.")
+            logger.warning("Price check: yfinance returned no data.")
             return
 
         current_prices = data['Close'].iloc[-1]
@@ -1323,7 +1322,7 @@ def check_alerts():
                                     notifications_data['triggered'].append(triggered_alert)
                                     triggered_ids.append(alert['id'])
                     except Exception as news_err:
-                        print(f"News check error: {news_err}")
+                        logger.error(f"News check error: {news_err}")
                     continue  # Skip price check for news alerts
 
                 # Price Check Logic
@@ -1346,7 +1345,7 @@ def check_alerts():
                     message = f"{alert['ticker']} is now ${current_price:.2f} (above your target of ${target_price:.2f})"
 
                 if condition_met:
-                    print(f"Triggering alert for {alert['ticker']}")
+                    logger.info(f"Triggering alert for {alert['ticker']}")
                     triggered_alert = {
                         "id": str(uuid.uuid4()),
                         "message": message,
@@ -1357,16 +1356,16 @@ def check_alerts():
                     triggered_ids.append(alert['id'])
 
             except Exception as e:
-                print(f"Error checking alert for {alert['ticker']}: {e}")
+                logger.error(f"Error checking alert for {alert['ticker']}: {e}")
 
         # Remove triggered alerts from active list
         if triggered_ids:
             notifications_data['active'] = [a for a in notifications_data['active'] if a['id'] not in triggered_ids]
             save_notifications(notifications_data)
-            print(f"Triggered and moved {len(triggered_ids)} alerts.")
+            logger.info(f"Triggered and moved {len(triggered_ids)} alerts.")
 
     except Exception as e:
-        print(f"Failed to check all alert prices: {e}")
+        logger.error(f"Failed to check all alert prices: {e}")
 
 
 def run_scheduler():
@@ -1400,7 +1399,7 @@ def evaluate_models(ticker):
         if result is None: return jsonify({"error": "Insufficient data for evaluation"}), 404
         return jsonify(result)
     except Exception as e:
-        print(f"Evaluation error for {ticker}: {e}")
+        logger.error(f"Evaluation error for {ticker}: {e}")
         return jsonify({"error": f"Evaluation failed: {str(e)}"}), 500
 
 
@@ -1413,7 +1412,7 @@ def forex_convert():
         if rate_data is None: return jsonify({"error": "Could not fetch exchange rate"}), 404
         return jsonify(rate_data)
     except Exception as e:
-        print(f"Forex convert error: {e}")
+        logger.error(f"Forex convert error: {e}")
         return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
 
 
@@ -1423,7 +1422,7 @@ def forex_currencies():
         currencies = get_currency_list();
         return jsonify(currencies)
     except Exception as e:
-        print(f"Forex currencies error: {e}")
+        logger.error(f"Forex currencies error: {e}")
         return jsonify({"error": f"Failed to fetch currencies: {str(e)}"}), 500
 
 
@@ -1436,7 +1435,7 @@ def crypto_convert():
         if rate_data is None: return jsonify({"error": "Could not fetch crypto exchange rate"}), 404
         return jsonify(rate_data)
     except Exception as e:
-        print(f"Crypto convert error: {e}")
+        logger.error(f"Crypto convert error: {e}")
         return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
 
 
@@ -1446,7 +1445,7 @@ def crypto_list():
         cryptos = get_crypto_list();
         return jsonify(cryptos)
     except Exception as e:
-        print(f"Crypto list error: {e}")
+        logger.error(f"Crypto list error: {e}")
         return jsonify({"error": f"Failed to fetch crypto list: {str(e)}"}), 500
 
 
@@ -1456,7 +1455,7 @@ def crypto_target_currencies():
         currencies = get_target_currencies();
         return jsonify(currencies)
     except Exception as e:
-        print(f"Crypto currencies error: {e}")
+        logger.error(f"Crypto currencies error: {e}")
         return jsonify({"error": f"Failed to fetch currencies: {str(e)}"}), 500
 
 
@@ -1468,7 +1467,7 @@ def commodity_price(commodity):
         if data is None: return jsonify({"error": "Could not fetch commodity price"}), 404
         return jsonify(data)
     except Exception as e:
-        print(f"Commodity price error: {e}")
+        logger.error(f"Commodity price error: {e}")
         return jsonify({"error": f"Failed to fetch commodity: {str(e)}"}), 500
 
 
@@ -1478,7 +1477,7 @@ def commodities_list():
         commodities = get_commodity_list();
         return jsonify(commodities)
     except Exception as e:
-        print(f"Commodities list error: {e}")
+        logger.error(f"Commodities list error: {e}")
         return jsonify({"error": f"Failed to fetch commodities: {str(e)}"}), 500
 
 
@@ -1488,7 +1487,7 @@ def commodities_all():
         commodities = get_commodities_by_category();
         return jsonify(commodities)
     except Exception as e:
-        print(f"Commodities all error: {e}")
+        logger.error(f"Commodities all error: {e}")
         return jsonify({"error": f"Failed to fetch all commodities: {str(e)}"}), 500
 
 
@@ -1840,7 +1839,7 @@ def get_fundamentals(ticker):
         return jsonify(formatted_data)
 
     except Exception as e:
-        print(f"Fundamentals error for {ticker}: {e}")
+        logger.error(f"Fundamentals error for {ticker}: {e}")
         return jsonify({"error": f"Failed to fetch fundamentals: {str(e)}"}), 500
 # --- NEW: Autocomplete Symbol Search (from Jimmy's branch) ---
 @app.route('/search-symbols')
@@ -1851,7 +1850,7 @@ def search_symbols():
         formatted_matches = get_symbol_suggestions(query)
         return jsonify(formatted_matches)
     except Exception as e:
-        print(f"Error in symbol search: {e}")
+        logger.error(f"Error in symbol search: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -1860,7 +1859,7 @@ if __name__ == '__main__':
     init_db()  # Initialize the SQLite history table
 
     # --- NEW: Start the background thread ---
-    print("Starting background alert checker...")
+    logger.info("Starting background alert checker...")
     checker_thread = threading.Thread(target=run_scheduler, daemon=True)
     checker_thread.start()
 
