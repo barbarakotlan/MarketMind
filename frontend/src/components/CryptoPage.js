@@ -1,278 +1,335 @@
-import React, { useState, useEffect } from 'react';
-import { Bitcoin, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Bitcoin, Zap, Activity, ChevronDown, Search, ArrowRightLeft } from 'lucide-react';
+import StockChart from './charts/StockChart';
 
-const CryptoPage = () => {
-    const [cryptos, setCryptos] = useState([]);
-    const [currencies, setCurrencies] = useState([]);
-    const [fromCrypto, setFromCrypto] = useState('BTC');
-    const [toCurrency, setToCurrency] = useState('USD');
-    const [amount, setAmount] = useState(1);
-    const [exchangeData, setExchangeData] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
+const timeFrames = [
+    { label: '1D', value: '1d' },
+    { label: '5D', value: '5d' },
+    { label: '1M', value: '1mo' },
+    { label: '6M', value: '6mo' },
+    { label: '1Y', value: '1y' },
+];
 
-    // Popular crypto pairs for quick access
-    const popularPairs = [
-        { from: 'BTC', to: 'USD', label: 'BTC → USD' },
-        { from: 'ETH', to: 'USD', label: 'ETH → USD' },
-        { from: 'BNB', to: 'USD', label: 'BNB → USD' },
-        { from: 'SOL', to: 'USD', label: 'SOL → USD' },
-        { from: 'XRP', to: 'USD', label: 'XRP → USD' },
-        { from: 'DOGE', to: 'USD', label: 'DOGE → USD' },
-    ];
+// --- Custom Searchable Asset Selector Component ---
+const AssetSelector = ({ selected, options, onSelect, label }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const dropdownRef = useRef(null);
 
-    // Fetch available cryptos and currencies on mount
+    // Close dropdown when clicking outside
     useEffect(() => {
-        fetchCryptos();
-        fetchCurrencies();
-        handleConvert(); // Initial conversion
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const fetchCryptos = async () => {
-        try {
-            const response = await fetch('http://localhost:5001/crypto/list');
-            const data = await response.json();
-            setCryptos(data);
-        } catch (err) {
-            console.error('Error fetching cryptos:', err);
-        }
-    };
-
-    const fetchCurrencies = async () => {
-        try {
-            const response = await fetch('http://localhost:5001/crypto/currencies');
-            const data = await response.json();
-            setCurrencies(data);
-        } catch (err) {
-            console.error('Error fetching currencies:', err);
-        }
-    };
-
-    const handleConvert = async () => {
-        setLoading(true);
-        setError('');
-        
-        try {
-            const response = await fetch(
-                `http://localhost:5001/crypto/convert?from=${fromCrypto}&to=${toCurrency}`
-            );
-            
-            if (!response.ok) {
-                throw new Error('Failed to fetch exchange rate');
-            }
-
-            const data = await response.json();
-            setExchangeData(data);
-        } catch (err) {
-            setError('Could not fetch crypto exchange rate. Please try again.');
-            console.error('Conversion error:', err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleQuickPair = (from, to) => {
-        setFromCrypto(from);
-        setToCurrency(to);
-        setTimeout(handleConvert, 100);
-    };
-
-    const convertedAmount = exchangeData ? (amount * exchangeData.exchange_rate).toFixed(2) : '0.00';
-    const formattedRate = exchangeData ? exchangeData.exchange_rate.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00';
+    const filteredOptions = options.filter(opt => 
+        opt.code.toLowerCase().includes(search.toLowerCase()) || 
+        opt.name.toLowerCase().includes(search.toLowerCase())
+    );
 
     return (
-        <div className="container mx-auto px-6 py-8 max-w-6xl">
-            {/* Header */}
-            <div className="text-center mb-8 animate-fade-in">
-                <div className="flex items-center justify-center mb-2">
-                    <Bitcoin className="w-10 h-10 text-purple-600 dark:text-purple-400 mr-3" />
-                    <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
-                        Cryptocurrency Exchange
-                    </h1>
+        <div className="relative" ref={dropdownRef}>
+            <label className="text-purple-200 text-xs font-bold uppercase tracking-wider mb-1 block">
+                {label}
+            </label>
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center justify-between w-full bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl px-4 py-3 transition-all"
+            >
+                <div className="flex items-center gap-3">
+                    <span className="text-2xl">{selected.icon || (selected.type === 'crypto' ? '🪙' : '💵')}</span>
+                    <div className="text-left">
+                        <div className="font-bold text-white leading-tight">{selected.code}</div>
+                        <div className="text-xs text-purple-200 opacity-70 truncate max-w-[100px]">{selected.name}</div>
+                    </div>
                 </div>
-                <p className="text-gray-600 dark:text-gray-400">
-                    Real-time cryptocurrency prices powered by Alpha Vantage
-                </p>
-            </div>
+                <ChevronDown className={`w-5 h-5 text-purple-300 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-            {/* Main Converter Card */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 mb-8 animate-fade-in transition-colors duration-200">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Crypto Converter</h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
-                    {/* From Crypto */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            From Cryptocurrency
-                        </label>
-                        <div className="space-y-2">
+            {/* Dropdown Menu */}
+            {isOpen && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden animate-fade-in-up">
+                    <div className="p-2 border-b border-gray-100 dark:border-gray-700">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input
-                                type="number"
-                                value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
-                                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                                placeholder="Amount"
-                                min="0"
-                                step="0.00000001"
+                                type="text"
+                                placeholder="Search assets..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                autoFocus
+                                className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-900 border-none rounded-lg text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none"
                             />
-                            <select
-                                value={fromCrypto}
-                                onChange={(e) => setFromCrypto(e.target.value)}
-                                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                        </div>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                        {filteredOptions.map((opt) => (
+                            <button
+                                key={`${opt.type}-${opt.code}`}
+                                onClick={() => {
+                                    onSelect(opt);
+                                    setIsOpen(false);
+                                    setSearch('');
+                                }}
+                                className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors text-left ${
+                                    selected.code === opt.code ? 'bg-purple-100 dark:bg-purple-900/40' : ''
+                                }`}
                             >
-                                {cryptos.map((crypto) => (
-                                    <option key={crypto.code} value={crypto.code}>
-                                        {crypto.icon} {crypto.code} - {crypto.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* To Currency */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            To Fiat Currency
-                        </label>
-                        <div className="space-y-2">
-                            <div className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded-lg font-bold text-lg bg-gray-50">
-                                {loading ? '...' : `${currencies.find(c => c.code === toCurrency)?.symbol || '$'}${convertedAmount}`}
-                            </div>
-                            <select
-                                value={toCurrency}
-                                onChange={(e) => setToCurrency(e.target.value)}
-                                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                            >
-                                {currencies.map((curr) => (
-                                    <option key={curr.code} value={curr.code}>
-                                        {curr.flag} {curr.code} - {curr.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Convert Button */}
-                <div className="mt-6">
-                    <button
-                        onClick={handleConvert}
-                        disabled={loading}
-                        className={`w-full py-3 rounded-lg font-semibold text-white transition-all ${
-                            loading
-                                ? 'bg-gray-400 cursor-not-allowed'
-                                : 'bg-purple-600 hover:bg-purple-700 active:scale-95'
-                        }`}
-                    >
-                        {loading ? 'Converting...' : 'Convert'}
-                    </button>
-                </div>
-
-                {/* Error Message */}
-                {error && (
-                    <div className="mt-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg flex items-center justify-between">
-                        <span>{error}</span>
-                        <button
-                            onClick={() => {
-                                setError('');
-                                handleConvert();
-                            }}
-                            className="flex items-center space-x-2 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all text-sm"
-                        >
-                            <RefreshCw className="w-4 h-4" />
-                            <span>Retry</span>
-                        </button>
-                    </div>
-                )}
-            </div>
-
-            {/* Exchange Rate Details */}
-            {exchangeData && !loading && (
-                <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/30 dark:to-pink-900/30 rounded-xl p-6 mb-8 animate-fade-in border border-purple-100 dark:border-purple-800">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
-                        <div>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Exchange Rate</p>
-                            <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                                ${formattedRate}
-                            </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                                1 {exchangeData.from_crypto.code} = ${exchangeData.exchange_rate.toLocaleString(undefined, {maximumFractionDigits: 2})} {exchangeData.to_currency.code}
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Bid Price</p>
-                            <p className="text-xl font-bold text-green-600 dark:text-green-400">
-                                ${exchangeData.bid_price.toLocaleString(undefined, {maximumFractionDigits: 2})}
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Ask Price</p>
-                            <p className="text-xl font-bold text-red-600 dark:text-red-400">
-                                ${exchangeData.ask_price.toLocaleString(undefined, {maximumFractionDigits: 2})}
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Last Updated</p>
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                                {new Date(exchangeData.last_refreshed).toLocaleString()}
-                            </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                                {exchangeData.timezone}
-                            </p>
-                        </div>
+                                <span className="text-xl">{opt.icon || (opt.type === 'crypto' ? '🪙' : '💵')}</span>
+                                <div>
+                                    <div className="font-bold text-gray-900 dark:text-white">{opt.code}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">{opt.name}</div>
+                                </div>
+                            </button>
+                        ))}
+                        {filteredOptions.length === 0 && (
+                            <div className="p-4 text-center text-sm text-gray-500">No assets found</div>
+                        )}
                     </div>
                 </div>
             )}
+        </div>
+    );
+};
 
-            {/* Popular Pairs */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8 animate-fade-in">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Popular Cryptocurrencies</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                    {popularPairs.map((pair, index) => (
-                        <button
-                            key={index}
-                            onClick={() => handleQuickPair(pair.from, pair.to)}
-                            className={`px-4 py-3 rounded-lg font-semibold transition-all ${
-                                fromCrypto === pair.from && toCurrency === pair.to
-                                    ? 'bg-purple-600 text-white'
-                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-purple-100 dark:hover:bg-purple-900/30'
-                            }`}
-                        >
-                            {pair.label}
-                        </button>
-                    ))}
-                </div>
+const CryptoPage = () => {
+    // We combine lists into a unified "assets" state for interchangeable swapping
+    const [allAssets, setAllAssets] = useState([]);
+    
+    // Selection State
+    const [fromAsset, setFromAsset] = useState({ code: 'BTC', name: 'Bitcoin', type: 'crypto', icon: '₿' });
+    const [toAsset, setToAsset] = useState({ code: 'USD', name: 'United States Dollar', type: 'fiat', icon: '🇺🇸' });
+    
+    const [amount, setAmount] = useState(1);
+    const [exchangeData, setExchangeData] = useState(null);
+    const [chartData, setChartData] = useState(null);
+    const [loadingData, setLoadingData] = useState(false);
+    const [loadingChart, setLoadingChart] = useState(false);
+    const [activeTimeFrame, setActiveTimeFrame] = useState(timeFrames[2]);
+
+    useEffect(() => {
+        const init = async () => {
+            const [cryptos, currencies] = await Promise.all([fetchCryptos(), fetchCurrencies()]);
+            
+            // Normalize and merge lists
+            const cryptoList = cryptos.map(c => ({ ...c, type: 'crypto' }));
+            const currencyList = currencies.map(c => ({ ...c, type: 'fiat', icon: c.flag })); // Ensure icon key matches
+            
+            const merged = [...cryptoList, ...currencyList];
+            setAllAssets(merged);
+
+            // Set initial defaults from the loaded list to ensure we have full object data
+            const btc = merged.find(a => a.code === 'BTC');
+            const usd = merged.find(a => a.code === 'USD');
+            if (btc) setFromAsset(btc);
+            if (usd) setToAsset(usd);
+
+            fetchData(btc || fromAsset, usd || toAsset, activeTimeFrame.value);
+        };
+        init();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const fetchCryptos = async () => {
+        try { return await (await fetch('http://localhost:5001/crypto/list')).json(); } catch (e) { return []; }
+    };
+
+    const fetchCurrencies = async () => {
+        try { return await (await fetch('http://localhost:5001/crypto/currencies')).json(); } catch (e) { return []; }
+    };
+
+    const fetchData = (from, to, period) => {
+        if (!from || !to) return;
+        fetchConversionData(from, to);
+        fetchChartData(from, to, period);
+    };
+
+    const fetchConversionData = async (from, to) => {
+        setLoadingData(true);
+        try {
+            // Note: The backend endpoint is named /crypto/convert but often supports any pair 
+            // supported by the underlying provider (AlphaVantage). 
+            const res = await fetch(`http://localhost:5001/crypto/convert?from=${from.code}&to=${to.code}`);
+            if (!res.ok) throw new Error('Conversion failed');
+            setExchangeData(await res.json());
+        } catch (err) {
+            console.error(err);
+            setExchangeData(null);
+        } finally {
+            setLoadingData(false);
+        }
+    };
+
+    const fetchChartData = async (from, to, period) => {
+        setLoadingChart(true);
+        try {
+            // Construct ticker. 
+            // If Crypto -> Fiat: BTC-USD
+            // If Fiat -> Crypto: USD-BTC (Yahoo/AV might need specific formatting, but we try standard first)
+            // If Crypto -> Crypto: BTC-ETH
+            let ticker;
+            if (to.type === 'fiat' && from.type === 'crypto') ticker = `${from.code}-${to.code}`;
+            else if (from.type === 'fiat' && to.type === 'crypto') ticker = `${from.code}-${to.code}`; // Yahoo often supports EUR-BTC=X reverse pairs
+            else ticker = `${from.code}-${to.code}`;
+
+            const res = await fetch(`http://localhost:5001/chart/${ticker}?period=${period}`);
+            if (res.ok) setChartData(await res.json());
+            else setChartData(null);
+        } catch (err) {
+            setChartData(null);
+        } finally {
+            setLoadingChart(false);
+        }
+    };
+
+    const handleSwap = () => {
+        const temp = fromAsset;
+        setFromAsset(toAsset);
+        setToAsset(temp);
+        fetchData(toAsset, temp, activeTimeFrame.value);
+    };
+
+    return (
+        <div className="container mx-auto px-4 py-8 max-w-7xl">
+            <div className="mb-8 border-b border-gray-200 dark:border-gray-700 pb-6">
+                <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white flex items-center gap-3">
+                    <Bitcoin className="w-10 h-10 text-purple-600" /> Crypto Command
+                </h1>
+                <p className="text-gray-500 mt-2">Swap, analyze, and track digital assets and currencies.</p>
             </div>
 
-            {/* Crypto Info Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
-                {cryptos.slice(0, 8).map((crypto) => (
-                    <button
-                        key={crypto.code}
-                        onClick={() => {
-                            setFromCrypto(crypto.code);
-                            setTimeout(handleConvert, 100);
-                        }}
-                        className="bg-white dark:bg-gray-800 rounded-lg p-4 hover:shadow-lg transition-all active:scale-95 text-left"
-                    >
-                        <div className="flex items-center space-x-3">
-                            <span className="text-3xl">{crypto.icon}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Left: Interactive Converter Card */}
+                <div className="lg:col-span-1 space-y-6">
+                    <div className="bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 text-white rounded-3xl shadow-2xl p-6 relative overflow-visible">
+                        
+                        {/* Input Section */}
+                        <div className="relative z-10">
+                            <label className="text-purple-200 text-xs font-bold uppercase tracking-wider mb-2 block">
+                                You Send
+                            </label>
+                            <div className="flex items-center gap-4 mb-6">
+                                <input 
+                                    type="number" 
+                                    value={amount} 
+                                    onChange={e => setAmount(e.target.value)}
+                                    className="bg-transparent text-5xl font-bold outline-none w-full placeholder-purple-300/30 font-mono tracking-tight"
+                                />
+                            </div>
+                            
+                            <div className="grid grid-cols-[1fr,auto,1fr] gap-2 items-end mb-8">
+                                <AssetSelector 
+                                    label="From" 
+                                    selected={fromAsset} 
+                                    options={allAssets} 
+                                    onSelect={(a) => { setFromAsset(a); fetchData(a, toAsset, activeTimeFrame.value); }} 
+                                />
+                                
+                                <div className="pb-3">
+                                    <button 
+                                        onClick={handleSwap}
+                                        className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all hover:rotate-180"
+                                    >
+                                        <ArrowRightLeft className="w-5 h-5 text-purple-200" />
+                                    </button>
+                                </div>
+
+                                <AssetSelector 
+                                    label="To" 
+                                    selected={toAsset} 
+                                    options={allAssets} 
+                                    onSelect={(a) => { setToAsset(a); fetchData(fromAsset, a, activeTimeFrame.value); }} 
+                                />
+                            </div>
+
+                            <div className="w-full h-px bg-gradient-to-r from-transparent via-purple-500/50 to-transparent my-6"></div>
+
+                            {/* Result Section */}
                             <div>
-                                <p className="font-bold text-gray-900 dark:text-white">{crypto.code}</p>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">{crypto.name}</p>
+                                <label className="text-purple-200 text-xs font-bold uppercase tracking-wider mb-1 block">
+                                    Estimated Receive
+                                </label>
+                                <div className="flex items-baseline gap-3">
+                                    <span className="text-4xl font-bold tracking-tight">
+                                        {loadingData ? (
+                                            <span className="animate-pulse">...</span>
+                                        ) : exchangeData ? (
+                                            (amount * exchangeData.exchange_rate).toLocaleString(undefined, {maximumFractionDigits: 5})
+                                        ) : (
+                                            '---'
+                                        )}
+                                    </span>
+                                    <span className="text-xl font-medium text-purple-300">{toAsset.code}</span>
+                                </div>
+                                <div className="text-xs text-purple-300/70 mt-2">
+                                    1 {fromAsset.code} ≈ {exchangeData ? exchangeData.exchange_rate.toFixed(5) : '...'} {toAsset.code}
+                                </div>
                             </div>
                         </div>
-                    </button>
-                ))}
-            </div>
 
-            {/* Info Note */}
-            <div className="mt-8 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4 animate-fade-in">
-                <p className="text-sm text-purple-800 dark:text-purple-300">
-                    <strong>Note:</strong> Cryptocurrency prices are highly volatile and provided by Alpha Vantage. 
-                    Prices shown are for informational purposes only. This is not financial advice. 
-                    Always do your own research (DYOR) before investing in cryptocurrencies.
-                </p>
+                        {/* Background Decoration */}
+                        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                            <Bitcoin size={200} />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right: Chart & Stats */}
+                <div className="lg:col-span-2 space-y-6">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 min-h-[500px] flex flex-col">
+                         {chartData ? (
+                             <>
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                            {fromAsset.icon} {fromAsset.code} <span className="text-gray-400">/</span> {toAsset.icon} {toAsset.code}
+                                        </h2>
+                                        <p className="text-sm text-gray-500">Historical Price Action</p>
+                                    </div>
+                                    {exchangeData && (
+                                        <div className="flex gap-4">
+                                            <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                                <div className="text-xs text-gray-500">Ask</div>
+                                                <div className="font-bold dark:text-white">{parseFloat(exchangeData.ask_price).toFixed(2)}</div>
+                                            </div>
+                                            <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                                <div className="text-xs text-gray-500">Bid</div>
+                                                <div className="font-bold dark:text-white">{parseFloat(exchangeData.bid_price).toFixed(2)}</div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex-1">
+                                    <StockChart 
+                                        chartData={chartData} 
+                                        ticker={`${fromAsset.code}-${toAsset.code}`}
+                                        activeTimeFrame={activeTimeFrame} 
+                                        onTimeFrameChange={(tf) => {
+                                            setActiveTimeFrame(tf);
+                                            fetchChartData(fromAsset, toAsset, tf.value);
+                                        }} 
+                                    />
+                                </div>
+                             </>
+                         ) : (
+                             <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                                 {loadingChart ? (
+                                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+                                 ) : (
+                                     <>
+                                        <Activity className="w-16 h-16 mb-4 opacity-20" />
+                                        <p>Select assets to view analysis</p>
+                                     </>
+                                 )}
+                             </div>
+                         )}
+                    </div>
+                </div>
             </div>
         </div>
     );

@@ -26,11 +26,19 @@ load_dotenv()
 # --- Tazeem's Imports ---
 from model import create_dataset, estimate_week, try_today, estimate_new, good_model
 from news_fetcher import get_general_news
-from ensemble_model import ensemble_predict, calculate_metrics
+from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
 from commodities_fetcher import get_commodity_price, get_commodity_list, get_commodities_by_category
+from logger_config import setup_logger, log_api_error
+
+#Emoji Fix
+import sys
+import io
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # --- New Imports for Options Suggester ---
 from options_suggester import generate_suggestion
@@ -38,9 +46,39 @@ from options_suggester import generate_suggestion
 # --- Import for Price Prediction ---
 from sklearn.linear_model import LinearRegression
 
+# Initialize logger
+import logging
+
+logger = logging.getLogger("marketmind_api")
+logger.setLevel(logging.INFO)
+
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+handler.setStream(sys.stdout)
+logger.addHandler(handler)
+
+logger.info("🚀 MarketMind API Starting...")
+
 # Initialize the Flask application
 app = Flask(__name__)
 CORS(app)
+
+# --- Rate Limiting Setup ---
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[],
+    app=app
+)
+
+# Define rate limits
+class RateLimits:
+    LIGHT = "10/minute"
+    STANDARD = "20/minute"
+    HEAVY = "2/minute" 
+    WRITE = "5/minute"
 
 # --- CONFIGURATION ---
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
@@ -73,6 +111,40 @@ def init_db():
     finally:
         if conn:
             conn.close()
+
+from functools import wraps
+from flask import request, jsonify
+
+def validate_request_json(required_fields):
+    """
+    Decorator to ensure that the incoming JSON request contains
+    all required fields. Returns 400 with missing fields if not.
+    
+    Usage:
+        @app.route('/buy', methods=['POST'])
+        @validate_request_json(['ticker', 'shares'])
+        def buy_stock():
+            data = request.get_json()
+            ...
+    """
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            # Ensure request is JSON
+            if not request.is_json:
+                return jsonify({"error": "Request must be JSON"}), 400
+            
+            data = request.get_json()
+            # Check for missing fields
+            missing = [field for field in required_fields if field not in data]
+            if missing:
+                return jsonify({"error": f"Missing required fields: {missing}"}), 400
+            
+            # Everything is fine, call the route function
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
 
 
 # --- Persistent Storage Setup ---
@@ -164,11 +236,13 @@ watchlist = set()
 
 # --- Watchlist Endpoints ---
 @app.route('/watchlist', methods=['GET'])
+@limiter.limit(RateLimits.LIGHT)
 def get_watchlist():
     return jsonify(list(watchlist))
 
 
 @app.route('/watchlist/<string:ticker>', methods=['POST'])
+@limiter.limit(RateLimits.WRITE)
 def add_to_watchlist(ticker):
     ticker = ticker.upper()
     watchlist.add(ticker)
@@ -176,6 +250,7 @@ def add_to_watchlist(ticker):
 
 
 @app.route('/watchlist/<string:ticker>', methods=['DELETE'])
+@limiter.limit(RateLimits.WRITE)
 def remove_from_watchlist(ticker):
     ticker = ticker.upper()
     watchlist.discard(ticker)
@@ -184,6 +259,7 @@ def remove_from_watchlist(ticker):
 
 # --- Stock Data Endpoint ---
 @app.route('/stock/<string:ticker>')
+@limiter.limit(RateLimits.STANDARD)
 def get_stock_data(ticker):
     try:
         sanitized_ticker = ticker.split(':')[0]
@@ -382,34 +458,75 @@ def get_option_suggestion(ticker):
 
 
 # --- ML Endpoints ---
-@app.route('/predict/<string:ticker>')
-def predict_stock(ticker):
+@app.route('/predict/<string:model>/<string:ticker>')
+@limiter.limit(RateLimits.STANDARD)
+def predict_stock(model, ticker):
     try:
         sanitized_ticker = ticker.split(':')[0]
         stock = yf.Ticker(sanitized_ticker)
         info = stock.info
-        df = create_dataset(sanitized_ticker, period="15d")
-        if df.empty: return jsonify({"error": "No historical data available."}), 404
-        current_df = estimate_week(df)
-        prediction_df = current_df.tail(6)
-        recent_close_df = df[df["Close"].notna()].tail(1)
-        recent_close = recent_close_df["Close"].iloc[0] if not recent_close_df.empty else 0
-        recent_date = recent_close_df.index[0] if not recent_close_df.empty else current_df.index[0]
-        recent_predicted = current_df["Predicted"].iloc[0]
+
+        # --- Model-specific history ---
+        if model == "LinReg":
+            period = "15d"
+            min_rows = 7
+        elif model in ("RandomForest", "XGBoost"):
+            period = "6mo"
+            min_rows = 40
+        else:
+            return jsonify({"error": "Unknown model"}), 400
+
+        df = create_dataset(sanitized_ticker, period=period)
+
+        if df.empty or len(df) < min_rows:
+            return jsonify({"error": "Insufficient historical data."}), 404
+
+        # --- Run model ---
+        if model == "LinReg":
+            preds = linear_regression_predict(df, days_ahead=7)
+        elif model == "RandomForest":
+            preds = random_forest_predict(df, days_ahead=7)
+        else:  # XGBoost
+            preds = xgboost_predict(df, days_ahead=7)
+
+        if preds is None or len(preds) == 0:
+            return jsonify({
+                "error": f"{model} prediction failed."
+            }), 400
+
+        recent_close = float(df["Close"].iloc[-1])
+        recent_date = df.index[-1]
+
+        future_dates = [
+            recent_date + pd.Timedelta(days=i + 1)
+            for i in range(len(preds))
+        ]
+
         response = {
-            "symbol": info.get('symbol', ticker.upper()), "companyName": info.get('longName', 'N/A'),
-            "recentDate": recent_date.strftime('%Y-%m-%d'), "recentClose": round(float(recent_close), 2),
-            "recentPredicted": round(float(recent_predicted), 2),
-            "predictions": [{"date": date.strftime('%Y-%m-%d'), "predictedClose": round(float(pred), 2)}
-                            for date, pred in zip(prediction_df.index, prediction_df["Predicted"])]
+            "symbol": info.get('symbol', sanitized_ticker.upper()),
+            "companyName": info.get('longName', 'N/A'),
+            "recentDate": recent_date.strftime('%Y-%m-%d'),
+            "recentClose": round(recent_close, 2),
+            "recentPredicted": round(float(preds[0]), 2),
+            "predictions": [
+                {
+                    "date": date.strftime('%Y-%m-%d'),
+                    "predictedClose": round(float(pred), 2)
+                }
+                for date, pred in zip(future_dates, preds)
+            ]
         }
+
         return jsonify(response)
+
     except Exception as e:
-        print(f"Error predicting stock {ticker}: {e}")
+        log_api_error(logger, f'/predict/{ticker}', e, ticker)
         return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
 
 
+
 @app.route('/predict/ensemble/<string:ticker>')
+@limiter.limit(RateLimits.STANDARD)
 def predict_ensemble(ticker):
     try:
         sanitized_ticker = ticker.split(':')[0]
@@ -612,6 +729,8 @@ def get_paper_portfolio():
 
 
 @app.route('/paper/buy', methods=['POST'])
+@limiter.limit(RateLimits.WRITE)
+@validate_request_json(['ticker', 'shares'])
 def buy_stock():
     portfolio = load_portfolio()
     try:
@@ -642,10 +761,13 @@ def buy_stock():
         record_portfolio_snapshot(portfolio)
         return jsonify({"success": True, "message": f"Bought {shares} shares of {ticker} at ${price:.2f}"}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        log_api_error(logger, '/paper/buy', e)
+        return jsonify({"error": "Failed to execute buy order"}), 500
 
 
 @app.route('/paper/sell', methods=['POST'])
+@limiter.limit(RateLimits.WRITE)
+@validate_request_json(['ticker', 'shares'])
 def sell_stock():
     portfolio = load_portfolio()
     try:
@@ -678,7 +800,8 @@ def sell_stock():
         return jsonify({"success": True, "message": f"Sold {shares} shares of {ticker} at ${price:.2f}",
                         "profit": round(profit, 2)}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        log_api_error(logger, '/paper/sell', e)
+        return jsonify({"error": "Failed to execute sell order"}), 500
 
 
 @app.route('/paper/options/buy', methods=['POST'])
@@ -1237,6 +1360,7 @@ def news_api():
 
 
 @app.route('/evaluate/<string:ticker>')
+@limiter.limit(RateLimits.HEAVY)
 def evaluate_models(ticker):
     try:
         sanitized_ticker = ticker.split(':')[0]
@@ -1344,16 +1468,97 @@ def get_fundamentals(ticker):
         sanitized_ticker = ticker.split(':')[0]
         if not ALPHA_VANTAGE_API_KEY:
             return jsonify({"error": "Alpha Vantage API key not configured"}), 500
+            
         url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={sanitized_ticker.upper()}&apikey={ALPHA_VANTAGE_API_KEY}'
         response = requests.get(url)
         data = response.json()
+        
         if not data or 'Symbol' not in data:
             return jsonify({"error": f"No fundamental data found for {ticker}"}), 404
-        return jsonify(data)
+
+        # Map Alpha Vantage keys (PascalCase) to Frontend keys (snake_case)
+        formatted_data = {
+            "symbol": data.get("Symbol"),
+            "name": data.get("Name"),
+            "description": data.get("Description"),
+            "exchange": data.get("Exchange"),
+            "currency": data.get("Currency"),
+            "sector": data.get("Sector"),
+            "industry": data.get("Industry"),
+            "country": data.get("Country"),
+            
+            # Key Metrics
+            "market_cap": clean_value(data.get("MarketCapitalization")),
+            "pe_ratio": clean_value(data.get("PERatio")),
+            "forward_pe": clean_value(data.get("ForwardPE")),
+            "trailing_pe": clean_value(data.get("TrailingPE")),
+            "peg_ratio": clean_value(data.get("PEGRatio")),
+            "eps": clean_value(data.get("EPS")),
+            "beta": clean_value(data.get("Beta")),
+            "book_value": clean_value(data.get("BookValue")),
+            
+            # Dividends
+            "dividend_per_share": clean_value(data.get("DividendPerShare")),
+            "dividend_yield": clean_value(data.get("DividendYield")),
+            "dividend_date": data.get("DividendDate"),
+            "ex_dividend_date": data.get("ExDividendDate"),
+            
+            # Profitability
+            "profit_margin": clean_value(data.get("ProfitMargin")),
+            "operating_margin_ttm": clean_value(data.get("OperatingMarginTTM")),
+            "return_on_assets_ttm": clean_value(data.get("ReturnOnAssetsTTM")),
+            "return_on_equity_ttm": clean_value(data.get("ReturnOnEquityTTM")),
+            
+            # Financials
+            "revenue_ttm": clean_value(data.get("RevenueTTM")),
+            "gross_profit_ttm": clean_value(data.get("GrossProfitTTM")),
+            "diluted_eps_ttm": clean_value(data.get("DilutedEPSTTM")),
+            "revenue_per_share_ttm": clean_value(data.get("RevenuePerShareTTM")),
+            "quarterly_earnings_growth_yoy": clean_value(data.get("QuarterlyEarningsGrowthYOY")),
+            "quarterly_revenue_growth_yoy": clean_value(data.get("QuarterlyRevenueGrowthYOY")),
+            
+            # Valuation & Price
+            "analyst_target_price": clean_value(data.get("AnalystTargetPrice")),
+            "price_to_sales_ratio_ttm": clean_value(data.get("PriceToSalesRatioTTM")),
+            "price_to_book_ratio": clean_value(data.get("PriceToBookRatio")),
+            "ev_to_revenue": clean_value(data.get("EVToRevenue")),
+            "ev_to_ebitda": clean_value(data.get("EVToEBITDA")),
+            "week_52_high": clean_value(data.get("52WeekHigh")),
+            "week_52_low": clean_value(data.get("52WeekLow")),
+            "day_50_moving_average": clean_value(data.get("50DayMovingAverage")),
+            "day_200_moving_average": clean_value(data.get("200DayMovingAverage")),
+            "shares_outstanding": clean_value(data.get("SharesOutstanding")),
+        }
+        
+        return jsonify(formatted_data)
+
     except Exception as e:
         print(f"Fundamentals error for {ticker}: {e}")
         return jsonify({"error": f"Failed to fetch fundamentals: {str(e)}"}), 500
-
+# --- NEW: Autocomplete Symbol Search (from Jimmy's branch) ---
+def get_symbol_suggestions(query):
+    if not ALPHA_VANTAGE_API_KEY:
+        print("Alpha Vantage key not configured. Cannot get suggestions.")
+        return []
+        
+    try:
+        url = f'https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords={query}&apikey={ALPHA_VANTAGE_API_KEY}'
+        r = requests.get(url)
+        data = r.json()
+        
+        matches = data.get('bestMatches', [])
+        formatted_matches = []
+        for match in matches:
+            # Filter for US stocks
+            if "." not in match.get('1. symbol') and match.get('4. region') == "United States":
+                formatted_matches.append({
+                    "symbol": match.get('1. symbol'),
+                    "name": match.get('2. name')
+                })
+        return formatted_matches
+    except Exception as e:
+        print(f"Error in get_symbol_suggestions: {e}")
+        return []
 
 @app.route('/search-symbols')
 def search_symbols():

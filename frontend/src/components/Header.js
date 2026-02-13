@@ -8,7 +8,6 @@ import { useDarkMode } from '../context/DarkModeContext';
 const Header = ({ activePage, setActivePage }) => {
     const { isDarkMode, toggleDarkMode } = useDarkMode();
     const [showOtherMenu, setShowOtherMenu] = useState(false);
-
     // --- NEW: State for notifications ---
     const [newAlertCount, setNewAlertCount] = useState(0);
 
@@ -36,7 +35,6 @@ const Header = ({ activePage, setActivePage }) => {
         }
         setActivePage(pageName);
     };
-
     const NavButton = ({ pageName, children }) => {
         const isActive = activePage === pageName;
         return (

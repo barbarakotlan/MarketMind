@@ -92,7 +92,7 @@ const PredictionChart = ({ predictionData }) => {
             },
             title: {
                 display: true,
-                text: `${predictionData.symbol} - 7 Week Price Forecast`,
+                text: `${predictionData.symbol} - 7 Day Price Forecast`,
                 font: {
                     size: 18,
                     weight: 'bold'
@@ -190,7 +190,7 @@ const PredictionChart = ({ predictionData }) => {
                         <div className="flex items-center">
                             <div className="w-3 h-3 rounded-full bg-purple-600 mr-2"></div>
                             <span className="text-gray-600 dark:text-gray-400">
-                                7-Week Target: ${predictedPrices[predictedPrices.length - 1].toFixed(2)}
+                                7-Day Target: ${predictedPrices[predictedPrices.length - 1].toFixed(2)}
                             </span>
                         </div>
                     </div>

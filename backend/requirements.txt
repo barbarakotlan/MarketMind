@@ -16,6 +16,8 @@ deprecation==2.1.0
 finnhub-python==2.4.25
 Flask==3.1.2
 flask-cors==6.0.1
+flask-limiter==4.1.1
+flask-sqlalchemy==3.1.1
 frozendict==2.4.6
 frozenlist==1.8.0
 html5lib==1.1
@@ -51,11 +53,13 @@ six==1.17.0
 soupsieve==2.8
 sseclient-py==1.8.0
 statsmodels==0.14.5
+schedule==1.2.2
 threadpoolctl==3.6.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.2
 urllib3==1.26.20
+vaderSentiment==3.3.2
 webencodings==0.5.1
 websocket-client==1.9.0
 websockets==15.0.1
