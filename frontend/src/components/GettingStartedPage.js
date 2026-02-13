@@ -354,33 +354,73 @@ const GettingStartedPage = () => {
         setSelectedChapter(null);
     };
 
+    // Determine if we're in an immersive view (inside a module)
+    const isImmersive = selectedModule !== null;
+
     return (
-        <div className="container mx-auto px-4 py-8 max-w-6xl animate-in fade-in duration-500">
-            {/* Header */}
-            <div className="text-center mb-10">
-                <h1 className="text-4xl font-black text-gray-900 dark:text-white mb-2">Learning Center</h1>
-                <p className="text-gray-500 dark:text-gray-400">
-                    Master financial markets through our comprehensive {totalChapters}-chapter course.
-                </p>
-            </div>
+        <div className={`container mx-auto px-4 max-w-6xl animate-in fade-in duration-500 ${isImmersive ? 'py-4' : 'py-8'}`}>
+            {/* Header - Hidden when inside a module for immersive reading */}
+            {!isImmersive && (
+                <div className="text-center mb-10 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <h1 className="text-4xl font-black text-gray-900 dark:text-white mb-2">Learning Center</h1>
+                    <p className="text-gray-500 dark:text-gray-400">
+                        Master financial markets through our comprehensive {totalChapters}-chapter course.
+                    </p>
+                </div>
+            )}
 
             {/* Navigation Tabs */}
-            <div className="flex justify-center mb-12">
-                <div className="bg-gray-100 dark:bg-gray-800 p-1.5 rounded-2xl flex gap-1">
+            <div className={`flex justify-center ${isImmersive ? 'mb-6' : 'mb-12'}`}>
+                <div className={`bg-gray-100 dark:bg-gray-800 p-1.5 rounded-2xl flex gap-1 ${isImmersive ? 'scale-90' : ''}`}>
                     <button 
                         onClick={() => {setActiveTab('learn'); backToModules();}} 
-                        className={`px-8 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'learn' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+                        className={`rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'learn' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'} ${isImmersive ? 'px-4 py-2' : 'px-8 py-3'}`}
                     >
-                        <BookOpen className="w-4 h-4" /> Course
+                        <BookOpen className="w-4 h-4" /> {isImmersive ? 'Exit' : 'Course'}
                     </button>
                     <button 
                         onClick={() => setActiveTab('quiz')} 
-                        className={`px-8 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'quiz' ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+                        className={`rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'quiz' ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'} ${isImmersive ? 'px-4 py-2' : 'px-8 py-3'}`}
                     >
                         <HelpCircle className="w-4 h-4" /> Quiz
                     </button>
                 </div>
             </div>
+
+            {/* Breadcrumb / Context Bar - Only shown in immersive mode */}
+            {isImmersive && selectedModule && (
+                <div className="mb-6 flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                        <span className="font-medium text-gray-400 dark:text-gray-500">Learning Center</span>
+                        <ChevronRight className="w-4 h-4" />
+                        <span className="font-medium text-gray-700 dark:text-gray-300">
+                            {selectedModule.title.replace(/Module \d+: /, '')}
+                        </span>
+                        {selectedChapter && (
+                            <>
+                                <ChevronRight className="w-4 h-4" />
+                                <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                    {selectedChapter.title}
+                                </span>
+                            </>
+                        )}
+                    </div>
+                    
+                    {/* Mini Progress */}
+                    <div className="flex items-center gap-3">
+                        <div className="text-right">
+                            <div className="text-xs text-gray-400 dark:text-gray-500">Course Progress</div>
+                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">{courseProgress}%</div>
+                        </div>
+                        <div className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <div 
+                                className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                                style={{ width: `${courseProgress}%` }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {activeTab === 'learn' ? (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
