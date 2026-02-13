@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
     Search, Star, Briefcase, Building2, TrendingUp, Target, Globe, DollarSign,
-    Bitcoin, BarChart3, Newspaper, HelpCircle, Sun, Moon, ChevronDown, Bell, Layers
+    Bitcoin, BarChart3, Newspaper, BookOpen, ChevronDown, Bell, Layers
 } from 'lucide-react';
-import { useDarkMode } from '../context/DarkModeContext';
+
 
 const Header = ({ activePage, setActivePage }) => {
-    const { isDarkMode, toggleDarkMode } = useDarkMode();
+
     const [showOtherMenu, setShowOtherMenu] = useState(false);
     // --- NEW: State for notifications ---
     const [newAlertCount, setNewAlertCount] = useState(0);
@@ -185,22 +185,10 @@ const Header = ({ activePage, setActivePage }) => {
                         </NavButton>
 
                         <NavButton pageName="gettingStarted">
-                            <HelpCircle className="w-4 h-4 inline mr-1" />
-                            Help
+                            <BookOpen className="w-4 h-4 inline mr-1" />
+                            Learn
                         </NavButton>
                     </div>
-                    {/* Dark Mode Toggle */}
-                    <button
-                        onClick={toggleDarkMode}
-                        className="p-2 rounded-lg bg-gray-700 dark:bg-gray-800 hover:bg-gray-600 dark:hover:bg-gray-700 transition-colors duration-200"
-                        aria-label="Toggle dark mode"
-                    >
-                        {isDarkMode ? (
-                            <Sun className="w-5 h-5 text-yellow-400" />
-                        ) : (
-                            <Moon className="w-5 h-5 text-gray-300" />
-                        )}
-                    </button>
                 </div>
             </nav>
         </header>
