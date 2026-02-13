@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 📈 MarketMind
 
 **Professional Stock Market Prediction & Analysis Platform**
@@ -174,7 +173,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## ⚠️ Disclaimer
 
 This tool is for educational and research purposes only. Stock market predictions are inherently uncertain. Past performance does not guarantee future results. Always do your own research and consult with financial advisors before making investment decisions.
-=======
-# MarketMind
-MarketMind is an RCOS project that applies machine learning to stock data to forecast future price movements. The project combines finance, programming, and data science to build a user-friendly platform with clear visualizations, stock predictions, and watchlist features.
->>>>>>> main
