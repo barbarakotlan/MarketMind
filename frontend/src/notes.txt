@@ -1,0 +1,35 @@
+summarize what we did in the prompt: 
+
+What did you do this week? 3 sentences
+
+What is your plan next week? 3 sentences (replace Help section with more helpful learning modules)
+
+  What did you do this week?
+
+  This week I enhanced the Prediction Markets feature with seven additions: an exchange switcher, market sorting and category filtering, a
+  portfolio growth chart, 30-second auto-refresh,trading performance statistics, and a market watchlist with star bookmarking. I also created 
+  a production deployment roadmap covering Clerk OAuth authentication, PostgreSQL migration, and Vercel/Render hosting.
+  Additionally, I removed UI overscroll bounce in polishing the user experience of the interface.
+
+  What is your plan next week?
+
+  Next week I plan to replace the Help section with interactive learning modules that teach users how to read stock charts, understand options
+  strategies, and interpret prediction market probabilities. I will begin implementing Clerk OAuth authentication on both the frontend and
+  backend to enable multi-user support as outlined in our production roadmap. I also plan to refactor all hardcoded API URLs to environment
+  variables and start the PostgreSQL database migration to prepare for production deployment.
+
+  Commits:
+  c7531bcf
+  7f83efa6
+  9c2a5065
+
+
+• Backend (in a new terminal):
+
+  cd backend && source venv/bin/activate && python api.py
+
+  Frontend (in a new terminal):
+
+  cd frontend && npm start
+
+  Then open: http://localhost:3000

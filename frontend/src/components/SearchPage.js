@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SearchIcon, TrendingUp, TrendingDown, Activity, Building, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, Activity, Building, ChevronDown, ChevronUp } from 'lucide-react';
 import StockDataCard from './ui/StockDataCard';
 import StockChart from './charts/StockChart';
 import PredictionPreviewCard from './ui/PredictionPreviewCard';
@@ -146,7 +146,7 @@ const SearchPage = ({ onNavigateToPredictions }) => {
     const [comparisonData, setComparisonData] = useState(null);
 
     // --- Autocomplete state ---
-    const [suggestions, setSuggestions] = useState([]);
+    const [suggestions, setSuggestions] = useState(null);
     const [showSuggestions, setShowSuggestions] = useState(false);
     
     // --- Debounce the user's input ---
@@ -257,9 +257,10 @@ const SearchPage = ({ onNavigateToPredictions }) => {
     };
     // --- END AUTOCOMPLETE HANDLERS ---
 
-    const handleSearch = async (e) => {
+    const handleSearch = async (e, overrideTicker) => {
         e.preventDefault();
-        if (!ticker) return;
+        const searchTicker = overrideTicker || ticker;
+        if (!searchTicker) return;
 
         setLoading(true);
         setStockData(null);
@@ -284,7 +285,6 @@ const SearchPage = ({ onNavigateToPredictions }) => {
             saveRecentSearch(ticker);
 
             await fetchChartData(ticker, defaultTimeFrame);
-            
             try {
                 const predResponse = await fetch(`http://127.0.0.1:5001/predict/${ticker}`);
                 if (predResponse.ok) {
@@ -364,7 +364,7 @@ const SearchPage = ({ onNavigateToPredictions }) => {
                 <p className="text-lg text-gray-500 dark:text-gray-400 mt-3">Enter a stock symbol to get the latest data.</p>
                 <form onSubmit={handleSearch} className="mt-8 relative">
                     <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
-                        <SearchIcon className="w-6 h-6 text-gray-400" />
+                        <Search className="w-6 h-6 text-gray-400" />
                     </div>
                     <input
                         type="text"
