@@ -334,18 +334,17 @@ const ChapterContent = ({ chapter, isCompleted, onToggleComplete }) => {
             <div className="fixed bottom-8 right-8 z-50">
                 <button
                     onClick={onToggleComplete}
-                    className={`flex items-center gap-3 px-6 py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 ${
+                    className={`flex items-center gap-2 px-5 py-3 rounded-full shadow-lg transition-all transform hover:scale-105 ${
                         isCompleted 
-                            ? 'bg-green-500 text-white shadow-green-500/30' 
+                            ? 'bg-gray-100 text-green-600 border border-green-200 shadow-gray-200/50' 
                             : 'bg-blue-600 text-white shadow-blue-600/30 hover:bg-blue-700'
                     }`}
                 >
-                    {isCompleted ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
-                    <span className="font-semibold">
-                        {isCompleted ? 'Completed' : 'Mark Complete'}
+                    {isCompleted ? <CheckCircle className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+                    <span className="font-medium text-sm">
+                        {isCompleted ? 'Done' : 'Complete'}
                     </span>
-                    {/* Keyboard shortcut hint */}
-                    <span className="ml-2 px-2 py-0.5 bg-white/20 rounded text-xs">Space</span>
+                    {!isCompleted && <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs">Space</span>}
                 </button>
             </div>
         </div>
@@ -770,11 +769,9 @@ const GettingStartedPage = () => {
                                                 {!unlocked ? (
                                                     <Lock className="w-5 h-5 text-gray-300" />
                                                 ) : moduleProgress === 100 ? (
-                                                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                                                        <CheckCircle className="w-4 h-4 text-white" />
-                                                    </div>
+                                                    <CheckCircle className="w-5 h-5 text-green-500" />
                                                 ) : moduleProgress > 0 ? (
-                                                    <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                                                    <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
                                                         <Play className="w-3 h-3 text-white ml-0.5" />
                                                     </div>
                                                 ) : null}
@@ -966,16 +963,17 @@ const GettingStartedPage = () => {
                                         <button
                                             key={ch.id}
                                             onClick={() => navigateToChapter(selectedModule, ch)}
-                                            className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors
+                                            className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors relative
                                                 ${ch.id === selectedChapter.id 
                                                     ? 'bg-blue-600 text-white' 
-                                                    : progress[ch.id]
-                                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200'
+                                                    : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200'
                                                 }`}
                                             title={`${ch.title} (${idx + 1}/${selectedModule.chapters.length})`}
                                         >
                                             {idx + 1}
+                                            {progress[ch.id] && ch.id !== selectedChapter.id && (
+                                                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full" />
+                                            )}
                                         </button>
                                     ))}
                                 </div>
