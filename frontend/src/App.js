@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import Header from './components/Header';
+import Sidebar from './components/Sidebar';
+import DashboardPage from './components/DashboardPage';
 import SearchPage from './components/SearchPage';
 import GettingStartedPage from './components/GettingStartedPage';
 import WatchlistPage from './components/WatchlistPage';
@@ -12,25 +13,15 @@ import ForexPage from './components/ForexPage';
 import CryptoPage from './components/CryptoPage';
 import CommoditiesPage from './components/CommoditiesPage';
 import NewsPage from './components/NewsPage';
-
-// 1. Import the new page
 import NotificationsPage from './components/NotificationsPage';
 import PredictionMarketsPage from './components/PredictionMarketsPage';
 
 function App() {
-    const [activePage, setActivePage] = useState('search');
-
-    // This state is just to pass down the clear function
-    const [alertsToClear, setAlertsToClear] = useState(0);
-
-    const handleClearAlerts = () => {
-        // The header handles polling, this is just to pass the function down
-        setAlertsToClear(prev => prev + 1);
-    };
+    const [activePage, setActivePage] = useState('dashboard');
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 font-sans">
-            {/* Animation styles */}
+        <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden font-sans">
             <style>{`
                 @keyframes fade-in {
                     from { opacity: 0; transform: translateY(10px); }
@@ -39,10 +30,15 @@ function App() {
                 .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
             `}</style>
 
-            <Header activePage={activePage} setActivePage={setActivePage} />
+            <Sidebar
+                activePage={activePage}
+                setActivePage={setActivePage}
+                isCollapsed={sidebarCollapsed}
+                onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
+            />
 
-            <main>
-                {/* 2. Add the rendering logic for all your pages */}
+            <main className={`flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
+                {activePage === 'dashboard' && <DashboardPage setActivePage={setActivePage} />}
                 {activePage === 'search' && <SearchPage />}
                 {activePage === 'watchlist' && <WatchlistPage />}
                 {activePage === 'portfolio' && <PaperTradingPage />}
@@ -54,11 +50,8 @@ function App() {
                 {activePage === 'crypto' && <CryptoPage />}
                 {activePage === 'commodities' && <CommoditiesPage />}
                 {activePage === 'news' && <NewsPage />}
-
-                {/* --- THIS IS THE NEW PAGE --- */}
-                {activePage === 'notifications' && <NotificationsPage onClearAlerts={handleClearAlerts} />}
+                {activePage === 'notifications' && <NotificationsPage />}
                 {activePage === 'predictionMarkets' && <PredictionMarketsPage />}
-
                 {activePage === 'gettingStarted' && <GettingStartedPage />}
             </main>
         </div>
