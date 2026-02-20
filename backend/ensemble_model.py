@@ -1,17 +1,18 @@
 import warnings
 warnings.filterwarnings('ignore')
+import model
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from copy import deepcopy as dc
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 from statsmodels.tsa.ar_model import AutoReg
-import os
 import torch
-from torch import nn
+import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
-
 
 # Try to import XGBoost, fallback if not available
 try:
@@ -69,7 +70,6 @@ def linear_regression_predict(df, days_ahead=7):
     """
     try:
         df = df.copy()
-        today = pd.Timestamp.today().normalize()
         df["Predicted_LR"] = np.nan
 
         # Get the last available date
@@ -185,6 +185,51 @@ def xgboost_predict(df, days_ahead=7, lookback=14):
         print(f"XGBoost error: {e}")
         return None
 
+
+def ensemble_predict(df, days_ahead=7):
+    """
+    Ensemble prediction - average of all available models
+    """
+    predictions = {}
+
+    # Get predictions from each model
+    lr_pred = linear_regression_predict(df, days_ahead)
+    rf_pred = random_forest_predict(df, days_ahead)
+    xgb_pred = xgboost_predict(df, days_ahead)
+
+    # Store individual predictions
+    if lr_pred is not None:
+        predictions['linear_regression'] = lr_pred
+    if rf_pred is not None:
+        predictions['random_forest'] = rf_pred
+    if xgb_pred is not None:
+        predictions['xgboost'] = xgb_pred
+
+    # Calculate ensemble (weighted average)
+    if len(predictions) == 0:
+        return None, {}
+
+    # Simple average for now (can be weighted later based on historical performance)
+    ensemble = np.mean(list(predictions.values()), axis=0)
+
+    return ensemble, predictions
+
+
+def calculate_metrics(actual, predicted):
+    """
+    Calculate accuracy metrics
+    """
+    mae = mean_absolute_error(actual, predicted)
+    rmse = np.sqrt(mean_squared_error(actual, predicted))
+    mape = np.mean(np.abs((actual - predicted) / actual)) * 100
+
+    return {
+        'mae': round(float(mae), 2),
+        'rmse': round(float(rmse), 2),
+        'mape': round(float(mape), 2)
+    }
+
+
 # Neural Network Class
 class NeuralNetwork(nn.Module):
     """
@@ -211,7 +256,7 @@ class NeuralNetwork(nn.Module):
         return self.net(x)
 
 # Artificial Neural Network prediction function
-def ann_predict(df, days_ahead=7, epochs=1000):
+def ann_predict(df, days_ahead=7):
     """
     Neural Network prediction
     """
@@ -227,10 +272,11 @@ def ann_predict(df, days_ahead=7, epochs=1000):
     # Drop Today's data 
     df = df[df.index < pd.Timestamp.today().normalize()]
 
+    # Data for forcasting
+    df["Target"] = df["Close"].shift(-days_ahead)
+
     # Drop rows with NaN values
     df = df.dropna()
-
-    df["Target"] = df["Close"].shift(-days_ahead)
 
     # Setup df for ML
     features = ['H-L','O-C','ma_7', 'ma_14', 'ma_21', 'std_7']
@@ -286,48 +332,140 @@ def ann_predict(df, days_ahead=7, epochs=1000):
     #     return None
 
 
-def ensemble_predict(df, days_ahead=7):
+# LSTM Class
+class LSTM(nn.Module):
+    '''
+    LSTM model for time series forecasting
+    '''
+    def __init__(self, input_size, hidden_size, layer_size, output_size):
+        super(LSTM, self).__init__()
+        self.hidden_size = hidden_size
+        self.layer_size = layer_size
+        self.lstm = nn.LSTM(input_size, hidden_size, layer_size, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)  # output X days at once
+
+    def forward(self, x, device):
+        batch_size = x.size(0)
+        h0 = torch.zeros(self.layer_size, batch_size, self.hidden_size).to(device)
+        c0 = torch.zeros(self.layer_size, batch_size, self.hidden_size).to(device)
+        out, _ = self.lstm(x, (h0, c0))
+        out = self.fc(out[:, -1, :])  # (batch, output_size)
+        return out
+
+# LSTM Helper
+def create_sequences(X, y, seq_len, forecast_horizon):
     """
-    Ensemble prediction - average of all available models
+    Slide a window across the time series to create input/output pairs.
+    Args:
+        X:                 2D array (n_samples, n_features)
+        y:                 2D array (n_samples, 1)
+        seq_len:           number of past days to use as input
+        forecast_horizon:  number of future days to predict
+    Returns:
+        X_seq: (n_sequences, seq_len, n_features)
+        y_seq: (n_sequences, forecast_horizon)
     """
-    predictions = {}
+    Xs, ys = [], []
+    for i in range(len(X) - seq_len - forecast_horizon + 1):
+        Xs.append(X[i : i + seq_len])
+        ys.append(y[i + seq_len : i + seq_len + forecast_horizon, 0])
+    return np.array(Xs), np.array(ys)
 
-    # Get predictions from each model
-    lr_pred = linear_regression_predict(df, days_ahead)
-    rf_pred = random_forest_predict(df, days_ahead)
-    xgb_pred = xgboost_predict(df, days_ahead)
+# Train LSTM model
+def lstm_train(df, lookback=14, seq_len=60, forecast_horizon=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001):
 
-    # Store individual predictions
-    if lr_pred is not None:
-        predictions['linear_regression'] = lr_pred
-    if rf_pred is not None:
-        predictions['random_forest'] = rf_pred
-    if xgb_pred is not None:
-        predictions['xgboost'] = xgb_pred
+    # --- Build features ---
+    X_features, _, df_features = prepare_ml_data(df, lookback)
+    y_values = df_features[['Close']].values
 
-    # Calculate ensemble (weighted average)
-    if len(predictions) == 0:
-        return None, {}
+    # --- Create sequences BEFORE splitting and scaling ---
+    X_seq, y_seq = create_sequences(X_features, y_values, seq_len, forecast_horizon)
 
-    # Simple average for now (can be weighted later based on historical performance)
-    ensemble = np.mean(list(predictions.values()), axis=0)
+    # --- Split BEFORE normalizing ---
+    split = int(len(X_seq) * 0.8)
+    X_train_raw, X_test_raw = X_seq[:split], X_seq[split:]
+    y_train_raw, y_test_raw = y_seq[:split], y_seq[split:]
 
-    return ensemble, predictions
+    # --- Fit scalers on training data only ---
+    # Reshape to 2D to fit scaler, then reshape back to 3D
+    n_train, seq_len_, n_features = X_train_raw.shape
 
+    scaler_X = MinMaxScaler()
+    scaler_y = MinMaxScaler()
 
-def calculate_metrics(actual, predicted):
-    """
-    Calculate accuracy metrics
-    """
-    mae = mean_absolute_error(actual, predicted)
-    rmse = np.sqrt(mean_squared_error(actual, predicted))
-    mape = np.mean(np.abs((actual - predicted) / actual)) * 100
+    # Flatten time dimension to fit scaler across all timesteps in training set
+    X_train_scaled = scaler_X.fit_transform(X_train_raw.reshape(-1, n_features)).reshape(n_train, seq_len_, n_features)
+    X_test_scaled = scaler_X.transform(X_test_raw.reshape(-1, n_features)).reshape(X_test_raw.shape)
 
-    return {
-        'mae': round(float(mae), 2),
-        'rmse': round(float(rmse), 2),
-        'mape': round(float(mape), 2)
-    }
+    y_train_scaled = scaler_y.fit_transform(y_train_raw.reshape(-1, 1)).reshape(y_train_raw.shape)
+    y_test_scaled  = scaler_y.transform(y_test_raw.reshape(-1, 1)).reshape(y_test_raw.shape)
+
+    # --- Convert to tensors ---
+    X_train = torch.FloatTensor(X_train_scaled)
+    X_test  = torch.FloatTensor(X_test_scaled)
+    y_train = torch.FloatTensor(y_train_scaled)
+    y_test  = torch.FloatTensor(y_test_scaled)
+
+    # --- Model ---
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    input_size = n_features
+    model = LSTM(input_size, hidden_size, layer_size, forecast_horizon).to(device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.MSELoss()
+    loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
+
+    # --- Training loop ---
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            pred = model(xb, device)
+            loss = criterion(pred, yb)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        if (epoch + 1) % 10 == 0:
+            model.eval()
+            with torch.no_grad():
+                val_pred = model(X_test.to(device), device)
+                val_loss = criterion(val_pred, y_test.to(device))
+            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f} | Val Loss: {val_loss:.6f}")
+
+    return model, scaler_X, scaler_y, device
+
+# Long Short-Term Memory (LSTM) prediction function
+def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=60):
+    '''Predict future stock prices using the trained LSTM model'''
+    try:
+        model.eval()
+
+        # --- Build features the same way as training ---
+        X_features, _, _ = prepare_ml_data(df, lookback)
+
+        # --- Take last seq_len rows BEFORE scaling ---
+        last_window_raw = X_features[-seq_len:] # (seq_len, n_features)
+
+        # --- Scale using training scaler (same reshape trick) ---
+        n_features = last_window_raw.shape[1]
+        last_window_scaled = scaler_X.transform(last_window_raw.reshape(-1, n_features)).reshape(1, seq_len, n_features)
+
+        last_window_tensor = torch.FloatTensor(last_window_scaled).to(device)
+
+        # --- Predict ---
+        with torch.no_grad():
+            pred_scaled = model(last_window_tensor, device).cpu().numpy() # (1, forecast_horizon)
+
+        # --- Inverse transform ---
+        pred_prices = scaler_y.inverse_transform(pred_scaled.reshape(-1, 1)).flatten()
+        return pred_prices
+
+    except Exception as e:
+        print(f"LSTM error: {e}")
+        return None
 
 
 if __name__ == "__main__":
@@ -347,4 +485,21 @@ if __name__ == "__main__":
     # print(f"\nIndividual models:")
     # for model_name, preds in individual.items():
     #     print(f"  {model_name}: {preds}")
-    ann_predict(data)  # Placeholder call for ANN
+    # ann_predict(data)
+
+
+    # --- LSTM Train ---
+    lookback = 14
+    seq_len = 60
+    forcast_horizon = 30
+    model, scaler_X, scaler_y, device = lstm_train(df, lookback=lookback, seq_len=seq_len, forecast_horizon=forcast_horizon, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+
+    # --- Predict ---
+    predictions = lstm_predict(df, model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
+
+    # --- Output ---
+    if predictions is not None:
+        last_date = df.index[-1]
+        future_dates = pd.bdate_range(start=last_date, periods=forcast_horizon + 1)[1:]  # business days only
+        for date, price in zip(future_dates, predictions):
+            print(f"{date.date()} → ${price:.2f}")
