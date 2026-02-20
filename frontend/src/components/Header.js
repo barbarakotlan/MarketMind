@@ -65,13 +65,17 @@ const Header = ({ activePage, setActivePage }) => {
     return (
         <header className="bg-gray-800 dark:bg-gray-950 text-white shadow-lg transition-colors duration-200">
             <nav className="container mx-auto px-6 py-4 flex justify-between items-center">
+                
                 <div className="flex items-center">
-                    <h1 className="text-xl font-bold tracking-wider">MarketMind</h1>
+                    {/* Possible Dark Mode Variation*/}
+                    <img src={isDarkMode? "marketmindtransparent.png" : "marketmindtransparent.png"}  style={{ width: 90, height: 90 }}></img>
+        
                 </div>
                 <div className="flex items-center space-x-4">
                     {/* Navigation Buttons - Organized by Section */}
                     <div className="flex items-center space-x-1 bg-gray-900 dark:bg-gray-800 rounded-lg p-1 relative">
                         {/* Main Actions */}
+                        
                         <NavButton pageName="search">
                             <Search className="w-4 h-4 inline mr-1" />
                             Search
