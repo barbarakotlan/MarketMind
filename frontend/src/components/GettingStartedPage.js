@@ -40,7 +40,6 @@ const getMasteryLevel = (progress) => {
 // --- PROGRESS STORAGE UTILITIES ---
 const STORAGE_KEY = 'marketmind_course_progress';
 
-
 const loadProgress = () => {
     try {
         const saved = localStorage.getItem(STORAGE_KEY);
@@ -57,9 +56,6 @@ const saveProgress = (progress) => {
         // Silently fail if localStorage is unavailable
     }
 };
-
-
-
 
 // --- SCROLL PROGRESS HOOK ---
 const useScrollProgress = (ref) => {
@@ -344,7 +340,7 @@ const ChapterContent = ({ chapter, isCompleted, onToggleComplete }) => {
                     <span className="font-medium text-sm">
                         {isCompleted ? 'Done' : 'Complete'}
                     </span>
-                    {!isCompleted && <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs">Space</span>}
+                    {!isCompleted && <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs">M</span>}
                 </button>
             </div>
         </div>
@@ -467,15 +463,16 @@ const KeyboardHelp = ({ onClose }) => (
             
             <div className="space-y-3">
                 {[
-                    { key: '← / →', desc: 'Previous / Next chapter' },
-                    { key: 'Space', desc: 'Mark chapter complete' },
-                    { key: 'Esc', desc: 'Exit to module view' },
+                    { key: '← / K', desc: 'Previous chapter' },
+                    { key: '→ / J', desc: 'Next chapter' },
+                    { key: 'M', desc: 'Mark chapter complete' },
+                    { key: 'Esc', desc: 'Exit / Close modals' },
                     { key: '/', desc: 'Open search' },
                     { key: '?', desc: 'Show this help' },
                 ].map(({ key, desc }) => (
                     <div key={key} className="flex items-center justify-between py-2">
                         <span className="text-gray-600 dark:text-gray-300">{desc}</span>
-                        <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm font-mono text-gray-700 dark:text-gray-300">
+                        <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm font-mono text-gray-700 dark:text-gray-300 shadow-sm border border-gray-200 dark:border-gray-600">
                             {key}
                         </kbd>
                     </div>
@@ -506,58 +503,80 @@ const GettingStartedPage = () => {
         }
     }, [progress]);
 
+    // Toggle chapter completion
+    const toggleChapterComplete = useCallback((chapterId) => {
+        setProgress(prev => ({
+            ...prev,
+            [chapterId]: !prev[chapterId]
+        }));
+    }, []);
+
+    // Navigate back to modules
+    const backToModules = () => {
+        setSelectedModule(null);
+        setSelectedChapter(null);
+    };
+
     // Keyboard navigation
     useEffect(() => {
         const handleKeyDown = (e) => {
-            // Don't capture if user is typing in an input
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            // Robust check to ensure we don't hijack typing in search or quiz inputs
+            const activeTag = document.activeElement?.tagName.toLowerCase();
+            if (activeTag === 'input' || activeTag === 'textarea' || e.isComposing) {
+                // Let Escape bubble up to close search even if input is focused
+                if (e.key === 'Escape' && showSearch) {
+                    setShowSearch(false);
+                }
+                return; 
+            }
 
-            // Show search on /
+            // Global Shortcuts
             if (e.key === '/' && !showSearch) {
                 e.preventDefault();
                 setShowSearch(true);
                 return;
             }
 
-            // Show keyboard help on ?
-            if (e.key === '?' && !showKeyboardHelp) {
+            if (e.key === '?' && !showKeyboardHelp && !showSearch) {
                 e.preventDefault();
                 setShowKeyboardHelp(true);
                 return;
             }
+            
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                if (showSearch) setShowSearch(false);
+                else if (showKeyboardHelp) setShowKeyboardHelp(false);
+                else if (selectedChapter) setSelectedChapter(null);
+                else if (selectedModule) backToModules();
+                return;
+            }
 
-            // Only handle navigation when reading a chapter
-            if (!selectedChapter || !selectedModule) return;
+            // Chapter-Specific Shortcuts
+            if (!selectedChapter || !selectedModule || showSearch || showKeyboardHelp) return;
 
             const currentIdx = selectedModule.chapters.findIndex(ch => ch.id === selectedChapter.id);
 
-            switch (e.key) {
-                case 'ArrowLeft':
+            switch (e.key.toLowerCase()) {
+                case 'arrowleft':
+                case 'k':
                     e.preventDefault();
                     if (currentIdx > 0) {
                         setSelectedChapter(selectedModule.chapters[currentIdx - 1]);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                     }
                     break;
-                case 'ArrowRight':
+                case 'arrowright':
+                case 'j':
                     e.preventDefault();
                     if (currentIdx < selectedModule.chapters.length - 1) {
                         setSelectedChapter(selectedModule.chapters[currentIdx + 1]);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                     }
                     break;
-                case ' ':
-                case 'Spacebar':
+                case 'm': // Replaced Spacebar with M to protect native page scrolling
                     e.preventDefault();
                     toggleChapterComplete(selectedChapter.id);
-                    break;
-                case 'Escape':
-                    e.preventDefault();
-                    if (selectedChapter) {
-                        setSelectedChapter(null);
-                    } else if (selectedModule) {
-                        backToModules();
-                    }
                     break;
                 default:
                     break;
@@ -566,7 +585,7 @@ const GettingStartedPage = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedChapter, selectedModule, showSearch, showKeyboardHelp]);
+    }, [selectedChapter, selectedModule, showSearch, showKeyboardHelp, toggleChapterComplete]);
 
     // Calculate stats
     const totalChapters = getTotalChapters();
@@ -583,14 +602,6 @@ const GettingStartedPage = () => {
         return completedInPrev >= Math.ceil(prevModuleChapters.length * 0.5);
     };
 
-    // Toggle chapter completion
-    const toggleChapterComplete = useCallback((chapterId) => {
-        setProgress(prev => ({
-            ...prev,
-            [chapterId]: !prev[chapterId]
-        }));
-    }, []);
-
     // Calculate module progress
     const getModuleProgress = (module) => {
         const completed = module.chapters.filter(ch => progress[ch.id]).length;
@@ -602,12 +613,6 @@ const GettingStartedPage = () => {
         setSelectedModule(module);
         setSelectedChapter(chapter);
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    // Navigate back to modules
-    const backToModules = () => {
-        setSelectedModule(null);
-        setSelectedChapter(null);
     };
 
     // Navigate back to module overview
@@ -1014,7 +1019,7 @@ const GettingStartedPage = () => {
                                                 >
                                                     <ChevronLeft className="w-4 h-4" />
                                                     Previous
-                                                    <span className="hidden sm:inline text-xs text-gray-400">←</span>
+                                                    <span className="hidden sm:inline text-xs text-gray-400">← / K</span>
                                                 </button>
                                             ) : <div />}
                                             
@@ -1024,7 +1029,7 @@ const GettingStartedPage = () => {
                                                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                                                 >
                                                     Next Chapter
-                                                    <span className="hidden sm:inline text-xs text-blue-200">→</span>
+                                                    <span className="hidden sm:inline text-xs text-blue-200">→ / J</span>
                                                     <ChevronRight className="w-4 h-4" />
                                                 </button>
                                             ) : (

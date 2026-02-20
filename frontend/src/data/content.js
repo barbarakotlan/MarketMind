@@ -1,3 +1,18 @@
+// --- DYNAMIC READING TIME CALCULATOR ---
+// Calculates based on average adult reading speed of 225 Words Per Minute
+export const calculateReadingTime = (content) => {
+    if (!content || !Array.isArray(content)) return 1;
+    
+    const text = content.map(item => {
+        if (item.type === 'paragraph' || item.type === 'heading' || item.type === 'note') return item.text || '';
+        if (item.type === 'list') return item.items ? item.items.join(' ') : '';
+        return '';
+    }).join(' ');
+    
+    const words = text.trim().split(/\s+/).length;
+    return Math.max(1, Math.ceil(words / 225));
+};
+
 // --- QUIZ DATA ---
 export const QUESTION_BANK = {
     easy: [
@@ -68,6 +83,13 @@ export const QUESTION_BANK = {
             question: "What represents the price a buyer is willing to pay?",
             options: ["Bid", "Ask", "Spread", "Volume"],
             answer: "Bid"
+        },
+        {
+            id: 11,
+            type: 'multiple',
+            question: "In Quantitative Trading, what does 'Quant' stand for?",
+            options: ["Quantitative", "Qualitative", "Quantum", "Quarterly"],
+            answer: "Quantitative"
         }
     ],
     medium: [
@@ -138,6 +160,13 @@ export const QUESTION_BANK = {
             question: "Which is a risk management tool?",
             options: ["Stop-Loss Order", "Market Order", "Leverage", "Going All In"],
             answer: "Stop-Loss Order"
+        },
+        {
+            id: 11,
+            type: 'multiple',
+            question: "What is 'Backtesting' in algorithmic trading?",
+            options: ["Testing a strategy on historical data", "Testing a strategy with live money", "Reversing a trade", "Testing network latency"],
+            answer: "Testing a strategy on historical data"
         }
     ],
     hard: [
@@ -208,22 +237,34 @@ export const QUESTION_BANK = {
             question: "Which financial statement shows a company's assets, liabilities, and shareholders' equity?",
             options: ["Balance Sheet", "Income Statement", "Cash Flow Statement", "Annual Report"],
             answer: "Balance Sheet"
+        },
+        {
+            id: 11,
+            type: 'multiple',
+            question: "In machine learning for trading, what is 'Overfitting'?",
+            options: ["A model that memorizes historical noise instead of finding true patterns", "Running too many algorithms at once", "Sizing a position too large", "When a model completely fails to learn"],
+            answer: "A model that memorizes historical noise instead of finding true patterns"
+        },
+        {
+            id: 12,
+            type: 'multiple',
+            question: "What is 'Survivorship Bias' in quantitative backtesting?",
+            options: ["Ignoring companies that went bankrupt and were delisted from historical datasets", "Only trading companies with strong balance sheets", "Holding onto losing trades too long", "An algorithm that survives market crashes"],
+            answer: "Ignoring companies that went bankrupt and were delisted from historical datasets"
         }
     ]
 };
 
-// --- LEARNING MODULES - FULL COURSE CURRICULUM ---
-export const learningModules = [
+// --- LEARNING MODULES - FULL COURSE CURRICULUM (RAW DATA) ---
+const rawLearningModules = [
     {
         id: "m1",
         title: "Module 1: Market Foundations",
         description: "Build a solid understanding of how markets function, key participants, and the basic instruments available to investors.",
-        estimatedMinutes: 120,
         chapters: [
             {
                 id: "m1c1",
                 title: "The Market Ecosystem",
-                estimatedMinutes: 25,
                 content: [
                     { type: 'paragraph', text: "The stock market is more than just rising and falling numbers; it is a sophisticated mechanism for capital allocation. It connects companies seeking capital with investors seeking returns. Understanding this ecosystem is fundamental to becoming a successful investor." },
                     { type: 'heading', text: "Primary vs. Secondary Markets" },
@@ -249,7 +290,6 @@ export const learningModules = [
             {
                 id: "m1c2",
                 title: "Asset Classes Deep Dive",
-                estimatedMinutes: 30,
                 content: [
                     { type: 'paragraph', text: "True diversification requires understanding the characteristics of different asset classes. Each serves different purposes in a portfolio and behaves differently under various market conditions." },
                     { type: 'heading', text: "Equities (Stocks)" },
@@ -275,7 +315,6 @@ export const learningModules = [
             {
                 id: "m1c3",
                 title: "Market Indices & Benchmarks",
-                estimatedMinutes: 20,
                 content: [
                     { type: 'paragraph', text: "Market indices serve as barometers for market performance and provide benchmarks against which to measure your own returns. Understanding what each index represents helps you contextualize market movements." },
                     { type: 'heading', text: "Major US Indices" },
@@ -293,7 +332,6 @@ export const learningModules = [
             {
                 id: "m1c4",
                 title: "Trading Mechanics & Order Types",
-                estimatedMinutes: 25,
                 content: [
                     { type: 'paragraph', text: "Understanding order types and trading mechanics helps you execute your strategy effectively while managing costs and avoiding common pitfalls." },
                     { type: 'heading', text: "Basic Order Types" },
@@ -313,7 +351,6 @@ export const learningModules = [
             {
                 id: "m1c5",
                 title: "Market Regulation & Investor Protection",
-                estimatedMinutes: 20,
                 content: [
                     { type: 'paragraph', text: "Financial markets operate within a framework of regulations designed to maintain fairness, transparency, and investor protection. Understanding these guardrails helps you recognize legitimate practices and avoid scams." },
                     { type: 'heading', text: "Key Regulatory Bodies" },
@@ -335,12 +372,10 @@ export const learningModules = [
         id: "m2",
         title: "Module 2: Fundamental Analysis",
         description: "Learn to read financial statements, calculate valuation metrics, and determine the intrinsic value of a company.",
-        estimatedMinutes: 180,
         chapters: [
             {
                 id: "m2c1",
                 title: "The Big Three Financial Statements",
-                estimatedMinutes: 40,
                 content: [
                     { type: 'paragraph', text: "Financial statements are the report cards of business. Learning to read them allows you to assess a company's health, profitability, and sustainability. All three statements interconnect to tell the complete financial story." },
                     { type: 'heading', text: "The Balance Sheet" },
@@ -371,7 +406,6 @@ export const learningModules = [
             {
                 id: "m2c2",
                 title: "Profitability Ratios",
-                estimatedMinutes: 30,
                 content: [
                     { type: 'paragraph', text: "Profitability ratios measure how efficiently a company generates profits from its resources. These metrics allow comparison across companies and industries." },
                     { type: 'heading', text: "Margin Analysis" },
@@ -392,7 +426,6 @@ export const learningModules = [
             {
                 id: "m2c3",
                 title: "Valuation Multiples",
-                estimatedMinutes: 35,
                 content: [
                     { type: 'paragraph', text: "Valuation multiples provide a common language for comparing company values. They normalize for size differences and offer quick benchmarks, but must always be interpreted in context." },
                     { type: 'heading', text: "Price Multiples" },
@@ -415,7 +448,6 @@ export const learningModules = [
             {
                 id: "m2c4",
                 title: "Growth & Dividend Analysis",
-                estimatedMinutes: 30,
                 content: [
                     { type: 'paragraph', text: "Understanding a company's growth trajectory and capital return policy helps you determine whether it fits your investment objectives and how to value it appropriately." },
                     { type: 'heading', text: "Growth Metrics" },
@@ -437,7 +469,6 @@ export const learningModules = [
             {
                 id: "m2c5",
                 title: "Qualitative Analysis",
-                estimatedMinutes: 25,
                 content: [
                     { type: 'paragraph', text: "Numbers tell only part of the story. Qualitative factors—the aspects that don't appear on financial statements—often determine long-term success or failure." },
                     { type: 'heading', text: "Competitive Advantages (Moats)" },
@@ -461,12 +492,10 @@ export const learningModules = [
         id: "m3",
         title: "Module 3: Technical Analysis",
         description: "Master chart reading, pattern recognition, and technical indicators to time your entries and exits.",
-        estimatedMinutes: 160,
         chapters: [
             {
                 id: "m3c1",
                 title: "Chart Types & Candlestick Anatomy",
-                estimatedMinutes: 30,
                 content: [
                     { type: 'paragraph', text: "Technical analysis is the study of market psychology manifested in price action. Before learning patterns, you must understand how to read the basic building blocks of charts." },
                     { type: 'heading', text: "Chart Types" },
@@ -495,7 +524,6 @@ export const learningModules = [
             {
                 id: "m3c2",
                 title: "Support & Resistance",
-                estimatedMinutes: 25,
                 content: [
                     { type: 'paragraph', text: "Support and resistance are the foundation of technical analysis. These price levels where buying or selling pressure historically emerges can help predict future price movements and identify trading opportunities." },
                     { type: 'heading', text: "Understanding Support" },
@@ -515,7 +543,6 @@ export const learningModules = [
             {
                 id: "m3c3",
                 title: "Trend Analysis & Moving Averages",
-                estimatedMinutes: 35,
                 content: [
                     { type: 'paragraph', text: "The trend is your friend. Trading in the direction of the prevailing trend significantly improves your probability of success. Moving averages provide objective trend identification and dynamic support/resistance." },
                     { type: 'heading', text: "Types of Trends" },
@@ -544,7 +571,6 @@ export const learningModules = [
             {
                 id: "m3c4",
                 title: "Technical Indicators",
-                estimatedMinutes: 40,
                 content: [
                     { type: 'paragraph', text: "Indicators are mathematical calculations based on price, volume, or open interest. They help confirm trends, identify overbought/oversold conditions, and generate trading signals. Remember: indicators are derivatives of price—they lag and can give false signals." },
                     { type: 'heading', text: "Momentum Oscillators" },
@@ -570,7 +596,6 @@ export const learningModules = [
             {
                 id: "m3c5",
                 title: "Chart Patterns",
-                estimatedMinutes: 30,
                 content: [
                     { type: 'paragraph', text: "Chart patterns are recognizable formations created by price action. They reflect market psychology and, while not foolproof, provide probabilistic scenarios for future price movement." },
                     { type: 'heading', text: "Reversal Patterns" },
@@ -596,12 +621,10 @@ export const learningModules = [
         id: "m4",
         title: "Module 4: Options & Derivatives",
         description: "Understand options mechanics, the Greeks, and strategies for income, speculation, and hedging.",
-        estimatedMinutes: 200,
         chapters: [
             {
                 id: "m4c1",
                 title: "Options Basics",
-                estimatedMinutes: 35,
                 content: [
                     { type: 'paragraph', text: "Options are contracts that give the holder the right, but not the obligation, to buy or sell an underlying asset at a specific price before a specific date. They are powerful tools for leverage, income, and risk management." },
                     { type: 'heading', text: "Call Options" },
@@ -629,7 +652,6 @@ export const learningModules = [
             {
                 id: "m4c2",
                 title: "The Greeks",
-                estimatedMinutes: 40,
                 content: [
                     { type: 'paragraph', text: "The Greeks measure how sensitive an option's price is to various factors. They help traders understand risk exposure and position themselves appropriately for different market conditions." },
                     { type: 'heading', text: "Delta (Directional Risk)" },
@@ -651,7 +673,6 @@ export const learningModules = [
             {
                 id: "m4c3",
                 title: "Volatility & Pricing",
-                estimatedMinutes: 35,
                 content: [
                     { type: 'paragraph', text: "Understanding volatility is crucial for options trading. It represents the market's expectation of future price movement and is a primary driver of option premiums." },
                     { type: 'heading', text: "Implied Volatility (IV)" },
@@ -671,7 +692,6 @@ export const learningModules = [
             {
                 id: "m4c4",
                 title: "Income Strategies",
-                estimatedMinutes: 35,
                 content: [
                     { type: 'paragraph', text: "Options can generate consistent income through premium collection. These strategies work best in neutral to slightly directional markets with high implied volatility." },
                     { type: 'heading', text: "Covered Calls" },
@@ -702,7 +722,6 @@ export const learningModules = [
             {
                 id: "m4c5",
                 title: "Speculation & Hedging",
-                estimatedMinutes: 30,
                 content: [
                     { type: 'paragraph', text: "Options provide leveraged exposure to stock movements and can protect existing positions against adverse moves. These uses require disciplined risk management given their potential for total loss." },
                     { type: 'heading', text: "Long Options for Speculation" },
@@ -727,7 +746,6 @@ export const learningModules = [
             {
                 id: "m4c6",
                 title: "Multi-Leg Strategies",
-                estimatedMinutes: 25,
                 content: [
                     { type: 'paragraph', text: "Advanced strategies combine multiple options to create specific risk/reward profiles for various market conditions and objectives." },
                     { type: 'heading', text: "Straddles & Strangles" },
@@ -749,12 +767,10 @@ export const learningModules = [
         id: "m5",
         title: "Module 5: Portfolio Management",
         description: "Build and manage a diversified portfolio aligned with your goals, risk tolerance, and time horizon.",
-        estimatedMinutes: 150,
         chapters: [
             {
                 id: "m5c1",
                 title: "Investment Policy & Goal Setting",
-                estimatedMinutes: 25,
                 content: [
                     { type: 'paragraph', text: "Successful investing begins with clarity about what you're trying to achieve. Without defined goals and constraints, you're navigating without a map." },
                     { type: 'heading', text: "Defining Your Objectives" },
@@ -778,7 +794,6 @@ export const learningModules = [
             {
                 id: "m5c2",
                 title: "Asset Allocation",
-                estimatedMinutes: 35,
                 content: [
                     { type: 'paragraph', text: "Asset allocation is the single most important decision in portfolio construction, explaining the majority of long-term performance differences. It's about spreading investments across uncorrelated asset classes to optimize risk-adjusted returns." },
                     { type: 'heading', text: "The Core-Satellite Approach" },
@@ -801,7 +816,6 @@ export const learningModules = [
             {
                 id: "m5c3",
                 title: "Position Sizing & Risk Management",
-                estimatedMinutes: 30,
                 content: [
                     { type: 'paragraph', text: "How much you invest in each position matters as much as what you invest in. Proper position sizing protects against catastrophic losses while allowing winners to meaningfully impact performance." },
                     { type: 'heading', text: "Position Sizing Methods" },
@@ -824,7 +838,6 @@ export const learningModules = [
             {
                 id: "m5c4",
                 title: "Rebalancing & Tax Management",
-                estimatedMinutes: 30,
                 content: [
                     { type: 'paragraph', text: "Maintenance is as important as initial construction. Rebalancing keeps your allocation aligned with targets, while tax management maximizes after-tax returns." },
                     { type: 'heading', text: "Rebalancing Strategies" },
@@ -847,7 +860,6 @@ export const learningModules = [
             {
                 id: "m5c5",
                 title: "Behavioral Finance",
-                estimatedMinutes: 30,
                 content: [
                     { type: 'paragraph', text: "Markets are driven by human emotion as much as fundamentals. Understanding cognitive biases helps you recognize and counteract irrational tendencies that destroy returns." },
                     { type: 'heading', text: "Common Cognitive Biases" },
@@ -870,10 +882,159 @@ export const learningModules = [
                 ]
             }
         ]
+    },
+    {
+        id: "m6",
+        title: "Module 6: Macroeconomics & The Federal Reserve",
+        description: "The 'Invisible Hand' that drives market cycles through interest rates, inflation data, and central bank liquidity.",
+        chapters: [
+            {
+                id: "m6c1",
+                title: "The Federal Reserve & Monetary Policy",
+                content: [
+                    { type: 'paragraph', text: "The Federal Reserve (the Fed) is the central bank of the United States. Its primary 'dual mandate' is to promote maximum employment and stable prices (low inflation). To achieve this, the Fed manipulates the Federal Funds Rate—the interest rate at which banks lend to each other overnight." },
+                    { type: 'heading', text: "The Cost of Money" },
+                    { type: 'paragraph', text: "Interest rates are effectively the 'price of money.' When the Fed raises rates, borrowing becomes more expensive for corporations and consumers. This slows down the economy to fight inflation. Conversely, lowering rates 'greases the wheels' of the economy, making it cheaper to grow businesses and spend money." },
+                    { type: 'heading', text: "Quantitative Easing (QE) vs. Tightening (QT)" },
+                    { type: 'list', items: [
+                        "Quantitative Easing (QE): The Fed buys government bonds to inject cash directly into the banking system. This lowers long-term interest rates and often signals a 'Bull Market' for stocks.",
+                        "Quantitative Tightening (QT): The Fed sells its bond holdings or lets them expire, effectively sucking cash out of the system. This reduces liquidity and acts as a 'Headwind' for risky assets."
+                    ]},
+                    { type: 'note', text: "Markets don't just react to what the Fed does; they react to what the Fed says. This is known as 'Forward Guidance' and is why every word in an FOMC press release is scrutinized." }
+                ]
+            },
+            {
+                id: "m6c2",
+                title: "Economic Indicators & The Market Cycle",
+                content: [
+                    { type: 'paragraph', text: "Investors watch specific data releases like hawks because they signal what the Fed might do next. These indicators tell us where we are in the Economic Cycle (Expansion, Peak, Contraction, Trough)." },
+                    { type: 'heading', text: "The Big Three Data Points" },
+                    { type: 'list', items: [
+                        "CPI (Consumer Price Index): The main gauge for inflation. If CPI is higher than expected, the market fears higher interest rates, which typically causes stocks to drop.",
+                        "GDP (Gross Domestic Product): Measures the total value of goods produced. Steady growth is healthy; negative growth for two consecutive quarters officially signals a recession.",
+                        "Non-Farm Payrolls (NFP): Released the first Friday of every month, this shows how many jobs were added. A 'hot' jobs report can ironically cause stocks to fall because it gives the Fed more room to raise rates without hurting the labor market."
+                    ]},
+                    { type: 'heading', text: "The Yield Curve" },
+                    { type: 'paragraph', text: "The Yield Curve compares the interest rates of short-term vs. long-term government bonds. Usually, long-term bonds pay more. When short-term rates become higher than long-term rates, the curve is 'Inverted'—historically the most reliable signal of an upcoming recession." }
+                ]
+            }
+        ]
+    },
+    {
+        id: "m7",
+        title: "Module 7: Advanced Risk Math & Modern Finance",
+        description: "The mathematical frameworks used by hedge funds to quantify risk, size positions, and protect capital.",
+        chapters: [
+            {
+                id: "m7c1",
+                title: "Risk-Adjusted Returns & The Sharpe Ratio",
+                content: [
+                    { type: 'paragraph', text: "In professional trading, a 20% return is meaningless without knowing the risk taken to get it. If you had to endure an 80% 'Drawdown' (peak-to-trough decline) to get that return, your strategy is likely unsustainable and statistically 'lucky' rather than 'good'." },
+                    { type: 'heading', text: "The Sharpe Ratio" },
+                    { type: 'paragraph', text: "Developed by Nobel laureate William Sharpe, this ratio calculates excess return per unit of volatility. It tells you if your returns are due to smart investing or just taking excessive risk." },
+                    { type: 'list', items: [
+                        "Sharpe > 1.0: Generally considered acceptable to good.",
+                        "Sharpe > 2.0: Very good; very difficult to maintain over long periods.",
+                        "Sharpe > 3.0: Exceptional; usually found in market-neutral hedge funds or high-frequency trading firms."
+                    ]},
+                    { type: 'heading', text: "Value at Risk (VaR)" },
+                    { type: 'paragraph', text: "VaR is a statistical technique used to measure the level of financial risk within a portfolio. It estimates how much a set of investments might lose (with a given probability) in a set time period. For example, a VaR of $5,000 at a 95% confidence level means there is only a 5% chance the portfolio will lose more than $5,000 in a day." }
+                ]
+            },
+            {
+                id: "m7c2",
+                title: "Position Sizing & The Kelly Criterion",
+                content: [
+                    { type: 'paragraph', text: "Most traders fail not because they pick the wrong stocks, but because they bet too much on a single idea. Position sizing is the ultimate survival skill in finance." },
+                    { type: 'heading', text: "The Kelly Criterion" },
+                    { type: 'paragraph', text: "This mathematical formula helps you find the 'optimal' amount of your portfolio to risk on a single trade based on your historical 'Win Rate' and 'Win/Loss Ratio' (the payoff)." },
+                    { type: 'list', items: [
+                        "The Goal: To maximize the growth rate of wealth over the long run.",
+                        "The Danger: If you 'over-bet' (Full Kelly), a short string of losses can lead to 'Gambler's Ruin'—mathematically certain bankruptcy.",
+                        "Fractional Kelly: Most professionals risk only a 'Half-Kelly' or 'Quarter-Kelly' to provide a safety buffer for psychological comfort and unexpected market shifts."
+                    ]},
+                    { type: 'note', text: "If the math tells you to risk 0% of your capital, it means the trade does not have a 'Positive Expectancy'—meaning the odds are against you and you should stay in cash." }
+                ]
+            },
+            {
+                id: "m7c3",
+                title: "Black Swans & Tail Risk",
+                content: [
+                    { type: 'paragraph', text: "Normal market math assumes price movements follow a 'Normal Distribution' (the bell curve). However, markets frequently experience 'Fat Tails'—extreme events that happen much more often than standard math predicts." },
+                    { type: 'heading', text: "Identifying a Black Swan" },
+                    { type: 'paragraph', text: "Coined by Nassim Taleb, a Black Swan is an event that is unpredictable, has a massive impact, and is often explained away with hindsight (e.g., the 2008 financial crisis or the 2020 pandemic lockdowns)." },
+                    { type: 'heading', text: "Hedging Tail Risk" },
+                    { type: 'paragraph', text: "Professionals protect against these 'outlier' events using out-of-the-money (OTM) put options. While these options usually expire worthless (like insurance premiums), they provide explosive payouts when the market 'crashes,' saving the portfolio from total liquidation during a crisis." }
+                ]
+            }
+        ]
+    },
+    {
+        id: "m8",
+        title: "Module 8: Quantitative & Algorithmic Trading",
+        description: "Explore how machine learning, statistical models, and automated execution are reshaping modern financial forecasting.",
+        chapters: [
+            {
+                id: "m8c1",
+                title: "Introduction to Quantitative Analysis",
+                content: [
+                    { type: 'paragraph', text: "Quantitative analysis removes human emotion from trading by relying strictly on mathematical and statistical modeling. Instead of asking 'is this a good company?', quants ask 'what is the statistical probability of this asset moving based on historical datasets?'" },
+                    { type: 'heading', text: "The Quant Workflow" },
+                    { type: 'list', items: [
+                        "Data Acquisition: Sourcing clean, high-resolution tick data, fundamental metrics, and alternative data (e.g., satellite imagery, sentiment).",
+                        "Alpha Generation: Developing mathematical models to identify inefficiencies and predictive signals.",
+                        "Risk Modeling: Calculating Value at Risk (VaR) and optimizing position sizing to neutralize market exposure.",
+                        "Execution: Routing orders through algorithms to minimize slippage and market impact."
+                    ]},
+                    { type: 'note', text: "Garbage in, garbage out. The most sophisticated algorithmic model will fail if the underlying database architecture isn't optimized for clean, normalized historical data." }
+                ]
+            },
+            {
+                id: "m8c2",
+                title: "Machine Learning in Market Forecasting",
+                content: [
+                    { type: 'paragraph', text: "Traditional algorithms follow strict rules (e.g., 'buy when 50 SMA crosses 200 SMA'). Machine learning models, however, are trained to discover non-linear patterns across massive, multi-dimensional datasets that human analysts cannot perceive." },
+                    { type: 'heading', text: "Common ML Architectures" },
+                    { type: 'list', items: [
+                        "Time Series Forecasting: Using Recurrent Neural Networks (RNNs) and Long Short-Term Memory (LSTM) networks to predict future price sequences based on historical volatility and price action.",
+                        "Natural Language Processing (NLP): Scraping SEC filings, earnings call transcripts, and financial news using models like BERT or GPT to gauge real-time market sentiment.",
+                        "Classification Models: Using Random Forests or Support Vector Machines to categorize the current market regime (e.g., high volatility, trending, or mean-reverting) to adjust active strategies."
+                    ]},
+                    { type: 'heading', text: "The Overfitting Trap" },
+                    { type: 'paragraph', text: "The greatest risk in ML forecasting is 'overfitting'—training a model so perfectly on past data that it memorizes the noise rather than the underlying signal. An overfitted model looks like a holy grail in backtesting but immediately loses money in live markets." }
+                ]
+            },
+            {
+                id: "m8c3",
+                title: "Backtesting & Strategy Evaluation",
+                content: [
+                    { type: 'paragraph', text: "A backtest simulates how a trading strategy would have performed using historical data. While crucial for algorithmic trading, backtesting is riddled with statistical traps that can make a terrible strategy look profitable on paper." },
+                    { type: 'heading', text: "Common Backtesting Pitfalls" },
+                    { type: 'list', items: [
+                        "Survivorship Bias: Testing only on companies that exist today, completely ignoring companies that went bankrupt and were delisted during the testing period. This heavily inflates returns.",
+                        "Look-Ahead Bias: Accidentally giving the algorithm data it wouldn't have known at the time (e.g., using end-of-day closing prices to make a trade decision at noon).",
+                        "Slippage & Fees: Failing to account for the bid-ask spread, broker commissions, and the market impact of your own orders. A strategy trading 50 times a day might be profitable until fees are applied."
+                    ]},
+                    { type: 'heading', text: "Out-of-Sample Testing" },
+                    { type: 'paragraph', text: "To prevent overfitting, quants split their historical data. They build the model on the 'In-Sample' data (e.g., 2010-2018). Once the model is locked, they test it on the 'Out-of-Sample' data (e.g., 2019-2023). If the strategy fails out-of-sample, it is discarded." }
+                ]
+            }
+        ]
     }
 ];
 
-// --- COURSE PROGRESS UTILITIES ---
+// --- COURSE PROGRESS UTILITIES & AUTO-TIME INJECTION ---
+
+// This maps over your raw data to dynamically inject perfect reading times
+export const learningModules = rawLearningModules.map(module => {
+    let totalModuleTime = 0;
+    const enrichedChapters = module.chapters.map(chapter => {
+        const exactTime = calculateReadingTime(chapter.content);
+        totalModuleTime += exactTime;
+        return { ...chapter, estimatedMinutes: exactTime };
+    });
+    return { ...module, chapters: enrichedChapters, estimatedMinutes: totalModuleTime };
+});
 
 export const getTotalChapters = () => {
     return learningModules.reduce((total, module) => total + module.chapters.length, 0);
@@ -890,5 +1051,5 @@ export const getChapterById = (moduleId, chapterId) => {
 };
 
 export const getEstimatedCourseTime = () => {
-    return learningModules.reduce((total, module) => total + (module.estimatedMinutes || 0), 0);
+    return learningModules.reduce((total, module) => total + module.estimatedMinutes, 0);
 };
