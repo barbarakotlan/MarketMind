@@ -4,7 +4,7 @@ import {
     LayoutDashboard, Search, Star, Briefcase, Building2,
     TrendingUp, Target, BarChart3, DollarSign, Bitcoin,
     Layers, Newspaper, Bell, BookOpen, Sun, Moon,
-    ChevronLeft, ChevronRight, Boxes
+    ChevronLeft, ChevronRight, Boxes, Calendar
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -43,6 +43,7 @@ const NAV_GROUPS = [
     {
         label: 'Info',
         items: [
+            { page: 'calendar', icon: Calendar, label: 'Calendar' }, // <-- Added Calendar page here
             { page: 'news', icon: Newspaper, label: 'News' },
             { page: 'notifications', icon: Bell, label: 'Alerts' },
             { page: 'gettingStarted', icon: BookOpen, label: 'Learn' },

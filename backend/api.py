@@ -1854,6 +1854,75 @@ def search_symbols():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/calendar/events', methods=['GET'])
+def get_calendar_events():
+    events = []
+    today_str = datetime.now().strftime('%Y-%m-%d')
+
+    if not ALPHA_VANTAGE_API_KEY:
+        return jsonify({"error": "Alpha Vantage API key not configured"}), 500
+
+    try:
+        # 1. Fetch Real IPOs
+        ipo_url = f'https://www.alphavantage.co/query?function=IPO_CALENDAR&apikey={ALPHA_VANTAGE_API_KEY}'
+        try:
+            # Alpha Vantage returns a CSV for calendars, pandas handles this perfectly
+            ipo_df = pd.read_csv(ipo_url)
+
+            # Make sure it didn't return an API error message instead of a dataframe
+            if not ipo_df.empty and 'ipoDate' in ipo_df.columns:
+                # Filter for IPOs happening today or in the future
+                upcoming_ipos = ipo_df[ipo_df['ipoDate'] >= today_str].head(15)
+
+                for _, row in upcoming_ipos.iterrows():
+                    events.append({
+                        "id": f"ipo_{row.get('symbol', 'UNK')}",
+                        "type": "ipo",
+                        "symbol": str(row.get('symbol', 'N/A')),
+                        "name": str(row.get('name', 'N/A')),
+                        "date": str(row.get('ipoDate')),
+                        "time": "Market Open",
+                        "expected": f"Est. ${row.get('priceRangeLow', '?')} - ${row.get('priceRangeHigh', '?')}"
+                    })
+        except Exception as e:
+            logger.warning(f"Failed to parse IPO calendar: {e}")
+
+        # 2. Fetch Real Earnings
+        earn_url = f'https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon=3month&apikey={ALPHA_VANTAGE_API_KEY}'
+        try:
+            earn_df = pd.read_csv(earn_url)
+
+            if not earn_df.empty and 'reportDate' in earn_df.columns:
+                # Filter for earnings happening today or in the future
+                upcoming_earnings = earn_df[earn_df['reportDate'] >= today_str]
+
+                # To prevent thousands of results, let's grab the top 30 upcoming ones
+                upcoming_earnings = upcoming_earnings.sort_values(by='reportDate').head(30)
+
+                for _, row in upcoming_earnings.iterrows():
+                    # Handle NaN estimates cleanly
+                    est = row.get('estimate')
+                    est_str = str(est) if pd.notna(est) else 'N/A'
+
+                    events.append({
+                        "id": f"earn_{row.get('symbol', 'UNK')}_{row.get('reportDate')}",
+                        "type": "earnings",
+                        "symbol": str(row.get('symbol', 'N/A')),
+                        "name": str(row.get('name', 'N/A')),
+                        "date": str(row.get('reportDate')),
+                        "time": "TBD",
+                        "expected": f"Est EPS: {est_str}"
+                    })
+        except Exception as e:
+            logger.warning(f"Failed to parse Earnings calendar: {e}")
+
+        return jsonify(events)
+
+    except Exception as e:
+        logger.error(f"Error fetching calendar events: {e}")
+        return jsonify({"error": f"Failed to fetch calendar data: {str(e)}"}), 500
+
+
 # --- Main execution ---
 if __name__ == '__main__':
     init_db()  # Initialize the SQLite history table
