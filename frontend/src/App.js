@@ -15,6 +15,7 @@ import CommoditiesPage from './components/CommoditiesPage';
 import NewsPage from './components/NewsPage';
 import NotificationsPage from './components/NotificationsPage';
 import PredictionMarketsPage from './components/PredictionMarketsPage';
+import MarketCalendarPage from './components/MarketCalendarPage';
 
 function App() {
     const [activePage, setActivePage] = useState('dashboard');
@@ -53,6 +54,7 @@ function App() {
                 {activePage === 'notifications' && <NotificationsPage />}
                 {activePage === 'predictionMarkets' && <PredictionMarketsPage />}
                 {activePage === 'gettingStarted' && <GettingStartedPage />}
+                {activePage === 'calendar' && <MarketCalendarPage />}
             </main>
         </div>
     );

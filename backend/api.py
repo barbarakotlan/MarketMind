@@ -1854,74 +1854,61 @@ def search_symbols():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/calendar/events', methods=['GET'])
-def get_calendar_events():
-    events = []
-    today_str = datetime.now().strftime('%Y-%m-%d')
-
-    if not ALPHA_VANTAGE_API_KEY:
-        return jsonify({"error": "Alpha Vantage API key not configured"}), 500
-
+# --- Add this right below your other routes in api.py ---
+@app.route('/calendar/economic', methods=['GET'])
+def get_economic_calendar():
     try:
-        # 1. Fetch Real IPOs
-        ipo_url = f'https://www.alphavantage.co/query?function=IPO_CALENDAR&apikey={ALPHA_VANTAGE_API_KEY}'
-        try:
-            # Alpha Vantage returns a CSV for calendars, pandas handles this perfectly
-            ipo_df = pd.read_csv(ipo_url)
+        # Pulls from a completely free, live JSON feed (no API key required)
+        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers)
 
-            # Make sure it didn't return an API error message instead of a dataframe
-            if not ipo_df.empty and 'ipoDate' in ipo_df.columns:
-                # Filter for IPOs happening today or in the future
-                upcoming_ipos = ipo_df[ipo_df['ipoDate'] >= today_str].head(15)
+        if response.status_code != 200:
+            return jsonify({"error": "Failed to fetch calendar"}), 500
 
-                for _, row in upcoming_ipos.iterrows():
-                    events.append({
-                        "id": f"ipo_{row.get('symbol', 'UNK')}",
-                        "type": "ipo",
-                        "symbol": str(row.get('symbol', 'N/A')),
-                        "name": str(row.get('name', 'N/A')),
-                        "date": str(row.get('ipoDate')),
-                        "time": "Market Open",
-                        "expected": f"Est. ${row.get('priceRangeLow', '?')} - ${row.get('priceRangeHigh', '?')}"
-                    })
-        except Exception as e:
-            logger.warning(f"Failed to parse IPO calendar: {e}")
+        data = response.json()
+        formatted_events = []
 
-        # 2. Fetch Real Earnings
-        earn_url = f'https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon=3month&apikey={ALPHA_VANTAGE_API_KEY}'
-        try:
-            earn_df = pd.read_csv(earn_url)
+        for index, item in enumerate(data):
+            # We only want to see US events for the main economic calendar
+            if item.get('country') != 'USD':
+                continue
 
-            if not earn_df.empty and 'reportDate' in earn_df.columns:
-                # Filter for earnings happening today or in the future
-                upcoming_earnings = earn_df[earn_df['reportDate'] >= today_str]
+            raw_date = item.get('date', '')
+            try:
+                # Parse the ISO date string into a clean format
+                dt = datetime.strptime(raw_date[:19], "%Y-%m-%dT%H:%M:%S")
+                date_str = dt.strftime("%Y-%m-%d")
+                time_str = dt.strftime("%I:%M %p").lstrip("0")
+            except Exception:
+                date_str = raw_date
+                time_str = "TBD"
 
-                # To prevent thousands of results, let's grab the top 30 upcoming ones
-                upcoming_earnings = upcoming_earnings.sort_values(by='reportDate').head(30)
+            title = item.get('title', 'Unknown Event')
 
-                for _, row in upcoming_earnings.iterrows():
-                    # Handle NaN estimates cleanly
-                    est = row.get('estimate')
-                    est_str = str(est) if pd.notna(est) else 'N/A'
+            # Categorize as a speaker event or a report
+            event_type = 'speaker' if 'Speaks' in title or 'Testifies' in title else 'report'
 
-                    events.append({
-                        "id": f"earn_{row.get('symbol', 'UNK')}_{row.get('reportDate')}",
-                        "type": "earnings",
-                        "symbol": str(row.get('symbol', 'N/A')),
-                        "name": str(row.get('name', 'N/A')),
-                        "date": str(row.get('reportDate')),
-                        "time": "TBD",
-                        "expected": f"Est EPS: {est_str}"
-                    })
-        except Exception as e:
-            logger.warning(f"Failed to parse Earnings calendar: {e}")
+            # Helper to return a dash instead of an empty box if data isn't out yet
+            def clean_val(v):
+                return v if v and str(v).strip() != "" else "-"
 
-        return jsonify(events)
+            formatted_events.append({
+                "id": index,
+                "date": date_str,
+                "time": time_str,
+                "type": event_type,
+                "event": title,
+                "impact": item.get('impact', 'Low'),
+                "actual": clean_val(item.get('actual')),
+                "forecast": clean_val(item.get('forecast')),
+                "previous": clean_val(item.get('previous'))
+            })
 
+        return jsonify(formatted_events)
     except Exception as e:
-        logger.error(f"Error fetching calendar events: {e}")
-        return jsonify({"error": f"Failed to fetch calendar data: {str(e)}"}), 500
-
+        logger.error(f"Error fetching economic calendar: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # --- Main execution ---
 if __name__ == '__main__':
