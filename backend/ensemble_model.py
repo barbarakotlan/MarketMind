@@ -373,7 +373,7 @@ def create_sequences(X, y, seq_len, forecast_horizon):
 
 # Train LSTM model
 def lstm_train(df, lookback=14, seq_len=60, forecast_horizon=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001):
-
+    '''Train an LSTM model for stock price prediction'''
     # --- Build features ---
     X_features, _, df_features = prepare_ml_data(df, lookback)
     y_values = df_features[['Close']].values
