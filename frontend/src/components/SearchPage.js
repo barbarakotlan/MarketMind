@@ -772,9 +772,6 @@ const SearchPage = ({ onNavigateToPredictions }) => {
                     </>
                 )}
 
-                {newsLoading && <div className="text-center p-8 text-gray-500 dark:text-gray-400">Loading news...</div>}
-                {newsData && newsData.length > 0 && !newsLoading && <StockNewsCard newsData={newsData} />}
-
                 {chartLoading && <div className="text-center p-8 text-gray-500 dark:text-gray-400">Loading chart...</div>}
                 {chartData && !chartLoading && (
                     <div className="mt-8 bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg animate-fade-in">
@@ -794,17 +791,20 @@ const SearchPage = ({ onNavigateToPredictions }) => {
                                 Add
                             </button>
                         </form>
-                        
+
                         {/* --- The Chart Component --- */}
                         <StockChart
                             chartData={chartData}
                             ticker={searchedTicker}
                             onTimeFrameChange={handleTimeFrameChange}
                             activeTimeFrame={activeTimeFrame}
-                            comparisonData={comparisonData} // Pass comparison data
+                            comparisonData={comparisonData}
                         />
                     </div>
                 )}
+
+                {newsLoading && <div className="text-center p-8 text-gray-500 dark:text-gray-400">Loading news...</div>}
+                {newsData && newsData.length > 0 && !newsLoading && <StockNewsCard newsData={newsData} />}
             </div>
 
         </div>

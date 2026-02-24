@@ -113,7 +113,11 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             {/* Brand bar */}
             <div className="flex items-center justify-between h-14 px-3 border-b border-gray-700 flex-shrink-0">
                 {!isCollapsed && (
-                    <span className="text-lg font-bold tracking-wider truncate">MarketMind</span>
+                    <img
+                        src={isDarkMode ? 'marketmindtransparentdark.png' : 'marketmindtransparent.png'}
+                        alt="MarketMind"
+                        className="h-9 w-auto object-contain"
+                    />
                 )}
                 {isCollapsed && (
                     <span className="text-lg font-bold mx-auto">M</span>
