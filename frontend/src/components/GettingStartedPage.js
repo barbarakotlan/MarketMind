@@ -214,28 +214,53 @@ const QuizSection = () => {
             </div>
             <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 mb-8 animate-in slide-in-from-right duration-300" key={currentQ.id}>
                 <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">{currentQ.question}</h3>
+                
+                {/* --- Multiple Choice Fix --- */}
                 {currentQ.type === 'multiple' && (
                     <div className="space-y-3">
                         {currentQ.options.map((option) => (
-                            <button key={option} onClick={() => handleAnswer(option)} className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium ${userAnswers[currentQ.id] === option ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'border-gray-100 dark:border-gray-700 hover:border-blue-200 dark:hover:border-gray-600'}`}>{option}</button>
+                            <button 
+                                key={option} 
+                                onClick={() => handleAnswer(option)} 
+                                className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium ${
+                                    userAnswers[currentQ.id] === option 
+                                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 
+                                        : 'border-gray-100 dark:border-gray-700 hover:border-blue-200 dark:hover:border-gray-600 text-gray-900 dark:text-gray-200'
+                                }`}
+                            >
+                                {option}
+                            </button>
                         ))}
                     </div>
                 )}
+                
+                {/* --- Checkbox Fix --- */}
                 {currentQ.type === 'checkbox' && (
                     <div className="space-y-3">
                         {currentQ.options.map((option) => {
                             const isSelected = (userAnswers[currentQ.id] || []).includes(option);
                             return (
-                                <button key={option} onClick={() => handleAnswer(option)} className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium flex items-center gap-3 ${isSelected ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'border-gray-100 dark:border-gray-700 hover:border-blue-200'}`}>
-                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300'}`}>{isSelected && <CheckCircle className="w-3 h-3" />}</div>
+                                <button 
+                                    key={option} 
+                                    onClick={() => handleAnswer(option)} 
+                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium flex items-center gap-3 ${
+                                        isSelected 
+                                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 
+                                            : 'border-gray-100 dark:border-gray-700 hover:border-blue-200 dark:hover:border-gray-600 text-gray-900 dark:text-gray-200'
+                                    }`}
+                                >
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300 dark:border-gray-600'}`}>
+                                        {isSelected && <CheckCircle className="w-3 h-3" />}
+                                    </div>
                                     {option}
                                 </button>
                             );
                         })}
                     </div>
                 )}
+                
                 {currentQ.type === 'text' && (
-                    <input type="text" value={userAnswers[currentQ.id] || ''} onChange={(e) => handleAnswer(e.target.value)} placeholder="Type your answer here..." className="w-full p-4 text-lg border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none bg-transparent dark:text-white" />
+                    <input type="text" value={userAnswers[currentQ.id] || ''} onChange={(e) => handleAnswer(e.target.value)} placeholder="Type your answer here..." className="w-full p-4 text-lg border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500" />
                 )}
             </div>
             <div className="flex justify-end">
