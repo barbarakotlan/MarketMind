@@ -17,6 +17,7 @@ import threading
 import uuid  # For unique notification IDs
 import re  # Added for Smart Alert parsing
 import time
+import math
 
 # --- DOTENV MUST BE FIRST ---
 from dotenv import load_dotenv
@@ -471,36 +472,64 @@ def get_option_expirations(ticker):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/options/chain/<string:ticker>', methods=['GET'])
+@app.route('/options/chain/<ticker>', methods=['GET'])
 def get_option_chain(ticker):
-    date = request.args.get('date')
-    if not date: return jsonify({"error": "A date query parameter is required."}), 400
     try:
-        sanitized_ticker = ticker.split(':')[0]
-        stock = yf.Ticker(sanitized_ticker)
-        chain = stock.option_chain(date)
+        date = request.args.get('date')
+        stock = yf.Ticker(ticker)
+        
+        # Get the current stock price for moneyness calculations
         info = stock.info
-        price = info.get('regularMarketPrice', 0)
-        if price == 0: price = info.get('previousClose', 0)
+        stock_price = info.get('regularMarketPrice', info.get('previousClose', 0))
 
-        def format_chain(df):
-            cols_to_keep = ['contractSymbol', 'strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest',
-                            'impliedVolatility']
-            existing_cols = [col for col in cols_to_keep if col in df.columns]
-            df_filtered = df[existing_cols]
-            df_cleaned = df_filtered.replace({np.nan: None})
-            records = df_cleaned.to_dict('records')
-            for record in records:
-                for col in existing_cols:
-                    record[col] = clean_value(record.get(col))
-            return records
+        if date:
+            chain = stock.option_chain(date)
+        else:
+            # Default to the first available expiration if no date is provided
+            chain = stock.option_chain(stock.options[0])
 
-        return jsonify(
-            {"calls": format_chain(chain.calls), "puts": format_chain(chain.puts), "stock_price": clean_value(price)})
+        # --- UPDATED MAPPING LOGIC ---
+        # We must explicitly cast NaNs to 0 or None so JSON serialization doesn't crash,
+        # and ensure the new frontend fields are included.
+        def safe_float(val):
+            return 0 if math.isnan(float(val)) else float(val)
+
+        def safe_int(val):
+            return 0 if math.isnan(float(val)) else int(val)
+
+        calls = chain.calls.to_dict('records')
+        formatted_calls = [{
+            "contractSymbol": c["contractSymbol"],
+            "strike": safe_float(c["strike"]),
+            "bid": safe_float(c["bid"]),
+            "ask": safe_float(c["ask"]),
+            "lastPrice": safe_float(c["lastPrice"]),
+            "volume": safe_int(c.get("volume", 0)),
+            "openInterest": safe_int(c.get("openInterest", 0)),
+            "impliedVolatility": safe_float(c.get("impliedVolatility", 0))
+        } for c in calls]
+
+        puts = chain.puts.to_dict('records')
+        formatted_puts = [{
+            "contractSymbol": p["contractSymbol"],
+            "strike": safe_float(p["strike"]),
+            "bid": safe_float(p["bid"]),
+            "ask": safe_float(p["ask"]),
+            "lastPrice": safe_float(p["lastPrice"]),
+            "volume": safe_int(p.get("volume", 0)),
+            "openInterest": safe_int(p.get("openInterest", 0)),
+            "impliedVolatility": safe_float(p.get("impliedVolatility", 0))
+        } for p in puts]
+
+        return jsonify({
+            "stock_price": stock_price,
+            "calls": formatted_calls,
+            "puts": formatted_puts
+        })
+        
     except Exception as e:
-        logger.error(f"Error getting option chain: {e}")
-        return jsonify({"error": "Could not retrieve option chain for this date."}), 404
-
+        print(f"Error fetching option chain: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # --- Options Suggestion Endpoint ---
 @app.route('/options/suggest/<string:ticker>', methods=['GET'])
