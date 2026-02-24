@@ -1,5 +1,5 @@
 {
-    "cash": 9995.96,
+    "cash": 9780.96,
     "starting_cash": 10000.0,
     "positions": {
         "0xd02c2646a2d4fba6f5ed60c56794220c7675b1ac2990a4e2b5c27dc14f80c85a::Yes": {
@@ -9,6 +9,14 @@
             "question": "Will Naz Reid win the 2025\u20132026 NBA Sixth Man of the Year?",
             "contracts": 10.0,
             "avg_cost": 0.404
+        },
+        "0xeec3721d3883d5a27a992090d85c8f68fffe1f40774c3a891d078eed10d42508::Yes": {
+            "market_id": "0xeec3721d3883d5a27a992090d85c8f68fffe1f40774c3a891d078eed10d42508",
+            "outcome": "Yes",
+            "exchange": "polymarket",
+            "question": "Will Netflix close Warner Bros. acquisition by end of 2026?",
+            "contracts": 1000.0,
+            "avg_cost": 0.215
         }
     },
     "trade_history": [
@@ -21,6 +29,16 @@
             "price": 0.404,
             "total": 4.04,
             "timestamp": "2026-02-09T04:34:20.991732"
+        },
+        {
+            "type": "BUY",
+            "market_id": "0xeec3721d3883d5a27a992090d85c8f68fffe1f40774c3a891d078eed10d42508",
+            "question": "Will Netflix close Warner Bros. acquisition by end of 2026?",
+            "outcome": "Yes",
+            "contracts": 1000.0,
+            "price": 0.215,
+            "total": 215.0,
+            "timestamp": "2026-02-17T15:08:29.037107"
         }
     ]
 }

@@ -4,8 +4,9 @@ import {
     LayoutDashboard, Search, Star, Briefcase, Building2,
     TrendingUp, Target, BarChart3, DollarSign, Bitcoin,
     Layers, Newspaper, Bell, BookOpen, Sun, Moon,
-    ChevronLeft, ChevronRight, Boxes
+    ChevronLeft, ChevronRight, Boxes, Calendar, SlidersHorizontal, Globe
 } from 'lucide-react';
+
 
 const NAV_GROUPS = [
     {
@@ -18,6 +19,7 @@ const NAV_GROUPS = [
         label: 'Trading',
         items: [
             { page: 'search', icon: Search, label: 'Search' },
+            { page: 'screener', icon: SlidersHorizontal, label: 'Screener' },
             { page: 'watchlist', icon: Star, label: 'Watchlist' },
             { page: 'portfolio', icon: Briefcase, label: 'Portfolio' },
             { page: 'fundamentals', icon: Building2, label: 'Fundamentals' },
@@ -37,12 +39,14 @@ const NAV_GROUPS = [
             { page: 'forex', icon: DollarSign, label: 'Forex' },
             { page: 'crypto', icon: Bitcoin, label: 'Crypto' },
             { page: 'commodities', icon: Boxes, label: 'Commodities' },
+            { page: 'macro', icon: Globe, label: 'Macro' },
             { page: 'predictionMarkets', icon: Layers, label: 'Prediction Mkt' },
         ],
     },
     {
         label: 'Info',
         items: [
+            { page: 'calendar', icon: Calendar, label: 'Calendar' }, // <-- Added Calendar page here
             { page: 'news', icon: Newspaper, label: 'News' },
             { page: 'notifications', icon: Bell, label: 'Alerts' },
             { page: 'gettingStarted', icon: BookOpen, label: 'Learn' },
@@ -113,7 +117,11 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             {/* Brand bar */}
             <div className="flex items-center justify-between h-14 px-3 border-b border-gray-700 flex-shrink-0">
                 {!isCollapsed && (
-                    <span className="text-lg font-bold tracking-wider truncate">MarketMind</span>
+                    <img
+                        src={isDarkMode ? 'marketmindtransparentdark.png' : 'marketmindtransparent.png'}
+                        alt="MarketMind"
+                        className="h-9 w-auto object-contain"
+                    />
                 )}
                 {isCollapsed && (
                     <span className="text-lg font-bold mx-auto">M</span>

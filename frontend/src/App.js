@@ -15,10 +15,19 @@ import CommoditiesPage from './components/CommoditiesPage';
 import NewsPage from './components/NewsPage';
 import NotificationsPage from './components/NotificationsPage';
 import PredictionMarketsPage from './components/PredictionMarketsPage';
+import MarketCalendarPage from './components/MarketCalendarPage';
+import ScreenerPage from './components/ScreenerPage';
+import MacroPage from './components/MacroPage';
 
 function App() {
     const [activePage, setActivePage] = useState('dashboard');
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [sharedTicker, setSharedTicker] = useState(null);
+
+    const handleScreenerNav = (ticker) => {
+        setSharedTicker(ticker);
+        setActivePage('search');
+    };
 
     return (
         <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden font-sans">
@@ -39,7 +48,9 @@ function App() {
 
             <main className={`flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
                 {activePage === 'dashboard' && <DashboardPage setActivePage={setActivePage} />}
-                {activePage === 'search' && <SearchPage />}
+                {activePage === 'search' && <SearchPage initialTicker={sharedTicker} onClearInitialTicker={() => setSharedTicker(null)} />}
+                {activePage === 'screener' && <ScreenerPage onSearchTicker={handleScreenerNav} />}
+                {activePage === 'macro' && <MacroPage />}
                 {activePage === 'watchlist' && <WatchlistPage />}
                 {activePage === 'portfolio' && <PaperTradingPage />}
                 {activePage === 'fundamentals' && <FundamentalsPage />}
@@ -53,6 +64,7 @@ function App() {
                 {activePage === 'notifications' && <NotificationsPage />}
                 {activePage === 'predictionMarkets' && <PredictionMarketsPage />}
                 {activePage === 'gettingStarted' && <GettingStartedPage />}
+                {activePage === 'calendar' && <MarketCalendarPage />}
             </main>
         </div>
     );

@@ -16,12 +16,20 @@ import time
 import threading
 import uuid  # For unique notification IDs
 import re  # Added for Smart Alert parsing
+import time
 
 # --- DOTENV MUST BE FIRST ---
 from dotenv import load_dotenv
 
 load_dotenv()
 # --- END FIX ---
+
+# --- OpenBB (optional, used for financials/filings/screener/macro) ---
+try:
+    from openbb import obb
+    OPENBB_AVAILABLE = True
+except ImportError:
+    OPENBB_AVAILABLE = False
 
 # --- Tazeem's Imports ---
 from model import create_dataset, estimate_week, try_today, estimate_new, good_model
@@ -313,13 +321,31 @@ def get_stock_data(ticker):
                 sparkline = [clean_value(p) for p in hist['Close']]
         except Exception as e:
             logger.warning(f"Could not fetch sparkline data: {e}")
+        financials = {}
+        try:
+            qf = stock.quarterly_financials
+            if not qf.empty:
+                financials = {
+                    "revenue": clean_value(qf.loc['Total Revenue'].iloc[0]) if 'Total Revenue' in qf.index else None,
+                    "netIncome": clean_value(qf.loc['Net Income'].iloc[0]) if 'Net Income' in qf.index else None,
+                    "quarterendDate": str(qf.columns[0].date()) if not qf.empty else None
+                }
+        except Exception as e:
+            logger.warning(f"Could not fetch quarterly financials: {e}")
+        yf_extended = {
+            "forwardPE": clean_value(info.get('forwardPE')), "pegRatio": clean_value(info.get('pegRatio')),
+            "priceToBook": clean_value(info.get('priceToBook')), "beta": clean_value(info.get('beta')),
+            "dividendYield": clean_value(info.get('dividendYield')),
+            "numberOfAnalystOpinions": info.get('numberOfAnalystOpinions')
+        }
         fundamentals = {}
         if not ALPHA_VANTAGE_API_KEY:
             fundamentals = {
                 "peRatio": clean_value(info.get('trailingPE')), "week52High": clean_value(info.get('fiftyTwoWeekHigh')),
                 "week52Low": clean_value(info.get('fiftyTwoWeekLow')),
                 "analystTargetPrice": clean_value(info.get('targetMeanPrice')),
-                "recommendationKey": info.get('recommendationKey'), "overview": info.get('longBusinessSummary')
+                "recommendationKey": info.get('recommendationKey'), "overview": info.get('longBusinessSummary'),
+                **yf_extended
             }
         else:
             try:
@@ -333,7 +359,9 @@ def get_stock_data(ticker):
                         "dividendYield": clean_value(data.get("DividendYield")), "beta": clean_value(data.get("Beta")),
                         "week52High": clean_value(data.get("52WeekHigh")),
                         "week52Low": clean_value(data.get("52WeekLow")),
-                        "analystTargetPrice": clean_value(data.get("AnalystTargetPrice")), "recommendationKey": "N/A"
+                        "analystTargetPrice": clean_value(data.get("AnalystTargetPrice")), "recommendationKey": "N/A",
+                        "priceToBook": clean_value(info.get('priceToBook')),
+                        "numberOfAnalystOpinions": info.get('numberOfAnalystOpinions')
                     }
                 else:
                     raise Exception("No data from Alpha Vantage")
@@ -344,13 +372,14 @@ def get_stock_data(ticker):
                     "week52High": clean_value(info.get('fiftyTwoWeekHigh')),
                     "week52Low": clean_value(info.get('fiftyTwoWeekLow')),
                     "analystTargetPrice": clean_value(info.get('targetMeanPrice')),
-                    "recommendationKey": info.get('recommendationKey'), "overview": info.get('longBusinessSummary')
+                    "recommendationKey": info.get('recommendationKey'), "overview": info.get('longBusinessSummary'),
+                    **yf_extended
                 }
         formatted_data = {
             "symbol": info.get('symbol', ticker.upper()), "companyName": info.get('longName', 'N/A'),
             "price": clean_value(price), "change": clean_value(change),
             "changePercent": clean_value(change_percent), "marketCap": market_cap_formatted,
-            "sparkline": sparkline, "fundamentals": fundamentals
+            "sparkline": sparkline, "fundamentals": fundamentals, "financials": financials
         }
         return jsonify(formatted_data)
     except Exception as e:
@@ -1768,18 +1797,86 @@ def reset_prediction_portfolio():
     })
 
 
+def _fundamentals_from_yfinance(sym):
+    """Build a fundamentals dict from yfinance when Alpha Vantage is unavailable."""
+    try:
+        info = yf.Ticker(sym).info
+        if not info or info.get('quoteType') not in ('EQUITY', 'ETF', 'MUTUALFUND'):
+            return None
+        def _s(key):
+            v = info.get(key)
+            return str(v) if v is not None else 'N/A'
+        return {
+            "symbol": info.get('symbol', sym),
+            "name": info.get('longName') or info.get('shortName') or 'N/A',
+            "description": info.get('longBusinessSummary', 'N/A'),
+            "exchange": info.get('exchange', 'N/A'),
+            "currency": info.get('currency', 'N/A'),
+            "sector": info.get('sector', 'N/A'),
+            "industry": info.get('industry', 'N/A'),
+            "country": info.get('country', 'N/A'),
+            "market_cap": _s('marketCap'),
+            "pe_ratio": _s('trailingPE'),
+            "forward_pe": _s('forwardPE'),
+            "trailing_pe": _s('trailingPE'),
+            "peg_ratio": _s('pegRatio'),
+            "eps": _s('trailingEps'),
+            "beta": _s('beta'),
+            "book_value": _s('bookValue'),
+            "dividend_per_share": _s('dividendRate'),
+            "dividend_yield": _s('dividendYield'),
+            "dividend_date": 'N/A',
+            "ex_dividend_date": 'N/A',
+            "profit_margin": _s('profitMargins'),
+            "operating_margin_ttm": _s('operatingMargins'),
+            "return_on_assets_ttm": _s('returnOnAssets'),
+            "return_on_equity_ttm": _s('returnOnEquity'),
+            "revenue_ttm": _s('totalRevenue'),
+            "gross_profit_ttm": _s('grossProfits'),
+            "diluted_eps_ttm": _s('trailingEps'),
+            "revenue_per_share_ttm": _s('revenuePerShare'),
+            "quarterly_earnings_growth_yoy": _s('earningsQuarterlyGrowth'),
+            "quarterly_revenue_growth_yoy": _s('revenueGrowth'),
+            "analyst_target_price": _s('targetMeanPrice'),
+            "price_to_sales_ratio_ttm": _s('priceToSalesTrailing12Months'),
+            "price_to_book_ratio": _s('priceToBook'),
+            "ev_to_revenue": _s('enterpriseToRevenue'),
+            "ev_to_ebitda": _s('enterpriseToEbitda'),
+            "week_52_high": _s('fiftyTwoWeekHigh'),
+            "week_52_low": _s('fiftyTwoWeekLow'),
+            "day_50_moving_average": _s('fiftyDayAverage'),
+            "day_200_moving_average": _s('twoHundredDayAverage'),
+            "shares_outstanding": _s('sharesOutstanding'),
+        }
+    except Exception as e:
+        logger.warning(f"yfinance fundamentals fallback failed for {sym}: {e}")
+        return None
+
+
 @app.route('/fundamentals/<string:ticker>')
 def get_fundamentals(ticker):
     try:
-        sanitized_ticker = ticker.split(':')[0]
-        if not ALPHA_VANTAGE_API_KEY:
-            return jsonify({"error": "Alpha Vantage API key not configured"}), 500
-            
-        url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={sanitized_ticker.upper()}&apikey={ALPHA_VANTAGE_API_KEY}'
-        response = requests.get(url)
-        data = response.json()
-        
-        if not data or 'Symbol' not in data:
+        sanitized_ticker = ticker.split(':')[0].upper()
+
+        # Try Alpha Vantage first (richer data), fall back to yfinance
+        av_data = None
+        if ALPHA_VANTAGE_API_KEY:
+            try:
+                url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={sanitized_ticker}&apikey={ALPHA_VANTAGE_API_KEY}'
+                av_resp = requests.get(url, timeout=10)
+                av_json = av_resp.json()
+                if av_json and 'Symbol' in av_json:
+                    av_data = av_json
+            except Exception as e:
+                logger.warning(f"Alpha Vantage fundamentals failed for {sanitized_ticker}: {e}")
+
+        if av_data:
+            data = av_data
+        else:
+            # Fallback: yfinance
+            yf_data = _fundamentals_from_yfinance(sanitized_ticker)
+            if yf_data:
+                return jsonify(yf_data)
             return jsonify({"error": f"No fundamental data found for {ticker}"}), 404
 
         # Map Alpha Vantage keys (PascalCase) to Frontend keys (snake_case)
@@ -1854,6 +1951,290 @@ def search_symbols():
         return jsonify({"error": str(e)}), 500
 
 
+
+# Create a "memory" cache so we don't spam the API
+CALENDAR_CACHE = {
+    "data": None,
+    "last_fetched": 0
+}
+
+
+@app.route('/calendar/economic', methods=['GET'])
+def get_economic_calendar():
+    global CALENDAR_CACHE
+    current_time = time.time()
+
+    # Check if we fetched the data less than 15 minutes ago (900 seconds).
+    # If we did, instantly return the saved data instead of hitting the API again.
+    if CALENDAR_CACHE["data"] is not None and (current_time - CALENDAR_CACHE["last_fetched"]) < 900:
+        return jsonify(CALENDAR_CACHE["data"])
+
+    try:
+        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+
+        # Use a highly realistic User-Agent so their Cloudflare protection doesn't block us
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*'
+        }
+
+        response = requests.get(url, headers=headers)
+
+        # If they still block us, but we have old data saved, just show the old data!
+        if response.status_code != 200:
+            if CALENDAR_CACHE["data"] is not None:
+                return jsonify(CALENDAR_CACHE["data"])
+            return jsonify({"error": f"Failed to fetch calendar (Status {response.status_code})"}), 500
+
+        data = response.json()
+        formatted_events = []
+
+        for index, item in enumerate(data):
+            if item.get('country') != 'USD':
+                continue
+
+            raw_date = item.get('date', '')
+            try:
+                dt = datetime.strptime(raw_date[:19], "%Y-%m-%dT%H:%M:%S")
+                date_str = dt.strftime("%Y-%m-%d")
+                time_str = dt.strftime("%I:%M %p").lstrip("0")
+            except Exception:
+                date_str = raw_date
+                time_str = "TBD"
+
+            title = item.get('title', 'Unknown Event')
+            event_type = 'speaker' if 'Speaks' in title or 'Testifies' in title else 'report'
+
+            def clean_val(v):
+                return v if v and str(v).strip() != "" else "-"
+
+            formatted_events.append({
+                "id": index,
+                "date": date_str,
+                "time": time_str,
+                "type": event_type,
+                "event": title,
+                "impact": item.get('impact', 'Low'),
+                "actual": clean_val(item.get('actual')),
+                "forecast": clean_val(item.get('forecast')),
+                "previous": clean_val(item.get('previous'))
+            })
+
+        # Success! Save the new data to our cache and log the time
+        CALENDAR_CACHE["data"] = formatted_events
+        CALENDAR_CACHE["last_fetched"] = current_time
+
+        return jsonify(formatted_events)
+
+    except Exception as e:
+        # If the internet drops or it crashes, return the cached data as a fallback
+        if CALENDAR_CACHE["data"] is not None:
+            return jsonify(CALENDAR_CACHE["data"])
+        return jsonify({"error": str(e)}), 500
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenBB-powered endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _obb_to_float(val):
+    """Safely convert OpenBB field values to JSON-serialisable floats."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return None if (f != f) else round(f, 4)  # NaN check
+    except (TypeError, ValueError):
+        return None
+
+
+@app.route('/fundamentals/financials/<string:ticker>')
+def get_financial_statements(ticker):
+    """4-year income statement, balance sheet, and cash flow via OpenBB."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+    sym = ticker.upper().split(':')[0]
+    try:
+        def _stmt(fn, fields):
+            df = fn(sym, provider='yfinance').to_dataframe()
+            if df.empty:
+                return []
+            rows = []
+            for col in df.columns[:4]:  # up to 4 years
+                row = {"period": str(col)[:10]}
+                for key, src in fields:
+                    row[key] = _obb_to_float(df[src].iloc[0]) if src in df.index else None
+                rows.append(row)
+            return rows
+
+        income_df  = obb.equity.fundamental.income(sym, provider='yfinance', period='annual', limit=4).to_dataframe()
+        balance_df = obb.equity.fundamental.balance(sym, provider='yfinance', period='annual', limit=4).to_dataframe()
+        cashflow_df = obb.equity.fundamental.cash(sym, provider='yfinance', period='annual', limit=4).to_dataframe()
+
+        def _rows(df, field_map):
+            out = []
+            for _, row in df.iterrows():
+                rec = {"period": str(row.get('date', row.get('period_of_report', '')))[:10]}
+                for dest, src in field_map.items():
+                    rec[dest] = _obb_to_float(row.get(src))
+                out.append(rec)
+            return out
+
+        INCOME_FIELDS = {
+            "revenue": "revenue", "gross_profit": "gross_profit",
+            "operating_income": "operating_income", "net_income": "net_income",
+            "ebitda": "ebitda", "eps": "eps_diluted",
+        }
+        BALANCE_FIELDS = {
+            "total_assets": "total_assets", "total_liab": "total_liabilities",
+            "total_equity": "total_equity", "cash": "cash_and_cash_equivalents",
+            "total_debt": "total_debt", "working_capital": "net_current_assets",
+        }
+        CASHFLOW_FIELDS = {
+            "operating": "net_cash_flow_from_operating_activities",
+            "investing": "net_cash_flow_from_investing_activities",
+            "financing": "net_cash_flow_from_financing_activities",
+            "capex": "capital_expenditure",
+            "free_cf": "free_cash_flow",
+        }
+
+        return jsonify({
+            "income_statement": _rows(income_df, INCOME_FIELDS),
+            "balance_sheet":    _rows(balance_df, BALANCE_FIELDS),
+            "cash_flow":        _rows(cashflow_df, CASHFLOW_FIELDS),
+        })
+    except Exception as e:
+        logger.error(f"Financial statements error for {sym}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/fundamentals/filings/<string:ticker>')
+def get_sec_filings(ticker):
+    """Recent SEC filings (10-K, 10-Q, 8-K, etc.) via OpenBB EDGAR."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+    sym = ticker.upper().split(':')[0]
+    RELEVANT = {'10-K', '10-Q', '8-K', '10-K/A', '10-Q/A', 'DEF 14A', 'S-1', '20-F', '6-K'}
+    try:
+        df = obb.equity.fundamental.filings(sym, provider='sec', limit=50).to_dataframe()
+        results = []
+        for _, row in df.iterrows():
+            report_type = str(row.get('report_type', row.get('type', ''))).upper()
+            if report_type not in RELEVANT:
+                continue
+            results.append({
+                "date":        str(row.get('date', row.get('filed', '')))[:10],
+                "type":        report_type,
+                "description": str(row.get('description', row.get('form', '')))[:200],
+                "url":         str(row.get('url', row.get('link', ''))) or None,
+            })
+        return jsonify(results[:30])
+    except Exception as e:
+        logger.error(f"SEC filings error for {sym}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/screener')
+def get_screener():
+    """Top gainers, losers, and most-active via OpenBB/yfinance."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+
+    def _fmt(results):
+        out = []
+        for r in results:
+            out.append({
+                "symbol":          r.symbol,
+                "name":            r.name or '',
+                "price":           _obb_to_float(r.price),
+                "change":          _obb_to_float(r.change),
+                "percent_change":  _obb_to_float(r.percent_change),
+                "market_cap":      _obb_to_float(r.market_cap),
+                "volume":          int(r.volume) if r.volume else None,
+                "pe_forward":      _obb_to_float(r.pe_forward),
+                "year_high":       _obb_to_float(r.year_high),
+                "year_low":        _obb_to_float(r.year_low),
+                "eps_ttm":         _obb_to_float(r.eps_ttm),
+            })
+        return out
+
+    try:
+        gainers = _fmt(obb.equity.discovery.gainers(provider='yfinance').results)
+        losers  = _fmt(obb.equity.discovery.losers(provider='yfinance').results)
+        active  = _fmt(obb.equity.discovery.active(provider='yfinance').results)
+        return jsonify({"gainers": gainers, "losers": losers, "active": active})
+    except Exception as e:
+        logger.error(f"Screener error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+MACRO_INDICATORS = [
+    {"symbol": "URATE", "name": "Unemployment Rate",     "unit": "%",    "multiplier": 100},
+    {"symbol": "CPI",   "name": "Consumer Price Index",  "unit": "Index","multiplier": 1},
+    {"symbol": "IP",    "name": "Industrial Production", "unit": "Index","multiplier": 1},
+]
+
+@app.route('/macro/overview')
+def get_macro_overview():
+    """Key US macro indicators + 10-Year Treasury yield via OpenBB/econdb + yfinance."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+    result = []
+    try:
+        for ind in MACRO_INDICATORS:
+            try:
+                df = obb.economy.indicators(
+                    symbol=ind["symbol"], country='US', provider='econdb'
+                ).to_dataframe().reset_index()
+                df = df.sort_values('date')
+                last  = df.iloc[-1]
+                prev  = df.iloc[-2] if len(df) > 1 else last
+                val      = float(last['value']) * ind["multiplier"]
+                prev_val = float(prev['value']) * ind["multiplier"]
+                sparkline = [
+                    {"date": str(row['date']), "value": round(float(row['value']) * ind["multiplier"], 4)}
+                    for _, row in df.tail(24).iterrows()
+                ]
+                result.append({
+                    "symbol":    ind["symbol"],
+                    "name":      ind["name"],
+                    "unit":      ind["unit"],
+                    "value":     round(val, 3),
+                    "prev":      round(prev_val, 3),
+                    "date":      str(last['date']),
+                    "sparkline": sparkline,
+                })
+            except Exception as e:
+                logger.warning(f"Macro indicator {ind['symbol']} failed: {e}")
+
+        # 10-Year Treasury yield from yfinance
+        try:
+            tnx = yf.Ticker('^TNX')
+            info = tnx.info
+            rate = info.get('regularMarketPrice') or info.get('previousClose')
+            hist = tnx.history(period='2y', interval='1mo')
+            sparkline = [
+                {"date": str(d.date()), "value": round(float(v), 3)}
+                for d, v in zip(hist.index, hist['Close'])
+            ]
+            prev_rate = float(hist['Close'].iloc[-2]) if len(hist) > 1 else rate
+            result.append({
+                "symbol":    "TNX",
+                "name":      "10-Year Treasury Yield",
+                "unit":      "%",
+                "value":     round(float(rate), 3) if rate else None,
+                "prev":      round(prev_rate, 3),
+                "date":      str(hist.index[-1].date()) if not hist.empty else '',
+                "sparkline": sparkline,
+            })
+        except Exception as e:
+            logger.warning(f"TNX fetch failed: {e}")
+
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Macro overview error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 # --- Main execution ---
 if __name__ == '__main__':
     init_db()  # Initialize the SQLite history table
@@ -1863,4 +2244,5 @@ if __name__ == '__main__':
     checker_thread = threading.Thread(target=run_scheduler, daemon=True)
     checker_thread.start()
 
-    app.run(debug=True, port=5001, use_reloader=False)  # use_reloader=False is important for threads
+    app.run(debug=True, port=5001, use_reloader=False)
+

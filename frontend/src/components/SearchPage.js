@@ -4,6 +4,146 @@ import StockDataCard from './ui/StockDataCard';
 import StockChart from './charts/StockChart';
 import PredictionPreviewCard from './ui/PredictionPreviewCard';
 
+// --- Helpers for Jimmy's cards ---
+const formatLargeNumber = (num) => {
+    if (!num || isNaN(num)) return 'N/A';
+    if (num >= 1e12) return `${(num / 1e12).toFixed(2)}T`;
+    if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
+    if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
+    return Number(num).toLocaleString();
+};
+
+const formatNum = (num, isPercent = false) => {
+    if (num === null || num === undefined || isNaN(num)) return 'N/A';
+    const val = Number(num);
+    return isPercent ? `${val.toFixed(2)}%` : val.toFixed(2);
+};
+
+// Expandable company overview + quarterly financials
+const StockOverviewCard = ({ summary, financials }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    if (!summary) return null;
+    const truncated = isExpanded ? summary : `${summary.slice(0, 350)}...`;
+    return (
+        <div className="mt-8 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg animate-fade-in border border-gray-100 dark:border-gray-700">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Overview</h2>
+            <p className="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+                {truncated}
+                {!isExpanded && (
+                    <button onClick={() => setIsExpanded(true)} className="text-blue-600 dark:text-blue-400 font-medium ml-1 hover:underline">
+                        Read More
+                    </button>
+                )}
+            </p>
+            {financials && financials.revenue && (
+                <div>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+                        Quarterly Financials {financials.quarterendDate && `(as of ${financials.quarterendDate})`}
+                    </h3>
+                    <div className="flex gap-4">
+                        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg flex-1">
+                            <h4 className="text-sm text-gray-500 dark:text-gray-400">Revenue</h4>
+                            <p className="text-xl font-bold text-gray-900 dark:text-white">{formatLargeNumber(financials.revenue)}</p>
+                        </div>
+                        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg flex-1">
+                            <h4 className="text-sm text-gray-500 dark:text-gray-400">Net Income</h4>
+                            <p className="text-xl font-bold text-gray-900 dark:text-white">{formatLargeNumber(financials.netIncome)}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// 5-metric key metrics grid
+const KeyMetricsCard = ({ metrics }) => {
+    if (!metrics) return null;
+    const items = [
+        { label: 'Beta (5Y)', value: formatNum(metrics.beta) },
+        { label: 'Forward P/E', value: formatNum(metrics.forwardPE) },
+        { label: 'PEG Ratio', value: formatNum(metrics.pegRatio) },
+        { label: 'Price/Book', value: formatNum(metrics.priceToBook) },
+        { label: 'Dividend Yield', value: formatNum(metrics.dividendYield, true) },
+    ];
+    const hasAny = items.some(i => i.value !== 'N/A');
+    if (!hasAny) return null;
+    return (
+        <div className="mt-8 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg animate-fade-in border border-gray-100 dark:border-gray-700">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Key Metrics</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                {items.map(item => (
+                    <div key={item.label} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-center">
+                        <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400">{item.label}</h4>
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{item.value}</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// Analyst rating badge + mean price target + upside %
+const AnalystRatingsCard = ({ ratings, price }) => {
+    if (!ratings || !ratings.recommendationKey || !ratings.analystTargetPrice) return null;
+    const { recommendationKey, analystTargetPrice, numberOfAnalystOpinions } = ratings;
+    const upsidePercent = ((analystTargetPrice - price) / price) * 100;
+    const key = recommendationKey.toLowerCase();
+    let ratingColor = 'text-gray-700 dark:text-gray-300';
+    if (key.includes('buy')) ratingColor = 'text-green-600 dark:text-green-400';
+    if (key.includes('sell')) ratingColor = 'text-red-600 dark:text-red-400';
+    if (key.includes('hold')) ratingColor = 'text-yellow-600 dark:text-yellow-400';
+    return (
+        <div className="mt-8 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg animate-fade-in border border-gray-100 dark:border-gray-700">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Analyst Ratings</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Consensus Rating</h3>
+                    <p className={`text-5xl font-bold capitalize mt-2 ${ratingColor}`}>{recommendationKey}</p>
+                    {numberOfAnalystOpinions && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Based on {numberOfAnalystOpinions} analysts</p>
+                    )}
+                </div>
+                <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Mean Price Target</h3>
+                    <p className="text-5xl font-bold text-gray-900 dark:text-white mt-2">${formatNum(analystTargetPrice)}</p>
+                    <p className={`text-lg font-semibold mt-1 ${upsidePercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {formatNum(upsidePercent)}% {upsidePercent >= 0 ? 'Upside' : 'Downside'}
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Recent news articles for the searched stock
+const StockNewsCard = ({ newsData }) => {
+    const formatDate = (dateString) => {
+        try { return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); }
+        catch (e) { return ''; }
+    };
+    return (
+        <div className="mt-8 bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg animate-fade-in border border-gray-100 dark:border-gray-700">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Recent News</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {newsData.map((item, i) => (
+                    <a key={i} href={item.link} target="_blank" rel="noopener noreferrer"
+                       className="flex flex-col p-4 border border-gray-100 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2 leading-snug line-clamp-3">{item.title}</h3>
+                        {item.thumbnail_url && (
+                            <img src={item.thumbnail_url} alt={item.title} className="w-full h-36 object-cover rounded-md my-2" />
+                        )}
+                        <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400 mt-auto pt-2">
+                            <span className="font-medium truncate pr-4">{item.publisher}</span>
+                            <span className="flex-shrink-0">{formatDate(item.publishTime)}</span>
+                        </div>
+                    </a>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const timeFrames = [
     { label: '1D', value: '1d' },
     { label: '5D', value: '5d' },
@@ -29,7 +169,7 @@ function useDebounce(value, delay) {
     return debouncedValue;
 }
 
-const SearchPage = ({ onNavigateToPredictions }) => {
+const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTicker }) => {
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [expandedSectors, setExpandedSectors] = useState({});
     // --- NEW: Autocomplete states ---
@@ -96,6 +236,7 @@ const SearchPage = ({ onNavigateToPredictions }) => {
             const stockJson = await stockResponse.json();
             setStockData(stockJson);
             setSearchedTicker(ticker);
+            fetchNewsData(stockJson.companyName);
             await fetchChartData(ticker, defaultTimeFrame);
             
             // Fetch prediction data
@@ -144,6 +285,8 @@ const SearchPage = ({ onNavigateToPredictions }) => {
     
     const [compareTicker, setCompareTicker] = useState('');
     const [comparisonData, setComparisonData] = useState(null);
+    const [newsData, setNewsData] = useState(null);
+    const [newsLoading, setNewsLoading] = useState(false);
 
     // --- Autocomplete state ---
     const [suggestions, setSuggestions] = useState(null);
@@ -151,6 +294,14 @@ const SearchPage = ({ onNavigateToPredictions }) => {
     
     // --- Debounce the user's input ---
     const debouncedQuery = useDebounce(ticker, 300); // 300ms delay
+
+    useEffect(() => {
+        if (initialTicker) {
+            handleSuggestionClick(initialTicker);
+            if (onClearInitialTicker) onClearInitialTicker();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialTicker]);
 
     useEffect(() => {
         // Load recent searches from localStorage
@@ -211,6 +362,21 @@ const SearchPage = ({ onNavigateToPredictions }) => {
         localStorage.removeItem('recentSearches');
     };
 
+    const fetchNewsData = async (companyName) => {
+        if (!companyName) return;
+        setNewsLoading(true);
+        try {
+            const response = await fetch(`http://127.0.0.1:5001/news?q=${encodeURIComponent(companyName)}`);
+            if (!response.ok) throw new Error('News fetch failed');
+            const data = await response.json();
+            setNewsData(Array.isArray(data) ? data : null);
+        } catch {
+            setNewsData(null);
+        } finally {
+            setNewsLoading(false);
+        }
+    };
+
     const fetchChartData = async (symbol, timeFrame) => {
         setChartLoading(true);
         setError('');
@@ -266,8 +432,9 @@ const SearchPage = ({ onNavigateToPredictions }) => {
         setStockData(null);
         setChartData(null);
         setPredictionData(null);
-        setComparisonData(null); 
+        setComparisonData(null);
         setCompareTicker('');
+        setNewsData(null);
         setError('');
 
         const defaultTimeFrame = timeFrames.find(f => f.value === '14d');
@@ -283,6 +450,7 @@ const SearchPage = ({ onNavigateToPredictions }) => {
             setStockData(stockJson);
             setSearchedTicker(ticker);
             saveRecentSearch(ticker);
+            fetchNewsData(stockJson.companyName);
 
             await fetchChartData(ticker, defaultTimeFrame);
             try {
@@ -591,7 +759,7 @@ const SearchPage = ({ onNavigateToPredictions }) => {
                 {stockData && <StockDataCard data={stockData} onAddToWatchlist={handleAddToWatchlist} />}
                 
                 {predictionData && (
-                    <PredictionPreviewCard 
+                    <PredictionPreviewCard
                         predictionData={predictionData}
                         onViewFullPredictions={() => {
                             if (onNavigateToPredictions) {
@@ -600,6 +768,18 @@ const SearchPage = ({ onNavigateToPredictions }) => {
                         }}
                     />
                 )}
+
+                {stockData && (
+                    <>
+                        <StockOverviewCard
+                            summary={stockData.fundamentals?.overview}
+                            financials={stockData.financials}
+                        />
+                        <KeyMetricsCard metrics={stockData.fundamentals} />
+                        <AnalystRatingsCard ratings={stockData.fundamentals} price={stockData.price} />
+                    </>
+                )}
+
                 {chartLoading && <div className="text-center p-8 text-gray-500 dark:text-gray-400">Loading chart...</div>}
                 {chartData && !chartLoading && (
                     <div className="mt-8 bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg animate-fade-in">
@@ -619,17 +799,20 @@ const SearchPage = ({ onNavigateToPredictions }) => {
                                 Add
                             </button>
                         </form>
-                        
+
                         {/* --- The Chart Component --- */}
                         <StockChart
                             chartData={chartData}
                             ticker={searchedTicker}
                             onTimeFrameChange={handleTimeFrameChange}
                             activeTimeFrame={activeTimeFrame}
-                            comparisonData={comparisonData} // Pass comparison data
+                            comparisonData={comparisonData}
                         />
                     </div>
                 )}
+
+                {newsLoading && <div className="text-center p-8 text-gray-500 dark:text-gray-400">Loading news...</div>}
+                {newsData && newsData.length > 0 && !newsLoading && <StockNewsCard newsData={newsData} />}
             </div>
 
         </div>
