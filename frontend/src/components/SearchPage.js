@@ -169,7 +169,7 @@ function useDebounce(value, delay) {
     return debouncedValue;
 }
 
-const SearchPage = ({ onNavigateToPredictions }) => {
+const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTicker }) => {
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [expandedSectors, setExpandedSectors] = useState({});
     // --- NEW: Autocomplete states ---
@@ -294,6 +294,14 @@ const SearchPage = ({ onNavigateToPredictions }) => {
     
     // --- Debounce the user's input ---
     const debouncedQuery = useDebounce(ticker, 300); // 300ms delay
+
+    useEffect(() => {
+        if (initialTicker) {
+            handleSuggestionClick(initialTicker);
+            if (onClearInitialTicker) onClearInitialTicker();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialTicker]);
 
     useEffect(() => {
         // Load recent searches from localStorage

@@ -23,6 +23,13 @@ from dotenv import load_dotenv
 load_dotenv()
 # --- END FIX ---
 
+# --- OpenBB (optional, used for financials/filings/screener/macro) ---
+try:
+    from openbb import obb
+    OPENBB_AVAILABLE = True
+except ImportError:
+    OPENBB_AVAILABLE = False
+
 # --- Tazeem's Imports ---
 from model import create_dataset, estimate_week, try_today, estimate_new, good_model
 from news_fetcher import get_general_news
@@ -1884,4 +1891,212 @@ if __name__ == '__main__':
     checker_thread = threading.Thread(target=run_scheduler, daemon=True)
     checker_thread.start()
 
-    app.run(debug=True, port=5001, use_reloader=False)  # use_reloader=False is important for threads
+    app.run(debug=True, port=5001, use_reloader=False)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenBB-powered endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _obb_to_float(val):
+    """Safely convert OpenBB field values to JSON-serialisable floats."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return None if (f != f) else round(f, 4)  # NaN check
+    except (TypeError, ValueError):
+        return None
+
+
+@app.route('/fundamentals/financials/<string:ticker>')
+def get_financial_statements(ticker):
+    """4-year income statement, balance sheet snapshot, and cash flow via OpenBB/yfinance."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+    t = ticker.split(':')[0].upper()
+    try:
+        # ── Income statement ──────────────────────────────────────────────
+        inc_df = obb.equity.fundamental.income(t, limit=4, provider='yfinance').to_dataframe()
+        income = []
+        for _, row in inc_df.iterrows():
+            income.append({
+                "period": str(row.get('period_ending', '')),
+                "revenue":           _obb_to_float(row.get('total_revenue')),
+                "gross_profit":      _obb_to_float(row.get('gross_profit')),
+                "operating_income":  _obb_to_float(row.get('operating_income')),
+                "net_income":        _obb_to_float(row.get('net_income')),
+                "ebitda":            _obb_to_float(row.get('ebitda')),
+                "eps":               _obb_to_float(row.get('basic_earnings_per_share')),
+            })
+
+        # ── Balance sheet (most recent 4 years) ──────────────────────────
+        bal_df = obb.equity.fundamental.balance(t, limit=4, provider='yfinance').to_dataframe()
+        balance = []
+        for _, row in bal_df.iterrows():
+            balance.append({
+                "period":         str(row.get('period_ending', '')),
+                "total_assets":   _obb_to_float(row.get('total_assets')),
+                "total_liab":     _obb_to_float(row.get('total_liabilities_net_minority_interest')),
+                "total_equity":   _obb_to_float(row.get('common_stock_equity')),
+                "cash":           _obb_to_float(row.get('cash_and_cash_equivalents')),
+                "total_debt":     _obb_to_float(row.get('total_debt')),
+                "working_capital":_obb_to_float(row.get('working_capital')),
+            })
+
+        # ── Cash flow ─────────────────────────────────────────────────────
+        cf_df = obb.equity.fundamental.cash(t, limit=4, provider='yfinance').to_dataframe()
+        # capex lives in investing activities — check both names
+        capex_col = 'capital_expenditure' if 'capital_expenditure' in cf_df.columns else \
+                    'purchase_of_ppe' if 'purchase_of_ppe' in cf_df.columns else None
+        cash_flow = []
+        for _, row in cf_df.iterrows():
+            op  = _obb_to_float(row.get('operating_cash_flow'))
+            inv = _obb_to_float(row.get('investing_cash_flow'))
+            fin = _obb_to_float(row.get('cash_flow_from_continuing_financing_activities'))
+            cap = _obb_to_float(row.get(capex_col)) if capex_col else None
+            fcf = round(op + cap, 4) if (op is not None and cap is not None) else None
+            cash_flow.append({
+                "period":     str(row.get('period_ending', '')),
+                "operating":  op,
+                "investing":  inv,
+                "financing":  fin,
+                "capex":      cap,
+                "free_cf":    fcf,
+            })
+
+        return jsonify({"income": income, "balance": balance, "cash_flow": cash_flow})
+    except Exception as e:
+        logger.error(f"Financial statements error for {t}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/fundamentals/filings/<string:ticker>')
+def get_sec_filings(ticker):
+    """Recent SEC filings (10-K, 10-Q, 8-K) via OpenBB."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+    t = ticker.split(':')[0].upper()
+    RELEVANT = {'10-K', '10-Q', '8-K', '10-K/A', '10-Q/A', 'DEF 14A', 'S-1', '20-F', '6-K'}
+    try:
+        results = obb.equity.fundamental.filings(t, limit=50).results
+        filings = []
+        for f in results:
+            rt = str(f.report_type) if f.report_type is not None else ''
+            if rt not in RELEVANT:
+                continue
+            filings.append({
+                "date":        str(f.filing_date) if f.filing_date else '',
+                "type":        rt,
+                "description": f.primary_doc_description or '',
+                "url":         f.filing_detail_url or f.report_url or '',
+            })
+            if len(filings) >= 20:
+                break
+        return jsonify(filings)
+    except Exception as e:
+        logger.error(f"SEC filings error for {t}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/screener')
+def get_screener():
+    """Top gainers, losers, and most-active via OpenBB/yfinance."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+
+    def _fmt(results):
+        out = []
+        for r in results:
+            out.append({
+                "symbol":          r.symbol,
+                "name":            r.name or '',
+                "price":           _obb_to_float(r.price),
+                "change":          _obb_to_float(r.change),
+                "percent_change":  _obb_to_float(r.percent_change),
+                "market_cap":      _obb_to_float(r.market_cap),
+                "volume":          int(r.volume) if r.volume else None,
+                "pe_forward":      _obb_to_float(r.pe_forward),
+                "year_high":       _obb_to_float(r.year_high),
+                "year_low":        _obb_to_float(r.year_low),
+                "eps_ttm":         _obb_to_float(r.eps_ttm),
+            })
+        return out
+
+    try:
+        gainers = _fmt(obb.equity.discovery.gainers(provider='yfinance').results)
+        losers  = _fmt(obb.equity.discovery.losers(provider='yfinance').results)
+        active  = _fmt(obb.equity.discovery.active(provider='yfinance').results)
+        return jsonify({"gainers": gainers, "losers": losers, "active": active})
+    except Exception as e:
+        logger.error(f"Screener error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+MACRO_INDICATORS = [
+    {"symbol": "URATE", "name": "Unemployment Rate",     "unit": "%",    "multiplier": 100},
+    {"symbol": "CPI",   "name": "Consumer Price Index",  "unit": "Index","multiplier": 1},
+    {"symbol": "IP",    "name": "Industrial Production", "unit": "Index","multiplier": 1},
+]
+
+@app.route('/macro/overview')
+def get_macro_overview():
+    """Key US macro indicators + 10-Year Treasury yield via OpenBB/econdb + yfinance."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+    result = []
+    try:
+        for ind in MACRO_INDICATORS:
+            try:
+                df = obb.economy.indicators(
+                    symbol=ind["symbol"], country='US', provider='econdb'
+                ).to_dataframe().reset_index()
+                df = df.sort_values('date')
+                last  = df.iloc[-1]
+                prev  = df.iloc[-2] if len(df) > 1 else last
+                val   = float(last['value']) * ind["multiplier"]
+                prev_val = float(prev['value']) * ind["multiplier"]
+                # build 24-month sparkline
+                sparkline = [
+                    {"date": str(row['date']), "value": round(float(row['value']) * ind["multiplier"], 4)}
+                    for _, row in df.tail(24).iterrows()
+                ]
+                result.append({
+                    "symbol":   ind["symbol"],
+                    "name":     ind["name"],
+                    "unit":     ind["unit"],
+                    "value":    round(val, 3),
+                    "prev":     round(prev_val, 3),
+                    "date":     str(last['date']),
+                    "sparkline": sparkline,
+                })
+            except Exception as e:
+                logger.warning(f"Macro indicator {ind['symbol']} failed: {e}")
+
+        # 10-Year Treasury yield from yfinance
+        try:
+            tnx = yf.Ticker('^TNX')
+            info = tnx.info
+            rate = info.get('regularMarketPrice') or info.get('previousClose')
+            hist = tnx.history(period='2y', interval='1mo')
+            sparkline = [
+                {"date": str(d.date()), "value": round(float(v), 3)}
+                for d, v in zip(hist.index, hist['Close'])
+            ]
+            prev_rate = float(hist['Close'].iloc[-2]) if len(hist) > 1 else rate
+            result.append({
+                "symbol":    "TNX",
+                "name":      "10-Year Treasury Yield",
+                "unit":      "%",
+                "value":     round(float(rate), 3) if rate else None,
+                "prev":      round(prev_rate, 3),
+                "date":      str(hist.index[-1].date()) if not hist.empty else '',
+                "sparkline": sparkline,
+            })
+        except Exception as e:
+            logger.warning(f"TNX fetch failed: {e}")
+
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Macro overview error: {e}")
+        return jsonify({"error": str(e)}), 500  # use_reloader=False is important for threads

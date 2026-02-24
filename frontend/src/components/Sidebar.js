@@ -4,7 +4,7 @@ import {
     LayoutDashboard, Search, Star, Briefcase, Building2,
     TrendingUp, Target, BarChart3, DollarSign, Bitcoin,
     Layers, Newspaper, Bell, BookOpen, Sun, Moon,
-    ChevronLeft, ChevronRight, Boxes
+    ChevronLeft, ChevronRight, Boxes, SlidersHorizontal, Globe
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -18,6 +18,7 @@ const NAV_GROUPS = [
         label: 'Trading',
         items: [
             { page: 'search', icon: Search, label: 'Search' },
+            { page: 'screener', icon: SlidersHorizontal, label: 'Screener' },
             { page: 'watchlist', icon: Star, label: 'Watchlist' },
             { page: 'portfolio', icon: Briefcase, label: 'Portfolio' },
             { page: 'fundamentals', icon: Building2, label: 'Fundamentals' },
@@ -37,6 +38,7 @@ const NAV_GROUPS = [
             { page: 'forex', icon: DollarSign, label: 'Forex' },
             { page: 'crypto', icon: Bitcoin, label: 'Crypto' },
             { page: 'commodities', icon: Boxes, label: 'Commodities' },
+            { page: 'macro', icon: Globe, label: 'Macro' },
             { page: 'predictionMarkets', icon: Layers, label: 'Prediction Mkt' },
         ],
     },
