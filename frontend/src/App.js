@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import LandingPage from './components/LandingPage';
 import Sidebar from './components/Sidebar';
 import DashboardPage from './components/DashboardPage';
 import SearchPage from './components/SearchPage';
@@ -20,6 +21,7 @@ import ScreenerPage from './components/ScreenerPage';
 import MacroPage from './components/MacroPage';
 
 function App() {
+    const [showLanding, setShowLanding] = useState(true);
     const [activePage, setActivePage] = useState('dashboard');
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [sharedTicker, setSharedTicker] = useState(null);
@@ -28,6 +30,10 @@ function App() {
         setSharedTicker(ticker);
         setActivePage('search');
     };
+
+    if (showLanding) {
+        return <LandingPage onEnterApp={() => setShowLanding(false)} />;
+    }
 
     return (
         <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden font-sans">
