@@ -200,7 +200,7 @@ const ForexPage = () => {
                                     type="number"
                                     value={amount}
                                     onChange={(e) => setAmount(e.target.value)}
-                                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg outline-none text-lg font-mono"
+                                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 rounded-lg outline-none text-lg font-mono"
                                 />
                             </div>
 
@@ -235,13 +235,13 @@ const ForexPage = () => {
                             <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-center border border-blue-100 dark:border-blue-800">
                                 <span className="block text-sm text-blue-600 dark:text-blue-300 mb-1">Converted Value</span>
                                 {loading && !exchangeData ? (
-                                    <span className="animate-pulse text-xl">Loading...</span>
+                                    <span className="animate-pulse text-xl text-gray-900 dark:text-white">Loading...</span>
                                 ) : exchangeData ? (
                                     <span className="text-3xl font-bold text-blue-700 dark:text-blue-200">
                                         {(amount * exchangeData.exchange_rate).toFixed(2)} <span className="text-lg">{toCurrency.code}</span>
                                     </span>
                                 ) : (
-                                    <span>---</span>
+                                    <span className="text-gray-900 dark:text-white">---</span>
                                 )}
                             </div>
                         </div>
@@ -254,7 +254,7 @@ const ForexPage = () => {
                                 <button
                                     key={pair}
                                     onClick={() => handleQuickPair(pair)}
-                                    className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm font-medium transition-all"
+                                    className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm font-medium transition-all"
                                 >
                                     {pair}
                                 </button>
@@ -264,7 +264,6 @@ const ForexPage = () => {
                 </div>
 
                 {/* Right Column: Chart Area */}
-                {/* Removed 'h-[500px]' fixed height restriction to allow it to fit content naturally if needed, or keep min-h */}
                 <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 min-h-[500px] flex flex-col">
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
