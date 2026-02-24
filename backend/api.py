@@ -25,7 +25,7 @@ load_dotenv()
 # --- Tazeem's Imports ---
 from model import create_dataset, estimate_week, try_today, estimate_new, good_model
 from news_fetcher import get_general_news
-from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict
+from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
@@ -485,9 +485,14 @@ def predict_stock(model, ticker):
             preds = linear_regression_predict(df, days_ahead=7)
         elif model == "RandomForest":
             preds = random_forest_predict(df, days_ahead=7)
-        else:  # XGBoost
+        elif model == "XGBoost":
             preds = xgboost_predict(df, days_ahead=7)
-
+        elif model == "LSTM":
+            model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=30, forecast_horizon=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+            preds = lstm_predict(df, model, scaler_X, scaler_y, device, days_ahead=7)
+        else:
+            return jsonify({"error": "Unknown model"}), 400
+        
         if preds is None or len(preds) == 0:
             return jsonify({
                 "error": f"{model} prediction failed."

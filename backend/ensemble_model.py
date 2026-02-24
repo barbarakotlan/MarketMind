@@ -4,7 +4,7 @@ import model
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from copy import deepcopy as dc
+import datetime
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import StandardScaler
@@ -230,7 +230,7 @@ def calculate_metrics(actual, predicted):
     }
 
 
-# Neural Network Class
+# Neural Network Class (Unused)
 class NeuralNetwork(nn.Module):
     """
     Neural Network
@@ -255,7 +255,7 @@ class NeuralNetwork(nn.Module):
         """
         return self.net(x)
 
-# Artificial Neural Network prediction function
+# Artificial Neural Network prediction function (Unused)
 def ann_predict(df, days_ahead=7):
     """
     Neural Network prediction
@@ -438,30 +438,35 @@ def lstm_train(df, lookback=14, seq_len=60, forecast_horizon=7, hidden_size=64, 
     return model, scaler_X, scaler_y, device
 
 # Long Short-Term Memory (LSTM) prediction function
-def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=60):
+def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=60, days_ahead=7):
     '''Predict future stock prices using the trained LSTM model'''
     try:
         model.eval()
 
-        # --- Build features the same way as training ---
+        # --- Build features ---
         X_features, _, _ = prepare_ml_data(df, lookback)
 
-        # --- Take last seq_len rows BEFORE scaling ---
-        last_window_raw = X_features[-seq_len:] # (seq_len, n_features)
-
-        # --- Scale using training scaler (same reshape trick) ---
+        # --- Take last seq_len rows ---
+        last_window_raw = X_features[-seq_len:]
         n_features = last_window_raw.shape[1]
         last_window_scaled = scaler_X.transform(last_window_raw.reshape(-1, n_features)).reshape(1, seq_len, n_features)
-
         last_window_tensor = torch.FloatTensor(last_window_scaled).to(device)
 
         # --- Predict ---
         with torch.no_grad():
-            pred_scaled = model(last_window_tensor, device).cpu().numpy() # (1, forecast_horizon)
+            pred_scaled = model(last_window_tensor, device).cpu().numpy()
 
         # --- Inverse transform ---
         pred_prices = scaler_y.inverse_transform(pred_scaled.reshape(-1, 1)).flatten()
-        return pred_prices
+
+        # --- Generate future business dates starting from today ---
+        today = datetime.date.today()
+        future_dates = pd.bdate_range(start=today, periods=days_ahead)
+
+        # --- Return as a pandas Series with dates as index ---
+        predictions = pd.Series(pred_prices, index=future_dates, name="Predicted Close")
+
+        return predictions
 
     except Exception as e:
         print(f"LSTM error: {e}")
@@ -490,16 +495,15 @@ if __name__ == "__main__":
 
     # --- LSTM Train ---
     lookback = 14
-    seq_len = 60
-    forcast_horizon = 30
-    model, scaler_X, scaler_y, device = lstm_train(df, lookback=lookback, seq_len=seq_len, forecast_horizon=forcast_horizon, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+    seq_len = 30
+    days_ahead = 7
+    model, scaler_X, scaler_y, device = lstm_train(df, lookback=lookback, seq_len=seq_len, forecast_horizon=days_ahead, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
 
     # --- Predict ---
-    predictions = lstm_predict(df, model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
+    predictions = lstm_predict(df, model, scaler_X, scaler_y, device, lookback=lookback,seq_len=seq_len, days_ahead=days_ahead)
 
     # --- Output ---
     if predictions is not None:
-        last_date = df.index[-1]
-        future_dates = pd.bdate_range(start=last_date, periods=forcast_horizon + 1)[1:]  # business days only
-        for date, price in zip(future_dates, predictions):
+        print("\nPredicted prices:")
+        for date, price in predictions.items():
             print(f"{date.date()} → ${price:.2f}")
