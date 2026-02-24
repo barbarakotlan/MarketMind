@@ -19,7 +19,36 @@
 }
 
 /* Prevent horizontal overflow globally without creating a scroll container */
+html {
+    overscroll-behavior: none;
+}
+
 body {
     overflow-x: clip;
-    overscroll-behavior-y: none;
+    overscroll-behavior: none;
+}
+
+/* Infinite marquee ticker */
+@keyframes marquee {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+}
+
+/* Progress bar shimmer */
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+    animation: shimmer 2s infinite;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
 }

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useDarkMode } from '../context/DarkModeContext';
 import {
-    TrendingUp, TrendingDown, BarChart3, Search, Briefcase,
+    BarChart3, Search, Briefcase,
     Building2, Globe, SlidersHorizontal, Brain, ArrowRight,
     Target, Activity, Sun, Moon, ChevronDown, Zap, Shield,
     DollarSign, Bitcoin,
@@ -36,63 +36,156 @@ const stagger = (delay = 0.08) => ({
 
 const viewportOnce = { once: true, margin: '-60px' };
 
-// ── Live ticker strip ─────────────────────────────────────────────────────────
-const TICKERS = [
+// ── Marquee ticker ────────────────────────────────────────────────────────────
+const STOCK_TICKERS = [
     { ticker: 'SPY',     label: 'S&P 500' },
     { ticker: 'QQQ',     label: 'NASDAQ' },
     { ticker: 'DIA',     label: 'Dow Jones' },
-    { ticker: 'BTC-USD', label: 'Bitcoin' },
+    { ticker: 'AAPL',    label: 'AAPL' },
+    { ticker: 'MSFT',    label: 'MSFT' },
+    { ticker: 'NVDA',    label: 'NVDA' },
+    { ticker: 'TSLA',    label: 'TSLA' },
+    { ticker: 'GOOGL',   label: 'GOOGL' },
+    { ticker: 'AMZN',    label: 'AMZN' },
+    { ticker: 'BTC-USD', label: 'BTC' },
+    { ticker: 'ETH-USD', label: 'ETH' },
     { ticker: 'GLD',     label: 'Gold' },
-    { ticker: 'AAPL',    label: 'Apple' },
 ];
 
-function TickerStrip() {
-    const [data, setData] = useState({});
+function MarqueeTicker() {
+    const [stocks, setStocks] = useState([]);
+    const [news,   setNews]   = useState([]);
+    const [paused, setPaused] = useState(false);
 
     useEffect(() => {
+        // Stocks
         Promise.allSettled(
-            TICKERS.map(({ ticker }) =>
+            STOCK_TICKERS.map(({ ticker }) =>
                 fetch(`http://127.0.0.1:5001/stock/${ticker}`).then(r => r.json())
             )
         ).then(results => {
-            const map = {};
-            results.forEach((r, i) => {
-                if (r.status === 'fulfilled' && !r.value?.error) {
-                    map[TICKERS[i].ticker] = r.value;
-                }
-            });
-            setData(map);
+            const items = results
+                .map((r, i) => {
+                    if (r.status !== 'fulfilled' || r.value?.error) return null;
+                    return {
+                        type: 'stock',
+                        label: STOCK_TICKERS[i].label,
+                        price: r.value.price,
+                        change: r.value.change_percent,
+                    };
+                })
+                .filter(Boolean);
+            setStocks(items);
         }).catch(() => {});
+
+        // News headlines (best-effort)
+        fetch('http://127.0.0.1:5001/api/news?category=general&limit=6')
+            .then(r => r.json())
+            .then(d => {
+                const articles = Array.isArray(d) ? d : (d.articles ?? d.news ?? []);
+                setNews(
+                    articles
+                        .filter(a => a.headline || a.title)
+                        .slice(0, 5)
+                        .map(a => ({
+                            type: 'news',
+                            text: (a.headline ?? a.title ?? '').slice(0, 80),
+                            source: a.source ?? '',
+                        }))
+                );
+            })
+            .catch(() => {});
     }, []);
 
+    // Interleave news into stock items then duplicate for seamless loop
+    const combined = useMemo(() => {
+        if (stocks.length === 0) return [];
+        if (news.length === 0) return stocks;
+        const out = [];
+        const step = Math.max(2, Math.floor(stocks.length / (news.length + 1)));
+        let ni = 0;
+        stocks.forEach((s, i) => {
+            out.push(s);
+            if ((i + 1) % step === 0 && ni < news.length) {
+                out.push(news[ni++]);
+            }
+        });
+        return out;
+    }, [stocks, news]);
+
+    const looped = useMemo(() => [...combined, ...combined], [combined]);
+
+    if (combined.length === 0) {
+        // Loading skeleton
+        return (
+            <div className="bg-gray-900/90 border-b border-gray-700/50 h-10 flex items-center px-6 gap-8">
+                {[...Array(6)].map((_, i) => (
+                    <div key={i} className="flex gap-2 items-center flex-shrink-0">
+                        <div className="h-3 w-12 bg-gray-700 rounded animate-pulse" />
+                        <div className="h-3 w-14 bg-gray-700 rounded animate-pulse" />
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    const duration = combined.length * 3.5; // seconds — 3.5s per item
+
     return (
-        <div className="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700/50">
-            <div className="flex items-center gap-8 px-6 py-2.5 overflow-x-auto"
-                 style={{ scrollbarWidth: 'none' }}>
-                {TICKERS.map(({ ticker, label }) => {
-                    const s = data[ticker];
-                    const chg = s?.change_percent;
-                    const pos = chg > 0;
-                    return (
-                        <div key={ticker} className="flex items-center gap-3 flex-shrink-0">
-                            <span className="text-xs text-gray-400">{label}</span>
-                            {s ? (
-                                <>
-                                    <span className="text-sm font-semibold text-white">
-                                        ${s.price?.toFixed(2)}
-                                    </span>
-                                    <span className={`text-xs font-medium flex items-center gap-0.5 ${pos ? 'text-emerald-400' : 'text-red-400'}`}>
-                                        {pos ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                                        {pos ? '+' : ''}{chg?.toFixed(2)}%
-                                    </span>
-                                </>
-                            ) : (
-                                <span className="text-sm text-gray-600 animate-pulse">——</span>
-                            )}
-                        </div>
-                    );
-                })}
-                <div className="flex-shrink-0 text-xs text-gray-600 ml-auto pl-6">Live</div>
+        <div
+            className="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700/50 overflow-hidden relative select-none"
+            onMouseEnter={() => setPaused(true)}
+            onMouseLeave={() => setPaused(false)}
+        >
+            {/* LIVE badge — fixed left */}
+            <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center gap-2 pl-3 pr-4 bg-gray-900 border-r border-gray-700/60">
+                <span className="relative flex h-2 w-2 flex-shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600" />
+                </span>
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Live</span>
+            </div>
+
+            {/* Scrolling strip */}
+            <div className="overflow-hidden ml-[72px]">
+                <div
+                    className="flex items-stretch whitespace-nowrap"
+                    style={{
+                        animation: `marquee ${duration}s linear infinite`,
+                        animationPlayState: paused ? 'paused' : 'running',
+                        willChange: 'transform',
+                    }}
+                >
+                    {looped.map((item, i) =>
+                        item.type === 'stock' ? (
+                            <div
+                                key={i}
+                                className="inline-flex items-center gap-2.5 px-5 py-2.5 border-r border-gray-700/40 flex-shrink-0"
+                            >
+                                <span className="text-xs font-bold text-white">{item.label}</span>
+                                <span className="text-xs text-gray-400">
+                                    ${typeof item.price === 'number' ? item.price.toFixed(2) : '—'}
+                                </span>
+                                <span className={`text-xs font-semibold ${item.change > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {item.change > 0 ? '▲' : '▼'} {Math.abs(item.change ?? 0).toFixed(2)}%
+                                </span>
+                            </div>
+                        ) : (
+                            <div
+                                key={i}
+                                className="inline-flex items-center gap-2 px-5 py-2.5 border-r border-gray-700/40 flex-shrink-0 max-w-xs"
+                            >
+                                <span className="text-xs font-bold text-blue-400 uppercase tracking-widest flex-shrink-0">
+                                    News
+                                </span>
+                                <span className="text-xs text-gray-300 truncate">{item.text}</span>
+                                {item.source && (
+                                    <span className="text-xs text-gray-600 flex-shrink-0">— {item.source}</span>
+                                )}
+                            </div>
+                        )
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -140,10 +233,474 @@ const STATS = [
 ];
 
 const STEPS = [
-    { num: '1', icon: Search,    title: 'Search Any Asset',      body: 'Enter a ticker to instantly surface price data, company overview, analyst ratings, key metrics, and recent news.' },
-    { num: '2', icon: Brain,     title: 'Analyze the AI Forecast', body: 'See a 7-day directional prediction with per-model breakdown, confidence intervals, and full backtesting results.' },
-    { num: '3', icon: Briefcase, title: 'Trade Risk-Free',         body: 'Place paper trades to test your thesis. Track your portfolio P&L with professional performance analytics.' },
+    {
+        num: '1',
+        icon: Search,
+        title: 'Search Any Asset',
+        terminal: [
+            { text: 'marketmind search AAPL', prefix: '$', color: 'text-gray-300' },
+            { text: 'connecting to data feeds...', color: 'text-gray-500', dim: true, think: 200 },
+            { text: '[OK] price data received (14ms)', color: 'text-emerald-400' },
+            { text: '[OK] fundamentals loaded', color: 'text-emerald-400' },
+            { text: '[OK] 24 recent news articles', color: 'text-emerald-400' },
+            { text: '┌─ AAPL ─ Apple Inc. ─────┐', color: 'text-blue-400' },
+            { text: '│ Price: $182.52 ▲ 1.24%  │', color: 'text-gray-300' },
+            { text: '│ Market Cap: $2.84T      │', color: 'text-gray-300' },
+            { text: '│ P/E: 28.4 | EPS: $6.43  │', color: 'text-gray-300' },
+            { text: '└─────────────────────────┘', color: 'text-blue-400' },
+        ],
+        body: 'Enter a ticker to instantly surface price data, company overview, analyst ratings, key metrics, and recent news.'
+    },
+    {
+        num: '2',
+        icon: Brain,
+        title: 'Analyze the AI Forecast',
+        terminal: [
+            { text: 'marketmind predict AAPL --days 7', prefix: '$', color: 'text-gray-300' },
+            { text: 'loading ensemble models...', color: 'text-gray-500', dim: true, think: 150 },
+            { text: '▶ Random Forest ...........', color: 'text-purple-400', think: 300 },
+            { text: '  accuracy: 87.3% ✓', color: 'text-gray-400' },
+            { text: '▶ XGBoost .................', color: 'text-purple-400', think: 250 },
+            { text: '  accuracy: 89.1% ✓', color: 'text-gray-400' },
+            { text: '▶ Linear Regression .......', color: 'text-purple-400', think: 200 },
+            { text: '  accuracy: 82.7% ✓', color: 'text-gray-400' },
+            { text: '', color: 'text-gray-400' },
+            { text: '╔═ 7-DAY FORECAST ═════════╗', color: 'text-emerald-500' },
+            { text: '║  Direction: BULLISH ▲    ║', color: 'text-emerald-400' },
+            { text: '║  Confidence: 84.2%       ║', color: 'text-emerald-400' },
+            { text: '║  Target: $190.12 (+4.2%) ║', color: 'text-emerald-400' },
+            { text: '╚══════════════════════════╝', color: 'text-emerald-500' },
+        ],
+        body: 'See a 7-day directional prediction with per-model breakdown, confidence intervals, and full backtesting results.'
+    },
+    {
+        num: '3',
+        icon: Briefcase,
+        title: 'Trade Risk-Free',
+        terminal: [
+            { text: 'marketmind trade buy AAPL 100', prefix: '$', color: 'text-gray-300' },
+            { text: 'paper trading account: $100,000.00', color: 'text-gray-500', dim: true },
+            { text: 'validating order...', color: 'text-gray-500', dim: true, think: 150 },
+            { text: '[OK] Order filled @ $182.50', color: 'text-emerald-400' },
+            { text: '[OK] 100 shares added to portfolio', color: 'text-emerald-400' },
+            { text: ' ', color: 'text-gray-400' },
+            { text: '┌─ PORTFOLIO UPDATE ──────┐', color: 'text-blue-400' },
+            { text: '│ Position: AAPL x100     │', color: 'text-gray-300' },
+            { text: '│ Avg Cost: $182.50       │', color: 'text-gray-300' },
+            { text: '│ Market Value: $18,252   │', color: 'text-gray-300' },
+            { text: '│ Day P&L: +$124.00 ▲     │', color: 'text-emerald-400' },
+            { text: '│ Total P&L: +$1,247.00 ▲ │', color: 'text-emerald-400' },
+            { text: '└─────────────────────────┘', color: 'text-blue-400' },
+        ],
+        body: 'Place paper trades to test your thesis. Track your portfolio P&L with professional performance analytics.'
+    },
 ];
+
+// ── Step terminals with orchestrated typing ──────────────────────────────────
+function StepTerminals() {
+    const [activeStep, setActiveStep] = useState(0);
+    const [completedSteps, setCompletedSteps] = useState(new Set());
+    const [hasStarted, setHasStarted] = useState(false);
+
+    useEffect(() => {
+        // Start sequence when component enters viewport
+        const timer = setTimeout(() => {
+            setHasStarted(true);
+            setActiveStep(0);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, []);
+
+    const handleStepComplete = (stepIndex) => {
+        setCompletedSteps(prev => new Set([...prev, stepIndex]));
+        if (stepIndex < STEPS.length - 1) {
+            setTimeout(() => {
+                setActiveStep(stepIndex + 1);
+            }, 300);
+        }
+    };
+
+    const handleReset = () => {
+        setCompletedSteps(new Set());
+        setActiveStep(0);
+        setTimeout(() => setActiveStep(0), 50);
+    };
+
+    return (
+        <div className="relative">
+            <div className="grid md:grid-cols-3 gap-6 relative">
+                {STEPS.map(({ num, icon: Icon, title, terminal, body }, index) => {
+                    const isActive = activeStep === index;
+                    const isCompleted = completedSteps.has(index);
+                    const showTerminal = isActive || isCompleted;
+
+                    return (
+                        <motion.div
+                            key={num}
+                            initial={{ opacity: 0, y: 30 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ delay: index * 0.15, type: 'spring', stiffness: 100 }}
+                            className="relative"
+                        >
+                            {/* Step indicator with pulse */}
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className={`relative w-12 h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-500 ${
+                                    isCompleted
+                                        ? 'bg-emerald-500 border-emerald-500 text-white'
+                                        : isActive
+                                            ? 'bg-blue-500 border-blue-500 text-white shadow-lg shadow-blue-500/30'
+                                            : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-400'
+                                }`}>
+                                    {isActive && (
+                                        <span className="absolute inset-0 rounded-xl bg-blue-500 animate-ping opacity-20" />
+                                    )}
+                                    {isCompleted ? (
+                                        <motion.span 
+                                            initial={{ scale: 0 }} 
+                                            animate={{ scale: 1 }} 
+                                            className="text-lg"
+                                        >
+                                            ✓
+                                        </motion.span>
+                                    ) : (
+                                        <Icon className="w-5 h-5" />
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-xs font-mono text-gray-500">step_{num}.sh</span>
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">{title}</h3>
+                                </div>
+                            </div>
+
+                            {/* Terminal window with CRT effect */}
+                            <div className={`relative bg-gray-950 rounded-xl overflow-hidden border transition-all duration-500 ${
+                                isActive
+                                    ? 'border-blue-500/60 shadow-2xl shadow-blue-500/20 scale-[1.02]'
+                                    : isCompleted
+                                        ? 'border-emerald-500/40 shadow-lg'
+                                        : 'border-gray-800/60 opacity-80'
+                            }`}>
+                                {/* CRT scanlines overlay */}
+                                <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
+                                    style={{
+                                        background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.3) 2px, rgba(0,0,0,0.3) 4px)'
+                                    }}
+                                />
+                                
+                                {/* Subtle glow when active */}
+                                {isActive && (
+                                    <div className="absolute inset-0 bg-blue-500/5 pointer-events-none" />
+                                )}
+
+                                {/* Terminal header */}
+                                <div className="flex items-center gap-2 px-3 py-2 bg-gray-900 border-b border-gray-800">
+                                    <div className="flex gap-1.5">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-red-500/90" />
+                                        <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/90" />
+                                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/90" />
+                                    </div>
+                                    <span className="text-[10px] text-gray-600 font-mono ml-2 truncate">
+                                        user@marketmind:~/{num === '1' ? 'search' : num === '2' ? 'predict' : 'trade'}
+                                    </span>
+                                </div>
+
+                                {/* Terminal content */}
+                                <div className="p-4 h-40 overflow-hidden relative">
+                                    {hasStarted && showTerminal ? (
+                                        <TerminalTyper
+                                            lines={terminal}
+                                            isActive={isActive}
+                                            onComplete={() => handleStepComplete(index)}
+                                        />
+                                    ) : (
+                                        <div className="text-gray-700 font-mono text-xs flex items-center h-full justify-center">
+                                            <span className="animate-pulse">_</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Description */}
+                            <motion.p 
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: 0.3 }}
+                                className="mt-3 text-sm text-gray-500 dark:text-gray-400 leading-relaxed"
+                            >
+                                {body}
+                            </motion.p>
+                        </motion.div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+// ── Terminal typewriter component with binary decode for output only ─────────
+function TerminalTyper({ lines, isActive, onComplete }) {
+    const [completedLines, setCompletedLines] = useState([]);
+    const [currentLineIndex, setCurrentLineIndex] = useState(0);
+    const [currentChar, setCurrentChar] = useState(0);
+    const [decodedText, setDecodedText] = useState('');
+    const [mode, setMode] = useState('idle'); // 'idle' | 'typing' | 'thinking' | 'decoding' | 'done'
+    const [showCursor, setShowCursor] = useState(true);
+    const [autoScrollY, setAutoScrollY] = useState(0);
+    const scrollRef = useRef(null);
+    const processingRef = useRef(false);
+
+    const binaryChars = ['0', '1', '░', '▒', '▓'];
+
+    // Auto-scroll to follow content
+    useEffect(() => {
+        if (scrollRef.current && mode !== 'done') {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [completedLines, currentChar, decodedText, mode]);
+
+    // Autoscroll up/down after completion
+    useEffect(() => {
+        if (mode !== 'done' || !scrollRef.current) return;
+        
+        const container = scrollRef.current;
+        const maxScroll = container.scrollHeight - container.clientHeight;
+        if (maxScroll <= 0) return;
+
+        let direction = 1;
+        let scrollPos = maxScroll;
+        
+        const autoScroll = setInterval(() => {
+            scrollPos += direction * 0.5;
+            if (scrollPos >= maxScroll) {
+                scrollPos = maxScroll;
+                direction = -1;
+            } else if (scrollPos <= 0) {
+                scrollPos = 0;
+                direction = 1;
+            }
+            container.scrollTop = scrollPos;
+        }, 50);
+
+        return () => clearInterval(autoScroll);
+    }, [mode]);
+
+    // Start animation when active
+    useEffect(() => {
+        if (!isActive || mode !== 'idle' || completedLines.length > 0) return;
+        
+        const startTimer = setTimeout(() => {
+            const firstLine = lines[0];
+            processingRef.current = false;
+            if (firstLine.prefix) {
+                setMode('typing');
+            } else {
+                setMode('decoding');
+            }
+        }, 150);
+        
+        return () => clearTimeout(startTimer);
+    }, [isActive, mode, completedLines.length, lines]);
+
+    // Handle typing mode
+    useEffect(() => {
+        if (mode !== 'typing' || currentLineIndex >= lines.length || processingRef.current) return;
+
+        const line = lines[currentLineIndex];
+        
+        if (currentChar < line.text.length) {
+            const timer = setTimeout(() => {
+                setCurrentChar(prev => prev + 1);
+            }, 12);
+            return () => clearTimeout(timer);
+        } else {
+            // Finished typing this command
+            processingRef.current = true;
+            setCompletedLines(prev => [...prev, { ...line, displayText: line.text }]);
+            setCurrentChar(0);
+            
+            const nextLine = lines[currentLineIndex + 1];
+            if (!nextLine) {
+                setMode('done');
+                onComplete?.();
+                return;
+            }
+            
+            setCurrentLineIndex(prev => prev + 1);
+            processingRef.current = false;
+            
+            if (nextLine.think) {
+                setMode('thinking');
+                setTimeout(() => {
+                    setMode('decoding');
+                }, nextLine.think);
+            } else {
+                setMode('decoding');
+            }
+        }
+    }, [mode, currentChar, currentLineIndex, lines, onComplete]);
+
+    // Handle decoding mode
+    useEffect(() => {
+        if (mode !== 'decoding' || currentLineIndex >= lines.length || processingRef.current) return;
+
+        processingRef.current = true;
+        const line = lines[currentLineIndex];
+        
+        // Skip empty lines
+        if (!line.text || line.text.trim() === '') {
+            setCompletedLines(prev => [...prev, { ...line, displayText: ' ' }]);
+            setDecodedText('');
+            processingRef.current = false;
+            
+            const nextLine = lines[currentLineIndex + 1];
+            if (!nextLine) {
+                setMode('done');
+                onComplete?.();
+                return;
+            }
+            
+            setCurrentLineIndex(prev => prev + 1);
+            
+            if (nextLine.prefix) {
+                setMode('typing');
+            } else if (nextLine.think) {
+                setMode('thinking');
+                setTimeout(() => setMode('decoding'), nextLine.think);
+            } else {
+                setMode('decoding');
+            }
+            return;
+        }
+
+        const text = line.text;
+        const chars = text.split('');
+        
+        let fillIndex = 0;
+        let decodeIndex = 0;
+        let isCancelled = false;
+        
+        // Phase 1: Fill with binary
+        const fillInterval = setInterval(() => {
+            if (isCancelled) return;
+            
+            if (fillIndex > chars.length) {
+                clearInterval(fillInterval);
+                // Phase 2: Decode to text
+                const decodeInterval = setInterval(() => {
+                    if (isCancelled) {
+                        clearInterval(decodeInterval);
+                        return;
+                    }
+                    
+                    if (decodeIndex > chars.length) {
+                        clearInterval(decodeInterval);
+                        // Line complete
+                        setCompletedLines(prev => [...prev, { ...line, displayText: text }]);
+                        setDecodedText('');
+                        processingRef.current = false;
+                        
+                        const nextLine = lines[currentLineIndex + 1];
+                        if (!nextLine) {
+                            setMode('done');
+                            onComplete?.();
+                            return;
+                        }
+                        
+                        setCurrentLineIndex(prev => prev + 1);
+                        
+                        if (nextLine.prefix) {
+                            setMode('typing');
+                        } else if (nextLine.think) {
+                            setMode('thinking');
+                            setTimeout(() => setMode('decoding'), nextLine.think);
+                        } else {
+                            setMode('decoding');
+                        }
+                        return;
+                    }
+                    
+                    const partial = chars.map((char, i) => 
+                        i < decodeIndex ? char : binaryChars[Math.floor(Math.random() * binaryChars.length)]
+                    ).join('');
+                    setDecodedText(partial);
+                    decodeIndex++;
+                }, 4);
+                return;
+            }
+            
+            const binary = chars.map((_, i) => 
+                i < fillIndex ? binaryChars[Math.floor(Math.random() * binaryChars.length)] : ''
+            ).join('');
+            setDecodedText(binary);
+            fillIndex++;
+        }, 3);
+
+        return () => {
+            isCancelled = true;
+            clearInterval(fillInterval);
+        };
+    }, [mode, currentLineIndex, lines, onComplete]);
+
+    // Cursor blink
+    useEffect(() => {
+        const cursorInterval = setInterval(() => {
+            setShowCursor(prev => !prev);
+        }, 600);
+        return () => clearInterval(cursorInterval);
+    }, []);
+
+    const currentLine = lines[currentLineIndex];
+    const isTyping = mode === 'typing';
+    const isDecoding = mode === 'decoding';
+
+    return (
+        <div ref={scrollRef} className="font-mono text-[11px] leading-5 h-full overflow-y-auto scrollbar-hide">
+            {/* Completed lines */}
+            {completedLines.map((line, i) => (
+                <div key={i} className={`${line.color} ${line.dim ? 'opacity-60' : ''}`}>
+                    {line.prefix && <span className="text-gray-600 mr-2">{line.prefix}</span>}
+                    {line.displayText || line.text}
+                </div>
+            ))}
+            
+            {/* Current line being processed */}
+            {currentLineIndex < lines.length && isActive && mode !== 'done' && (
+                <div className={currentLine?.color}>
+                    {currentLine?.prefix && (
+                        <span className="text-gray-600 mr-2">{currentLine.prefix}</span>
+                    )}
+                    
+                    {isTyping ? (
+                        <>
+                            {currentLine.text.slice(0, currentChar)}
+                            <span 
+                                className={`inline-block w-2 h-4 ml-0.5 align-middle transition-opacity duration-100 ${
+                                    showCursor ? 'bg-emerald-500' : 'bg-transparent'
+                                }`}
+                            />
+                        </>
+                    ) : isDecoding ? (
+                        <>
+                            {decodedText}
+                            <span 
+                                className={`inline-block w-2 h-4 ml-0.5 align-middle transition-opacity duration-100 ${
+                                    showCursor ? 'bg-emerald-500' : 'bg-transparent'
+                                }`}
+                            />
+                        </>
+                    ) : mode === 'thinking' ? (
+                        <span className="inline-flex gap-0.5 ml-1">
+                            <span className="w-1 h-1 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                            <span className="w-1 h-1 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                            <span className="w-1 h-1 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                    ) : null}
+                </div>
+            )}
+        </div>
+    );
+}
 
 // ── Animated mini chart SVG ───────────────────────────────────────────────────
 function MiniChart({ color = '#3b82f6', className = '' }) {
@@ -320,7 +877,7 @@ const LandingPage = ({ onEnterApp }) => {
 
             {/* ── Ticker strip ───────────────────────────────────────── */}
             <div className="fixed top-14 left-0 right-0 z-40">
-                <TickerStrip />
+                <MarqueeTicker />
             </div>
 
             {/* ── Hero ───────────────────────────────────────────────── */}
@@ -462,18 +1019,18 @@ const LandingPage = ({ onEnterApp }) => {
             </section>
 
             {/* ── How it works ───────────────────────────────────────── */}
-            <section id="how-it-works" className="py-24 px-6 bg-gray-50 dark:bg-gray-900/50">
-                <div className="max-w-5xl mx-auto">
+            <section id="how-it-works" className="min-h-screen py-24 px-6 bg-gray-50 dark:bg-gray-900/50 flex items-center">
+                <div className="max-w-6xl mx-auto w-full">
                     <motion.div
-                        className="text-center mb-16"
+                        className="text-center mb-20"
                         variants={stagger(0.1)}
                         initial="hidden"
                         whileInView="show"
                         viewport={viewportOnce}
                     >
                         <motion.p variants={blurUp}
-                            className="text-sm font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-3">
-                            Simple Workflow
+                            className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-3 font-mono">
+                            $ ./run_workflow.sh
                         </motion.p>
                         <motion.h2 variants={blurUp}
                             className="text-4xl font-extrabold text-gray-900 dark:text-white">
@@ -481,29 +1038,7 @@ const LandingPage = ({ onEnterApp }) => {
                         </motion.h2>
                     </motion.div>
 
-                    <motion.div
-                        className="relative grid md:grid-cols-3 gap-10"
-                        variants={stagger(0.15)}
-                        initial="hidden"
-                        whileInView="show"
-                        viewport={viewportOnce}
-                    >
-                        {/* Connector */}
-                        <div className="absolute top-10 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-500/25 to-transparent hidden md:block" />
-
-                        {STEPS.map(({ num, icon: Icon, title, body }) => (
-                            <motion.div key={num} variants={blurUp} className="relative text-center">
-                                <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white dark:bg-gray-900 border-2 border-blue-100 dark:border-blue-900/60 shadow-sm mb-5 relative">
-                                    <Icon className="w-8 h-8 text-blue-500" />
-                                    <span className="absolute -top-2.5 -right-2.5 text-xs font-bold text-blue-500 bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-800 rounded-full w-6 h-6 flex items-center justify-center">
-                                        {num}
-                                    </span>
-                                </div>
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{title}</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{body}</p>
-                            </motion.div>
-                        ))}
-                    </motion.div>
+                    <StepTerminals />
                 </div>
             </section>
 
@@ -574,14 +1109,14 @@ const LandingPage = ({ onEnterApp }) => {
 
             {/* ── Footer ─────────────────────────────────────────────── */}
             <footer className="border-t border-gray-200 dark:border-gray-800 py-8 px-6">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="max-w-7xl mx-auto flex flex-col items-center justify-center gap-3 text-center">
                     <img
                         src={isDarkMode ? 'marketmindtransparentdark.png' : 'marketmindtransparent.png'}
                         alt="MarketMind"
                         className="h-7 w-auto object-contain opacity-70"
                     />
-                    <p className="text-sm text-gray-400 dark:text-gray-500 text-center">
-                        Built with React · Flask · OpenBB · yfinance · Tailwind CSS
+                    <p className="text-sm text-gray-400 dark:text-gray-500">
+                        © {new Date().getFullYear()} MarketMind. All rights reserved.
                     </p>
                     <p className="text-xs text-gray-400 dark:text-gray-600">
                         For educational use only. Not financial advice.
