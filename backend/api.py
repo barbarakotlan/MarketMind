@@ -523,6 +523,9 @@ def predict_stock(model, ticker):
         elif model in ("RandomForest", "XGBoost"):
             period = "6mo"
             min_rows = 40
+        elif model == "LSTM":
+            period = "1y"
+            min_rows = 120
         else:
             return jsonify({"error": "Unknown model"}), 400
 
@@ -539,8 +542,8 @@ def predict_stock(model, ticker):
         elif model == "XGBoost":
             preds = xgboost_predict(df, days_ahead=7)
         elif model == "LSTM":
-            model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=30, forecast_horizon=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
-            preds = lstm_predict(df, model, scaler_X, scaler_y, device, days_ahead=7)
+            lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=100, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+            preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device, days_ahead=7)
         else:
             return jsonify({"error": "Unknown model"}), 400
         
@@ -552,10 +555,7 @@ def predict_stock(model, ticker):
         recent_close = float(df["Close"].iloc[-1])
         recent_date = df.index[-1]
 
-        future_dates = [
-            recent_date + pd.Timedelta(days=i + 1)
-            for i in range(len(preds))
-        ]
+        future_dates = pd.bdate_range(start=recent_date + pd.Timedelta(days=1), periods=len(preds))
 
         response = {
             "symbol": info.get('symbol', sanitized_ticker.upper()),
@@ -593,7 +593,7 @@ def predict_ensemble(ticker):
         if ensemble_preds is None: return jsonify({"error": "Ensemble prediction failed."}), 500
         recent_close = float(df["Close"].iloc[-1])
         recent_date = df.index[-1]
-        future_dates = [recent_date + pd.Timedelta(days=i + 1) for i in range(6)]
+        future_dates = pd.bdate_range(start=recent_date + pd.Timedelta(days=1), periods=len(ensemble_preds))
         response = {
             "symbol": info.get('symbol', ticker.upper()), "companyName": info.get('longName', 'N/A'),
             "recentDate": recent_date.strftime('%Y-%m-%d'), "recentClose": round(recent_close, 2),

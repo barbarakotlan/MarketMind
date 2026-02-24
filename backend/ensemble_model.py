@@ -229,7 +229,6 @@ def calculate_metrics(actual, predicted):
         'mape': round(float(mape), 2)
     }
 
-
 # Neural Network Class (Unused)
 class NeuralNetwork(nn.Module):
     """
@@ -331,7 +330,6 @@ def ann_predict(df, days_ahead=7):
     #     print(f"ANN error: {e}")
     #     return None
 
-
 # LSTM Class
 class LSTM(nn.Module):
     '''
@@ -372,14 +370,14 @@ def create_sequences(X, y, seq_len, forecast_horizon):
     return np.array(Xs), np.array(ys)
 
 # Train LSTM model
-def lstm_train(df, lookback=14, seq_len=60, forecast_horizon=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001):
+def lstm_train(df, lookback=14, seq_len=60, days_ahead=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001):
     '''Train an LSTM model for stock price prediction'''
     # --- Build features ---
     X_features, _, df_features = prepare_ml_data(df, lookback)
     y_values = df_features[['Close']].values
 
     # --- Create sequences BEFORE splitting and scaling ---
-    X_seq, y_seq = create_sequences(X_features, y_values, seq_len, forecast_horizon)
+    X_seq, y_seq = create_sequences(X_features, y_values, seq_len, days_ahead)
 
     # --- Split BEFORE normalizing ---
     split = int(len(X_seq) * 0.8)
@@ -409,7 +407,7 @@ def lstm_train(df, lookback=14, seq_len=60, forecast_horizon=7, hidden_size=64, 
     # --- Model ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_size = n_features
-    model = LSTM(input_size, hidden_size, layer_size, forecast_horizon).to(device)
+    model = LSTM(input_size, hidden_size, layer_size, days_ahead).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
@@ -443,28 +441,28 @@ def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=60,
     try:
         model.eval()
 
-        # --- Build features ---
+        # Build features
         X_features, _, _ = prepare_ml_data(df, lookback)
 
-        # --- Take last seq_len rows ---
+        # Take last seq_len rows
         last_window_raw = X_features[-seq_len:]
         n_features = last_window_raw.shape[1]
         last_window_scaled = scaler_X.transform(last_window_raw.reshape(-1, n_features)).reshape(1, seq_len, n_features)
         last_window_tensor = torch.FloatTensor(last_window_scaled).to(device)
 
-        # --- Predict ---
+        # Predict
         with torch.no_grad():
             pred_scaled = model(last_window_tensor, device).cpu().numpy()
 
-        # --- Inverse transform ---
+        # Inverse transform
         pred_prices = scaler_y.inverse_transform(pred_scaled.reshape(-1, 1)).flatten()
 
-        # --- Generate future business dates starting from today ---
+        # Generate future business dates starting from today
         today = datetime.date.today()
         future_dates = pd.bdate_range(start=today, periods=days_ahead)
 
-        # --- Return as a pandas Series with dates as index ---
-        predictions = pd.Series(pred_prices, index=future_dates, name="Predicted Close")
+        # Return predictions
+        predictions = np.array(pred_prices)
 
         return predictions
 
@@ -497,7 +495,7 @@ if __name__ == "__main__":
     lookback = 14
     seq_len = 30
     days_ahead = 7
-    model, scaler_X, scaler_y, device = lstm_train(df, lookback=lookback, seq_len=seq_len, forecast_horizon=days_ahead, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+    model, scaler_X, scaler_y, device = lstm_train(df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
 
     # --- Predict ---
     predictions = lstm_predict(df, model, scaler_X, scaler_y, device, lookback=lookback,seq_len=seq_len, days_ahead=days_ahead)
@@ -505,5 +503,5 @@ if __name__ == "__main__":
     # --- Output ---
     if predictions is not None:
         print("\nPredicted prices:")
-        for date, price in predictions.items():
-            print(f"{date.date()} → ${price:.2f}")
+        for i, price in enumerate(predictions):
+            print(f"Day {i+1} → ${price:.2f}")
