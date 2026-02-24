@@ -313,13 +313,31 @@ def get_stock_data(ticker):
                 sparkline = [clean_value(p) for p in hist['Close']]
         except Exception as e:
             logger.warning(f"Could not fetch sparkline data: {e}")
+        financials = {}
+        try:
+            qf = stock.quarterly_financials
+            if not qf.empty:
+                financials = {
+                    "revenue": clean_value(qf.loc['Total Revenue'].iloc[0]) if 'Total Revenue' in qf.index else None,
+                    "netIncome": clean_value(qf.loc['Net Income'].iloc[0]) if 'Net Income' in qf.index else None,
+                    "quarterendDate": str(qf.columns[0].date()) if not qf.empty else None
+                }
+        except Exception as e:
+            logger.warning(f"Could not fetch quarterly financials: {e}")
+        yf_extended = {
+            "forwardPE": clean_value(info.get('forwardPE')), "pegRatio": clean_value(info.get('pegRatio')),
+            "priceToBook": clean_value(info.get('priceToBook')), "beta": clean_value(info.get('beta')),
+            "dividendYield": clean_value(info.get('dividendYield')),
+            "numberOfAnalystOpinions": info.get('numberOfAnalystOpinions')
+        }
         fundamentals = {}
         if not ALPHA_VANTAGE_API_KEY:
             fundamentals = {
                 "peRatio": clean_value(info.get('trailingPE')), "week52High": clean_value(info.get('fiftyTwoWeekHigh')),
                 "week52Low": clean_value(info.get('fiftyTwoWeekLow')),
                 "analystTargetPrice": clean_value(info.get('targetMeanPrice')),
-                "recommendationKey": info.get('recommendationKey'), "overview": info.get('longBusinessSummary')
+                "recommendationKey": info.get('recommendationKey'), "overview": info.get('longBusinessSummary'),
+                **yf_extended
             }
         else:
             try:
@@ -333,7 +351,9 @@ def get_stock_data(ticker):
                         "dividendYield": clean_value(data.get("DividendYield")), "beta": clean_value(data.get("Beta")),
                         "week52High": clean_value(data.get("52WeekHigh")),
                         "week52Low": clean_value(data.get("52WeekLow")),
-                        "analystTargetPrice": clean_value(data.get("AnalystTargetPrice")), "recommendationKey": "N/A"
+                        "analystTargetPrice": clean_value(data.get("AnalystTargetPrice")), "recommendationKey": "N/A",
+                        "priceToBook": clean_value(info.get('priceToBook')),
+                        "numberOfAnalystOpinions": info.get('numberOfAnalystOpinions')
                     }
                 else:
                     raise Exception("No data from Alpha Vantage")
@@ -344,13 +364,14 @@ def get_stock_data(ticker):
                     "week52High": clean_value(info.get('fiftyTwoWeekHigh')),
                     "week52Low": clean_value(info.get('fiftyTwoWeekLow')),
                     "analystTargetPrice": clean_value(info.get('targetMeanPrice')),
-                    "recommendationKey": info.get('recommendationKey'), "overview": info.get('longBusinessSummary')
+                    "recommendationKey": info.get('recommendationKey'), "overview": info.get('longBusinessSummary'),
+                    **yf_extended
                 }
         formatted_data = {
             "symbol": info.get('symbol', ticker.upper()), "companyName": info.get('longName', 'N/A'),
             "price": clean_value(price), "change": clean_value(change),
             "changePercent": clean_value(change_percent), "marketCap": market_cap_formatted,
-            "sparkline": sparkline, "fundamentals": fundamentals
+            "sparkline": sparkline, "fundamentals": fundamentals, "financials": financials
         }
         return jsonify(formatted_data)
     except Exception as e:
