@@ -5,23 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="81f5005b-826f-42f2-9831-b8d01b4fc32a" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/PRODUCTION_ROADMAP.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/public/marketmindlogo.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/public/marketmindtransparent.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/public/marketmindtransparentdark.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/MacroPage.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/ScreenerPage.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/api.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/api.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/backend/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/public/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/public/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/public/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/public/manifest.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/FundamentalsPage.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/FundamentalsPage.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/Header.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/SearchPage.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SearchPage.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/Sidebar.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Sidebar.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/notes.txt" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/notes.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
