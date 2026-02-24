@@ -1,167 +1,242 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Activity, ArrowUpDown, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Filter, ChevronDown, DownloadCloud, Settings, ArrowUpDown } from 'lucide-react';
+
+const INDICES = ['Any', 'S&P 500', 'DJIA', 'NASDAQ'];
+const SECTORS = ['Any', 'Basic Materials', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Energy', 'Financial', 'Healthcare', 'Industrials', 'Real Estate', 'Technology', 'Utilities'];
+const MARKET_CAPS = ['Any', 'Mega ($200bln and more)', 'Large ($10bln to $200bln)', 'Mid ($2bln to $10bln)', 'Small ($300mln to $2bln)', 'Micro ($50mln to $300mln)', 'Nano (under $50mln)'];
 
 const TABS = [
-    { key: 'gainers', label: 'Top Gainers',   icon: TrendingUp,   color: 'text-green-600 dark:text-green-400' },
-    { key: 'losers',  label: 'Top Losers',    icon: TrendingDown, color: 'text-red-600 dark:text-red-400'   },
-    { key: 'active',  label: 'Most Active',   icon: Activity,     color: 'text-blue-600 dark:text-blue-400' },
+    { id: 'overview', label: 'Overview', columns: ['Ticker', 'Company', 'Sector', 'Price', 'Change', 'Volume'] },
+    { id: 'valuation', label: 'Valuation', columns: ['Ticker', 'Company', 'Market Cap', 'P/E', 'Fwd P/E', 'PEG', 'P/B'] },
+    { id: 'financial', label: 'Dividends & Profitability', columns: ['Ticker', 'Company', 'Dividend', 'ROE', 'ROA', 'ROI', 'Gross Margin'] },
 ];
 
-const fmt = (n, prefix = '', suffix = '') => {
-    if (n === null || n === undefined) return '—';
-    const abs = Math.abs(n);
-    if (abs >= 1e12) return `${prefix}${(n / 1e12).toFixed(2)}T${suffix}`;
-    if (abs >= 1e9)  return `${prefix}${(n / 1e9).toFixed(2)}B${suffix}`;
-    if (abs >= 1e6)  return `${prefix}${(n / 1e6).toFixed(2)}M${suffix}`;
-    return `${prefix}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffix}`;
-};
-
 const ScreenerPage = ({ onSearchTicker }) => {
-    const [activeTab, setActiveTab] = useState('gainers');
-    const [data, setData] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState(TABS[0]);
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [sortConfig, setSortConfig] = useState({ key: 'percent_change', dir: 'desc' });
 
-    useEffect(() => {
-        setLoading(true);
-        fetch('http://127.0.0.1:5001/screener')
-            .then(r => r.json())
-            .then(d => { setData(d); setLoading(false); })
-            .catch(() => { setError('Failed to load screener data.'); setLoading(false); });
-    }, []);
+    // Filters
+    const [index, setIndex] = useState('Any');
+    const [sector, setSector] = useState('Any');
+    const [marketCap, setMarketCap] = useState('Any');
 
-    const rows = useMemo(() => {
-        if (!data || !data[activeTab]) return [];
-        const list = [...data[activeTab]];
-        list.sort((a, b) => {
-            const av = a[sortConfig.key] ?? -Infinity;
-            const bv = b[sortConfig.key] ?? -Infinity;
-            return sortConfig.dir === 'asc' ? av - bv : bv - av;
-        });
-        return list;
-    }, [data, activeTab, sortConfig]);
+    // Sorting State
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: 'desc' });
 
-    const requestSort = (key) => {
-        setSortConfig(prev => ({
-            key,
-            dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc',
-        }));
+    const fetchScreenerData = async (retryCount = 0) => {
+        if (retryCount === 0) {
+            setLoading(true);
+            setError('');
+        }
+
+        const filters = {};
+        if (index !== 'Any') filters['Index'] = index;
+        if (sector !== 'Any') filters['Sector'] = sector;
+        if (marketCap !== 'Any') filters['Market Cap.'] = marketCap;
+
+        try {
+            const response = await fetch('http://127.0.0.1:5001/screener/advanced', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filters: Object.keys(filters).length > 0 ? filters : null,
+                    tab: activeTab.id
+                })
+            });
+
+            const result = await response.json();
+
+            // Handle background warming
+            if (response.status === 503 && result.error && result.error.includes('warming up')) {
+                if (retryCount < 6) {
+                    setTimeout(() => fetchScreenerData(retryCount + 1), 5000);
+                    return;
+                }
+            }
+
+            if (result.error) throw new Error(result.error);
+            setData(result.data || []);
+            setLoading(false);
+        } catch (err) {
+            setError(err.message || 'Failed to fetch screener data.');
+            setLoading(false);
+        }
     };
 
-    const SortTh = ({ label, sortKey, className = '' }) => {
-        const active = sortConfig.key === sortKey;
-        return (
-            <th
-                className={`px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-800 dark:hover:text-white select-none ${className}`}
-                onClick={() => requestSort(sortKey)}
-            >
-                <span className="flex items-center gap-1">
-                    {label}
-                    <ArrowUpDown className={`w-3 h-3 ${active ? 'text-blue-500' : 'opacity-40'}`} />
-                </span>
-            </th>
-        );
+    useEffect(() => {
+        fetchScreenerData();
+    }, [activeTab, index, sector, marketCap]);
+
+    // Handle Header Clicks for Sorting
+    const handleSort = (column) => {
+        let direction = 'desc';
+        if (sortConfig.key === column && sortConfig.direction === 'desc') {
+            direction = 'asc';
+        }
+        setSortConfig({ key: column, direction });
+    };
+
+    // Helper to turn strings like "1.50B" into real numbers for accurate sorting
+    const parseForSort = (val) => {
+        if (val === null || val === undefined || val === '-') return -Infinity;
+        if (typeof val === 'number') return val;
+
+        const str = String(val).replace(/,/g, '');
+        let multi = 1;
+        if (str.endsWith('B')) multi = 1e9;
+        else if (str.endsWith('M')) multi = 1e6;
+        else if (str.endsWith('T')) multi = 1e12;
+        else if (str.endsWith('%')) return parseFloat(str.slice(0, -1));
+
+        let num = parseFloat(str.replace(/[^\d.-]/g, ''));
+        if (isNaN(num)) return str; // Return as string for alphabetical sorting (like Company Name)
+        return num * multi;
+    };
+
+    // Apply the active sort to the data array
+    const sortedData = [...data].sort((a, b) => {
+        if (!sortConfig.key) return 0;
+        const valA = parseForSort(a[sortConfig.key]);
+        const valB = parseForSort(b[sortConfig.key]);
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+            return sortConfig.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+    });
+
+    // Format the UI cells correctly
+    const renderCell = (col, value) => {
+        if (value === null || value === undefined || value === '-') return '—';
+
+        // Handle pre-formatted string percentages
+        if (typeof value === 'string' && value.endsWith('%')) {
+            const num = parseFloat(value);
+            if (num > 0) return <span className="text-green-600 dark:text-green-400 font-medium">+{value}</span>;
+            if (num < 0) return <span className="text-red-600 dark:text-red-400 font-medium">{value}</span>;
+            return value;
+        }
+
+        // Handle raw decimals from Finviz (like 0.2062 -> 20.62%)
+        if (typeof value === 'number') {
+            const isPercentMetric = ['Dividend', 'ROE', 'ROA', 'ROI', 'Gross Margin', 'Change'].includes(col);
+            if (isPercentMetric) {
+                const pct = (value * 100).toFixed(2);
+                if (value > 0) return <span className="text-green-600 dark:text-green-400 font-medium">+{pct}%</span>;
+                if (value < 0) return <span className="text-red-600 dark:text-red-400 font-medium">{pct}%</span>;
+                return pct + '%';
+            }
+            return Number.isInteger(value) ? value : value.toFixed(2);
+        }
+        return value;
     };
 
     return (
-        <div className="p-6 animate-fade-in">
-            {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Stock Screener</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Live market movers — click any row to research the stock
-                </p>
+        <div className="p-6 max-w-[1600px] mx-auto animate-fade-in font-sans">
+            <div className="flex items-center justify-between mb-6">
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    Stock Screener <ChevronDown className="w-6 h-6 text-gray-400" />
+                </h1>
+                <div className="flex items-center gap-3">
+                    <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400 rounded-lg">
+                        <DownloadCloud className="w-4 h-4" /> Save Screen
+                    </button>
+                    <button className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+                        <Settings className="w-5 h-5" />
+                    </button>
+                </div>
             </div>
 
-            {/* Tabs */}
-            <div className="flex gap-2 mb-6">
-                {TABS.map(({ key, label, icon: Icon, color }) => (
-                    <button
-                        key={key}
-                        onClick={() => { setActiveTab(key); setSortConfig({ key: 'percent_change', dir: key === 'active' ? 'desc' : (key === 'losers' ? 'asc' : 'desc') }); }}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            activeTab === key
-                                ? 'bg-blue-600 text-white shadow'
-                                : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                        }`}
-                    >
-                        <Icon className={`w-4 h-4 ${activeTab === key ? 'text-white' : color}`} />
-                        {label}
+            <div className="flex flex-wrap items-center gap-3 mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                <div className="flex items-center gap-2 mr-4 text-gray-500 dark:text-gray-400 font-medium">
+                    <Filter className="w-4 h-4" /> Filters
+                </div>
+
+                <select value={index} onChange={(e) => setIndex(e.target.value)} className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg px-3 py-2 outline-none">
+                    <option disabled>Index</option>
+                    {INDICES.map(i => <option key={i} value={i}>{i}</option>)}
+                </select>
+
+                <select value={sector} onChange={(e) => setSector(e.target.value)} className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg px-3 py-2 outline-none">
+                    <option disabled>Sector</option>
+                    {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+
+                <select value={marketCap} onChange={(e) => setMarketCap(e.target.value)} className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg px-3 py-2 outline-none">
+                    <option disabled>Market Cap</option>
+                    {MARKET_CAPS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+
+                {(index !== 'Any' || sector !== 'Any' || marketCap !== 'Any') && (
+                    <button onClick={() => { setIndex('Any'); setSector('Any'); setMarketCap('Any'); }} className="ml-auto text-sm text-red-500 hover:text-red-600 font-medium">
+                        Clear Filters
+                    </button>
+                )}
+            </div>
+
+            <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700 pb-px overflow-x-auto">
+                {TABS.map((tab) => (
+                    <button key={tab.id} onClick={() => setActiveTab(tab)} className={`px-5 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${activeTab.id === tab.id ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>
+                        {tab.label}
                     </button>
                 ))}
             </div>
 
-            {/* Table */}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-                {loading && (
-                    <div className="p-12 text-center">
-                        <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent mb-3"></div>
-                        <p className="text-gray-500 dark:text-gray-400">Loading market data…</p>
+                {loading ? (
+                    <div className="p-20 text-center">
+                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent mb-4"></div>
+                        <p className="text-gray-500 dark:text-gray-400">Scanning the market...</p>
                     </div>
-                )}
-                {error && !loading && (
-                    <div className="p-8 text-center text-red-500 dark:text-red-400">{error}</div>
-                )}
-                {!loading && !error && (
+                ) : error ? (
+                    <div className="p-10 text-center text-red-500">{error}</div>
+                ) : (
                     <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                        <table className="min-w-full text-sm text-left select-none">
+                            <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol</th>
-                                    <SortTh label="Price"    sortKey="price"          />
-                                    <SortTh label="Change %"  sortKey="percent_change" />
-                                    <SortTh label="Mkt Cap"  sortKey="market_cap"     />
-                                    <SortTh label="Volume"   sortKey="volume"         />
-                                    <SortTh label="P/E Fwd"  sortKey="pe_forward"     />
-                                    <SortTh label="52W High" sortKey="year_high"      />
-                                    <SortTh label="52W Low"  sortKey="year_low"       />
-                                    <th className="px-4 py-3"></th>
+                                    {activeTab.columns.map((col) => (
+                                        <th
+                                            key={col}
+                                            onClick={() => handleSort(col)}
+                                            className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                {col}
+                                                <ArrowUpDown className={`w-3 h-3 ${sortConfig.key === col ? 'text-blue-500 opacity-100' : 'opacity-40'}`} />
+                                            </div>
+                                        </th>
+                                    ))}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                {rows.map((stock) => {
-                                    const pos = (stock.percent_change ?? 0) >= 0;
-                                    return (
-                                        <tr
-                                            key={stock.symbol}
-                                            className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors cursor-pointer"
-                                            onClick={() => onSearchTicker && onSearchTicker(stock.symbol)}
-                                        >
-                                            <td className="px-4 py-3">
-                                                <div className="font-bold text-gray-900 dark:text-white">{stock.symbol}</div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[160px]">{stock.name}</div>
+                                {sortedData.map((row, idx) => (
+                                    <tr key={idx} onClick={() => onSearchTicker && onSearchTicker(row['Ticker'])} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer transition-colors">
+                                        {activeTab.columns.map((col, cIdx) => (
+                                            <td key={cIdx} className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                                                {col === 'Ticker' ? (
+                                                    <span className="font-bold text-gray-900 dark:text-white">{row[col]}</span>
+                                                ) : col === 'Company' ? (
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px] block">
+                                                        {row[col]}
+                                                    </span>
+                                                ) : (
+                                                    renderCell(col, row[col])
+                                                )}
                                             </td>
-                                            <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                                                ${fmt(stock.price)}
-                                            </td>
-                                            <td className={`px-4 py-3 font-semibold ${pos ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                                {pos ? '+' : ''}{stock.percent_change !== null ? (stock.percent_change * 100).toFixed(2) : '—'}%
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmt(stock.market_cap, '$')}</td>
-                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmt(stock.volume)}</td>
-                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                                                {stock.pe_forward !== null ? stock.pe_forward.toFixed(1) : '—'}
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">${fmt(stock.year_high)}</td>
-                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">${fmt(stock.year_low)}</td>
-                                            <td className="px-4 py-3">
-                                                <ExternalLink className="w-4 h-4 text-blue-500 opacity-0 group-hover:opacity-100" />
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
+                                        ))}
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
-                        {rows.length === 0 && (
-                            <p className="text-center py-8 text-gray-500 dark:text-gray-400">No data available.</p>
+                        {sortedData.length === 0 && (
+                            <div className="p-10 text-center text-gray-500">No stocks match your exact filters.</div>
                         )}
                     </div>
                 )}
             </div>
-            <p className="text-xs text-gray-400 dark:text-gray-600 mt-3">
-                Data via Yahoo Finance · Click any row to open in Search
-            </p>
         </div>
     );
 };

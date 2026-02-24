@@ -31,6 +31,11 @@ try:
 except ImportError:
     OPENBB_AVAILABLE = False
 
+# --- Imports for advanced screener ---
+from finvizfinance.screener.overview import Overview
+from finvizfinance.screener.valuation import Valuation
+from finvizfinance.screener.financial import Financial
+
 # --- Tazeem's Imports ---
 from model import create_dataset, estimate_week, try_today, estimate_new, good_model
 from news_fetcher import get_general_news
@@ -215,6 +220,47 @@ def save_portfolio(portfolio):
     with open(PORTFOLIO_FILE, 'w') as f:
         json.dump(portfolio, f, indent=4)
 
+# --- Screener Cache Setup ---
+SCREENER_CACHE = {
+    "overview": [],
+    "valuation": [],
+    "financial": [],
+    "last_updated": None,
+    "is_updating": False
+}
+
+def parse_market_cap(val_str):
+    """Helper to convert Finviz string '2.50B' into actual math numbers for filtering."""
+    if not val_str or val_str == '-': return 0
+    val_str = str(val_str).replace(',', '')
+    multiplier = 1
+    if val_str.endswith('B'): multiplier = 1e9
+    elif val_str.endswith('M'): multiplier = 1e6
+    elif val_str.endswith('T'): multiplier = 1e12
+    else: return 0
+    try:
+        return float(val_str[:-1]) * multiplier
+    except:
+        return 0
+
+def filter_cached_data(data, filters):
+    """Manually filters the cached dataset based on user dropdowns."""
+    filtered = data
+    for key, value in filters.items():
+        if key == 'Sector':
+            filtered = [row for row in filtered if row.get('Sector') == value]
+        elif key == 'Market Cap.':
+            filtered_temp = []
+            for row in filtered:
+                mc_val = parse_market_cap(row.get('Market Cap'))
+                if value == 'Mega ($200bln and more)' and mc_val >= 200e9: filtered_temp.append(row)
+                elif value == 'Large ($10bln to $200bln)' and 10e9 <= mc_val < 200e9: filtered_temp.append(row)
+                elif value == 'Mid ($2bln to $10bln)' and 2e9 <= mc_val < 10e9: filtered_temp.append(row)
+                elif value == 'Small ($300mln to $2bln)' and 300e6 <= mc_val < 2e9: filtered_temp.append(row)
+                elif value == 'Micro ($50mln to $300mln)' and 50e6 <= mc_val < 300e6: filtered_temp.append(row)
+                elif value == 'Nano (under $50mln)' and mc_val < 50e6: filtered_temp.append(row)
+            filtered = filtered_temp
+    return filtered
 
 # --- NEW: Notification Storage ---
 def load_notifications():
@@ -1306,6 +1352,63 @@ def delete_triggered_notification(alert_id):
 # --- END NEW NOTIFICATION ENDPOINTS ---
 
 
+# --- NEW: Background Price Checker & Screener Cache ---
+def update_screener_cache():
+    global SCREENER_CACHE
+    if SCREENER_CACHE["is_updating"]:
+        return
+    SCREENER_CACHE["is_updating"] = True
+    logger.info("Updating Screener Cache in the background (S&P 500)...")
+
+    try:
+        base_filter = {"Index": "S&P 500"}
+
+        # 1. Fetch Overview (This has Company and Sector)
+        scr_overview = Overview()
+        scr_overview.set_filter(filters_dict=base_filter)
+        overview_data = scr_overview.screener_view().replace({np.nan: None}).to_dict('records')
+        SCREENER_CACHE["overview"] = overview_data
+
+        # 2. Create a "Dictionary" to map Ticker -> Company & Sector
+        info_map = {}
+        for row in overview_data:
+            info_map[row.get('Ticker')] = {
+                'Company': row.get('Company'),
+                'Sector': row.get('Sector'),
+                'Market Cap': row.get('Market Cap')
+            }
+
+        # 3. Fetch Valuation and inject missing columns
+        scr_val = Valuation()
+        scr_val.set_filter(filters_dict=base_filter)
+        val_data = scr_val.screener_view().replace({np.nan: None}).to_dict('records')
+        for row in val_data:
+            ticker = row.get('Ticker')
+            if ticker in info_map:
+                row['Company'] = info_map[ticker]['Company']
+                row['Sector'] = info_map[ticker]['Sector']
+                if 'Market Cap' not in row:
+                    row['Market Cap'] = info_map[ticker]['Market Cap']
+        SCREENER_CACHE["valuation"] = val_data
+
+        # 4. Fetch Financials and inject missing columns
+        scr_fin = Financial()
+        scr_fin.set_filter(filters_dict=base_filter)
+        fin_data = scr_fin.screener_view().replace({np.nan: None}).to_dict('records')
+        for row in fin_data:
+            ticker = row.get('Ticker')
+            if ticker in info_map:
+                row['Company'] = info_map[ticker]['Company']
+                row['Sector'] = info_map[ticker]['Sector']
+                row['Market Cap'] = info_map[ticker]['Market Cap']
+        SCREENER_CACHE["financial"] = fin_data
+
+        SCREENER_CACHE["last_updated"] = datetime.now().isoformat()
+        logger.info("Screener Cache updated successfully!")
+    except Exception as e:
+        logger.error(f"Failed to update screener cache: {e}")
+    finally:
+        SCREENER_CACHE["is_updating"] = False
 # --- NEW: Background Price Checker ---
 def check_alerts():
     logger.info(f"Running price alert check...")
@@ -1399,10 +1502,14 @@ def check_alerts():
 
 def run_scheduler():
     schedule.every(1).minutes.do(check_alerts)
+    schedule.every(1).hours.do(update_screener_cache)  # Refresh data every hour
+
+    # Run once immediately on startup so the UI has data right away!
+    update_screener_cache()
+
     while True:
         schedule.run_pending()
         time.sleep(1)
-
 
 # --- END BACKGROUND CHECKER ---
 
@@ -2172,6 +2279,38 @@ MACRO_INDICATORS = [
     {"symbol": "CPI",   "name": "Consumer Price Index",  "unit": "Index","multiplier": 1},
     {"symbol": "IP",    "name": "Industrial Production", "unit": "Index","multiplier": 1},
 ]
+
+
+@app.route('/screener/advanced', methods=['POST'])
+def advanced_screener():
+    try:
+        data = request.get_json() or {}
+        filters = data.get('filters', {})
+        tab = data.get('tab', 'overview')
+        limit = data.get('limit', 50)
+
+        # 1. Grab data instantly from memory
+        cached_data = SCREENER_CACHE.get(tab, [])
+
+        # 2. Safety check: If the server just turned on and is still fetching...
+        if not cached_data:
+            if SCREENER_CACHE.get("is_updating"):
+                return jsonify(
+                    {"error": "Screener is warming up the cache. Please wait ~15 seconds and try again."}), 503
+            return jsonify({"count": 0, "data": []})
+
+        # 3. Apply the user's dropdown filters
+        if filters:
+            cached_data = filter_cached_data(cached_data, filters)
+
+        return jsonify({
+            "count": len(cached_data),
+            "data": cached_data[:limit]
+        })
+
+    except Exception as e:
+        logger.error(f"Advanced screener error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/macro/overview')
 def get_macro_overview():
