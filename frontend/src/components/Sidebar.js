@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDarkMode } from '../context/DarkModeContext';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 import {
     LayoutDashboard, Search, Star, Briefcase, Building2,
     TrendingUp, Target, BarChart3, DollarSign, Bitcoin,
@@ -59,8 +60,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
     const [newAlertCount, setNewAlertCount] = useState(0);
 
     const checkAlerts = () => {
-        fetch('http://127.0.0.1:5001/notifications/triggered')
-            .then(res => res.json())
+        apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED)
             .then(data => {
                 setNewAlertCount(data.length);
             })

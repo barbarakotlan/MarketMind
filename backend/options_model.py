@@ -147,7 +147,7 @@ def get_technical_signal(hist_df):
 
 def get_sentiment_signal(ticker):
     try:
-        NEWS_API_KEY = "4f2abfc0913748ee9cedf3b5e5878bcc" 
+        NEWS_API_KEY = os.getenv('NEWS_API_KEY')
         if not NEWS_API_KEY: return {'direction': 'Neutral', 'score': 0}
         
         url = f"https://newsapi.org/v2/everything?q={ticker}&searchIn=title,description&language=en&pageSize=10&sortBy=relevancy&apiKey={NEWS_API_KEY}"

@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """
-Fix the API file to add ALPHA_VANTAGE_API_KEY
+Fix the API file to ensure proper environment variable usage
 """
 import re
+import os
 
 # Read the file
 with open('api.py', 'r') as f:
     content = f.read()
 
-# Find the position after CORS(app)
-pattern = r"app = Flask\(__name__\)\nCORS\(app\)\n"
-replacement = r"app = Flask(__name__)\nCORS(app)\n\n# --- CONFIGURATION ---\nNEWS_API_KEY = os.getenv('NEWS_API_KEY')\nALPHA_VANTAGE_API_KEY = '5V7UVP5V02D45MF1'\n"
+# Ensure environment variables are used (no hardcoded keys)
+# This is a configuration check script, not a key injector
 
-# Replace the pattern
-new_content = re.sub(pattern, replacement, content)
+# Verify API keys are loaded from environment
+if 'ALPHA_VANTAGE_API_KEY = os.getenv' not in content:
+    print("WARNING: ALPHA_VANTAGE_API_KEY should use os.getenv")
+else:
+    print("✓ ALPHA_VANTAGE_API_KEY uses environment variable")
 
-# Write back to file
-with open('api.py', 'w') as f:
-    f.write(new_content)
+if 'NEWS_API_KEY = os.getenv' not in content:
+    print("WARNING: NEWS_API_KEY should use os.getenv")
+else:
+    print("✓ NEWS_API_KEY uses environment variable")
 
-print("Fixed api.py")
+print("\nSecurity check complete. Ensure .env file is configured.")

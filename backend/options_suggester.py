@@ -138,7 +138,7 @@ def get_sentiment_signal(ticker):
     Uses VADER to get a sentiment score from recent news.
     """
     try:
-        NEWS_API_KEY = "4f2abfc0913748ee9cedf3b5e5878bcc" # As defined in your api.py
+        NEWS_API_KEY = os.getenv('NEWS_API_KEY')
         if not NEWS_API_KEY:
             return {'direction': 'Neutral', 'score': 0}
         

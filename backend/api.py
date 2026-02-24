@@ -74,7 +74,35 @@ logger.info("🚀 MarketMind API Starting...")
 
 # Initialize the Flask application
 app = Flask(__name__)
-CORS(app)
+
+# --- Security Configuration ---
+# Set Flask secret key for session management
+app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
+
+# Configure CORS - restrict to specific origins
+CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000')
+allowed_origins = [origin.strip() for origin in CORS_ORIGINS.split(',')]
+CORS(app, origins=allowed_origins, supports_credentials=True)
+
+# --- Security Headers Middleware ---
+@app.after_request
+def add_security_headers(response):
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    # Prevent clickjacking
+    response.headers['X-Frame-Options'] = 'DENY'
+    # XSS Protection
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    # Force HTTPS in production
+    if os.getenv('FLASK_ENV') == 'production':
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # Content Security Policy
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self';"
+    # Referrer Policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # Permissions Policy
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    return response
 
 # --- Rate Limiting Setup ---
 from flask_limiter import Limiter
@@ -88,14 +116,24 @@ limiter = Limiter(
 
 # Define rate limits
 class RateLimits:
-    LIGHT = "10/minute"
-    STANDARD = "20/minute"
-    HEAVY = "2/minute" 
-    WRITE = "5/minute"
+    LIGHT = os.getenv('RATE_LIMIT_LIGHT', '10/minute')
+    STANDARD = os.getenv('RATE_LIMIT_STANDARD', '20/minute')
+    HEAVY = os.getenv('RATE_LIMIT_HEAVY', '2/minute')
+    WRITE = os.getenv('RATE_LIMIT_WRITE', '5/minute')
 
 # --- CONFIGURATION ---
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
+
+# Validate required environment variables in production
+if os.getenv('FLASK_ENV') == 'production':
+    if not NEWS_API_KEY:
+        logger.warning("⚠️ NEWS_API_KEY not set in production environment")
+    if not ALPHA_VANTAGE_API_KEY:
+        logger.warning("⚠️ ALPHA_VANTAGE_API_KEY not set in production environment")
+    if not os.getenv('FLASK_SECRET_KEY'):
+        logger.error("❌ FLASK_SECRET_KEY must be set in production environment")
+        raise ValueError("FLASK_SECRET_KEY environment variable is required in production")
 
 # --- Database Setup (for history snapshots) ---
 DATABASE = 'marketmind.db'
