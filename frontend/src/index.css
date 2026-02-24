@@ -18,14 +18,8 @@
     animation: fade-in 0.2s ease-out;
 }
 
-/* Prevent overscroll/bounce effect */
-html,
+/* Prevent horizontal overflow globally without creating a scroll container */
 body {
-    overscroll-behavior: none;
+    overflow-x: clip;
     overscroll-behavior-y: none;
-}
-
-/* Smooth scrolling but no bounce */
-* {
-    overscroll-behavior: contain;
 }

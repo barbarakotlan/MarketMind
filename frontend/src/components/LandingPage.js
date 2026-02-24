@@ -274,7 +274,7 @@ const LandingPage = ({ onEnterApp }) => {
     };
 
     return (
-        <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white overflow-x-hidden">
+        <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
 
             {/* ── Navbar ─────────────────────────────────────────────── */}
             <nav className={`fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b transition-shadow duration-300 ${
