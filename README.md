@@ -293,3 +293,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## ⚠️ Disclaimer
 
 This tool is for educational and research purposes only. Stock market predictions are inherently uncertain. Past performance does not guarantee future results. Always do your own research and consult with financial advisors before making investment decisions.
+>>>>>>> 2e78c3d026cb68bb66abfca85131da7d22f7700e

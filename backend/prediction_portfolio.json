@@ -1,0 +1,26 @@
+{
+    "cash": 9995.96,
+    "starting_cash": 10000.0,
+    "positions": {
+        "0xd02c2646a2d4fba6f5ed60c56794220c7675b1ac2990a4e2b5c27dc14f80c85a::Yes": {
+            "market_id": "0xd02c2646a2d4fba6f5ed60c56794220c7675b1ac2990a4e2b5c27dc14f80c85a",
+            "outcome": "Yes",
+            "exchange": "polymarket",
+            "question": "Will Naz Reid win the 2025\u20132026 NBA Sixth Man of the Year?",
+            "contracts": 10.0,
+            "avg_cost": 0.404
+        }
+    },
+    "trade_history": [
+        {
+            "type": "BUY",
+            "market_id": "0xd02c2646a2d4fba6f5ed60c56794220c7675b1ac2990a4e2b5c27dc14f80c85a",
+            "question": "Will Naz Reid win the 2025\u20132026 NBA Sixth Man of the Year?",
+            "outcome": "Yes",
+            "contracts": 10.0,
+            "price": 0.404,
+            "total": 4.04,
+            "timestamp": "2026-02-09T04:34:20.991732"
+        }
+    ]
+}

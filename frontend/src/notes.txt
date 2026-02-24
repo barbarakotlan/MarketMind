@@ -1,0 +1,17 @@
+summarize what we did in the prompt: 
+
+What did you do this week? 3 sentences
+
+ 
+What is your plan next week? 3 sentences
+
+ 
+• Backend (in a new terminal):
+
+  cd backend && source venv/bin/activate && python api.py
+
+  Frontend (in a new terminal):
+
+  cd frontend && npm start
+
+  Then open: http://localhost:3000

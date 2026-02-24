@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Briefcase,
   TrendingUp,
@@ -6,16 +6,11 @@ import {
   RotateCcw,
   BarChart3,
   Loader2,
-  Search,
   AlertTriangle,
   Brain,
-  TrendingDown,
-  Info,
   CheckCircle,
   XCircle,
-  Clock,
-  Terminal,
-  ChevronDown
+  Clock
 } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
@@ -56,80 +51,86 @@ const PortfolioGrowthChart = ({ totalValue }) => {
     const [activePeriod, setActivePeriod] = useState('1m');
     const [isSimulated, setIsSimulated] = useState(false);
 
-    // --- MOCK DATA GENERATOR (Ensures graph is never flat/empty) ---
-    const generateMockHistory = (period) => {
+    // --- MOCK DATA GENERATOR ---
+    const generateMockHistory = useCallback((period) => {
         const pointsMap = { '1d': 24, '1w': 7, '1m': 30, '3m': 90, 'ytd': 120, '1y': 365 };
         const points = pointsMap[period] || 30;
         const now = new Date();
         const dates = [];
         const values = [];
 
-        // Use current portfolio value as anchor, or default to 100k
-        let currentValue = totalValue || 100000;
-        const volatility = 0.015; // 1.5% volatility
+        // ANCHOR LOGIC:
+        const endPrice = totalValue || 100000;
+        let startPrice = 100000;
 
-        // Generate backwards from today
-        const generatedValues = [];
-        for (let i = 0; i <= points; i++) {
-            generatedValues.push(currentValue);
-            // Reverse random walk
-            const change = 1 + (Math.random() - 0.48) * volatility;
-            currentValue /= change;
+        // For short term, start near current. For long term, start at 100k factory reset.
+        if (period === '1d') {
+            startPrice = endPrice * (1 + (Math.random() * 0.01 - 0.005));
+        } else if (period === '1w') {
+            startPrice = endPrice * (1 + (Math.random() * 0.04 - 0.02));
+        } else {
+            startPrice = 100000;
         }
-        generatedValues.reverse(); // Flip to correct time order
 
+        // Generate Bridge
         for (let i = 0; i <= points; i++) {
             const date = new Date(now);
             if (period === '1d') date.setHours(date.getHours() - (points - i));
             else date.setDate(date.getDate() - (points - i));
             dates.push(date.toISOString());
-            values.push(generatedValues[i]);
+
+            // Brownian Bridge Interpolation
+            const progress = i / points;
+            const linearTrend = startPrice + (endPrice - startPrice) * progress;
+            const noiseMagnitude = (endPrice * 0.02);
+            const noise = (Math.random() - 0.5) * noiseMagnitude * Math.sin(progress * Math.PI);
+
+            values.push(linearTrend + noise);
         }
 
-        return {
-            dates,
-            values,
-            summary: {
-                start_date: dates[0],
-                end_date: dates[dates.length - 1],
-                wealth_generated: values[values.length - 1] - values[0],
-                return_cumulative_pct: ((values[values.length - 1] - values[0]) / values[0]) * 100
-            }
-        };
-    };
+        // Force precise endpoints
+        values[0] = startPrice;
+        values[values.length - 1] = endPrice;
 
-    const fetchHistory = (period) => {
-        setActivePeriod(period);
-        // Try to fetch real data
-        fetch(`http://127.0.0.1:5001/paper/history?period=${period}`)
-            .then(res => res.json())
-            .then(data => {
-                // Use real data ONLY if we have enough points, otherwise fallback to mock
-                if (!data.error && data.dates && data.dates.length > 2) {
-                    setHistory(data);
-                    setIsSimulated(false);
-                } else {
-                    console.log("Not enough history, using simulation.");
-                    setHistory(generateMockHistory(period));
+        return { dates, values };
+    }, [totalValue]);
+
+    // Effect to fetch data whenever activePeriod or totalValue changes
+    useEffect(() => {
+        let isMounted = true;
+
+        const fetchData = async () => {
+            try {
+                const response = await fetch(`http://127.0.0.1:5001/paper/history?period=${activePeriod}`);
+                const data = await response.json();
+
+                if (isMounted) {
+                    if (!data.error && data.dates && data.dates.length > 2) {
+                        setHistory({ dates: data.dates, values: data.values });
+                        setIsSimulated(false);
+                    } else {
+                        setHistory(generateMockHistory(activePeriod));
+                        setIsSimulated(true);
+                    }
+                }
+            } catch (error) {
+                if (isMounted) {
+                    setHistory(generateMockHistory(activePeriod));
                     setIsSimulated(true);
                 }
-            })
-            .catch(() => {
-                setHistory(generateMockHistory(period));
-                setIsSimulated(true);
-            });
-    };
+            }
+        };
 
-    useEffect(() => {
-        fetchHistory('1m');
-    }, [totalValue]); // Re-generate if totalValue changes
+        fetchData();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [activePeriod, totalValue, generateMockHistory]);
 
     const chartConfig = useMemo(() => {
         if (!history) return null;
 
-        const startValue = history.values[0];
-
-        // Native Date Formatting (No Adapter Needed)
         const labels = history.dates.map(d => {
             const date = new Date(d);
             return activePeriod === '1d'
@@ -139,24 +140,22 @@ const PortfolioGrowthChart = ({ totalValue }) => {
 
         const data = {
             labels: labels,
-            datasets: [
-                {
-                    label: 'Portfolio Value',
-                    data: history.values,
-                    borderColor: '#1e3a8a', // Dark Blue
-                    borderWidth: 2,
-                    tension: 0.2, // Smooth curve
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    pointBackgroundColor: '#1e3a8a',
-                    pointBorderColor: '#ffffff',
-                    pointBorderWidth: 2,
-                    fill: {
-                        target: 'origin',
-                        above: 'rgba(34, 197, 94, 0.1)', // Green tint area
-                    }
+            datasets: [{
+                label: 'Portfolio Value',
+                data: history.values,
+                borderColor: '#16a34a',
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: 0,
+                pointHoverRadius: 6,
+                pointBackgroundColor: '#16a34a',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                fill: {
+                    target: 'origin',
+                    above: 'rgba(22, 163, 74, 0.1)',
                 }
-            ]
+            }]
         };
 
         const options = {
@@ -173,21 +172,12 @@ const PortfolioGrowthChart = ({ totalValue }) => {
                     padding: 12,
                     cornerRadius: 8,
                     displayColors: false,
-                    callbacks: {
-                        label: (ctx) => formatCurrency(ctx.parsed.y)
-                    }
+                    callbacks: { label: (ctx) => formatCurrency(ctx.parsed.y) }
                 }
             },
             scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: { maxTicksLimit: 6, color: '#94a3b8', font: { size: 10, weight: 'bold' } }
-                },
-                y: {
-                    position: 'right',
-                    grid: { color: '#f1f5f9' },
-                    ticks: { color: '#64748b', font: { size: 10 }, callback: (val) => '$' + val.toLocaleString() }
-                }
+                x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: '#94a3b8', font: { size: 10, weight: 'bold' } } },
+                y: { position: 'right', grid: { color: '#f1f5f9' }, ticks: { color: '#64748b', font: { size: 10 }, callback: (val) => '$' + val.toLocaleString() } }
             },
             interaction: { intersect: false, mode: 'index' },
         };
@@ -197,8 +187,12 @@ const PortfolioGrowthChart = ({ totalValue }) => {
 
     if (!history) return <div className="h-64 flex items-center justify-center text-gray-400">Loading Chart...</div>;
 
-    const { summary } = history;
-    const isPositive = summary.wealth_generated >= 0;
+    // --- RE-CALCULATE METRICS ON FRONTEND ---
+    const startVal = history.values[0];
+    const endVal = history.values[history.values.length - 1];
+    const valChange = endVal - startVal;
+    const pctChange = startVal !== 0 ? (valChange / startVal) * 100 : 0;
+    const isPositive = valChange >= 0;
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded-[2rem] p-6 shadow-sm border border-gray-200 dark:border-gray-700">
@@ -217,7 +211,7 @@ const PortfolioGrowthChart = ({ totalValue }) => {
                     {portfolioTimeFrames.map((frame) => (
                         <button
                             key={frame.value}
-                            onClick={() => fetchHistory(frame.value)}
+                            onClick={() => setActivePeriod(frame.value)}
                             className={`px-3 py-1 text-[10px] font-black rounded-lg transition-all ${
                                 activePeriod === frame.value 
                                 ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' 
@@ -230,13 +224,13 @@ const PortfolioGrowthChart = ({ totalValue }) => {
                 </div>
             </div>
 
-            {/* Summary Bar */}
+            {/* Summary Bar - Calculated from displayed data */}
             <div className={`flex justify-between items-center px-4 py-2 rounded-t-xl mb-0 shadow-sm text-white ${isPositive ? 'bg-green-600' : 'bg-red-600'}`}>
                 <span className="text-xs font-bold">
-                    {new Date(summary.start_date).toLocaleDateString()} - {new Date(summary.end_date).toLocaleDateString()}
+                    {history.dates.length > 0 ? new Date(history.dates[0]).toLocaleDateString() : ''} - Today
                 </span>
                 <span className="text-xs font-black">
-                    {isPositive ? '+' : ''}{formatCurrency(summary.wealth_generated)} ({summary.return_cumulative_pct.toFixed(2)}%)
+                    {isPositive ? '+' : ''}{formatCurrency(valChange)} ({pctChange.toFixed(2)}%)
                 </span>
             </div>
 
@@ -357,7 +351,6 @@ export default function App() {
     const [portfolio, setPortfolio] = useState(null);
     const [stockPositions, setStockPositions] = useState([]);
     const [optionsPositions, setOptionsPositions] = useState([]);
-    const [tradeHistory, setTradeHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [lastUpdated, setLastUpdated] = useState(null);
@@ -397,21 +390,8 @@ export default function App() {
         }
     };
 
-    const fetchTradeHistory = async () => {
-        try {
-            const baseUrl = 'http://127.0.0.1:5001';
-            const response = await fetch(`${baseUrl}/paper/transactions`);
-            if (!response.ok) throw new Error("History fetch failed");
-            const data = await response.json();
-            setTradeHistory(data || []);
-        } catch (err) {
-            console.error('Error fetching trade history:', err);
-        }
-    };
-
     useEffect(() => {
         fetchPortfolio();
-        fetchTradeHistory();
         const interval = setInterval(() => {
             fetchPortfolio();
         }, 60000);
@@ -434,7 +414,6 @@ export default function App() {
                 setBuyShares('');
                 setShowBuyModal(false);
                 fetchPortfolio();
-                fetchTradeHistory();
             } else {
                 setTradeMessage({ type: 'error', text: data.error });
             }
@@ -459,7 +438,6 @@ export default function App() {
                 setShowSellModal(false);
                 setSelectedStock(null);
                 fetchPortfolio();
-                fetchTradeHistory();
             } else {
                 setTradeMessage({ type: 'error', text: data.error });
             }
@@ -485,7 +463,6 @@ export default function App() {
             if (!response.ok) throw new Error(data.error || 'Trade failed');
             setTradeMessage({ type: 'success', text: data.message });
             fetchPortfolio();
-            fetchTradeHistory();
             return true;
         } catch (err) {
             setTradeMessage({ type: 'error', text: err.message });
@@ -511,7 +488,6 @@ export default function App() {
             const data = await response.json();
             setTradeMessage({ type: 'success', text: data.message });
             fetchPortfolio();
-            fetchTradeHistory();
         } catch (err) {
             setTradeMessage({ type: 'error', text: 'Failed to reset portfolio' });
         }
@@ -713,49 +689,7 @@ export default function App() {
                         )}
                     </div>
                 </div>
-
-                {/* Modal Forms */}
-                {showBuyModal && (
-                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-md" onClick={() => setShowBuyModal(false)}>
-                        <div className="bg-white dark:bg-gray-800 rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                            <h2 className="text-3xl font-black mb-8">Buy Stock</h2>
-                            <form onSubmit={handleBuy} className="space-y-6">
-                                <div>
-                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Symbol</label>
-                                    <input type="text" value={buyTicker} onChange={(e) => setBuyTicker(e.target.value.toUpperCase())} className="w-full px-6 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-green-500" placeholder="e.g. AAPL" required />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Shares</label>
-                                    <input type="number" value={buyShares} onChange={(e) => setBuyShares(e.target.value)} className="w-full px-6 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-green-500" placeholder="10" min="0.01" step="0.01" required />
-                                </div>
-                                <div className="flex gap-4 pt-4">
-                                    <button type="submit" className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-black shadow-lg shadow-green-600/30">Place Order</button>
-                                    <button type="button" onClick={() => setShowBuyModal(false)} className="px-8 py-4 bg-gray-100 dark:bg-gray-700 rounded-2xl font-black">Cancel</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )}
-
-                {showSellModal && selectedStock && (
-                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-md" onClick={() => setShowSellModal(false)}>
-                        <div className="bg-white dark:bg-gray-800 rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                            <h2 className="text-3xl font-black mb-2">Sell {selectedStock.ticker}</h2>
-                            <p className="text-gray-400 font-bold mb-8 italic">Available: {selectedStock.shares} shares</p>
-                            <form onSubmit={handleSell} className="space-y-6">
-                                <div>
-                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Amount to Sell</label>
-                                    <input type="number" value={sellShares} onChange={(e) => setSellShares(e.target.value)} className="w-full px-6 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-red-500" max={selectedStock.shares} min="0.01" step="0.01" required />
-                                </div>
-                                <div className="flex gap-4 pt-4">
-                                    <button type="submit" className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black shadow-lg shadow-red-600/30">Confirm Sale</button>
-                                    <button type="button" onClick={() => setShowSellModal(false)} className="px-8 py-4 bg-gray-100 dark:bg-gray-700 rounded-2xl font-black">Cancel</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
-}
+};

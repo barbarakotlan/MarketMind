@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Plus, Trash2, BellRing, X } from 'lucide-react';
+import { Bell, Plus, Trash2, BellRing, X, Sparkles, TrendingUp } from 'lucide-react';
 
-// Reusable Notification Component for this page
+// Reusable Notification Component
 const FormNotification = ({ message, onDismiss }) => {
     if (!message) return null;
 
-    const baseStyle = "px-4 py-3 rounded-lg text-white font-semibold animate-fade-in text-center flex justify-between items-center";
-    const successStyle = "bg-green-500";
-    const errorStyle = "bg-red-500";
+    const baseStyle = "px-4 py-3 rounded-lg text-white font-semibold animate-fade-in text-center flex justify-between items-center text-sm";
+    const successStyle = "bg-green-500 shadow-lg shadow-green-500/20";
+    const errorStyle = "bg-red-500 shadow-lg shadow-red-500/20";
 
     return (
         <div className={`mt-4 ${baseStyle} ${message.type === 'success' ? successStyle : errorStyle}`}>
             <span>{message.text}</span>
-            <button onClick={onDismiss} className="text-white hover:bg-black/10 p-1 rounded-full">
-                <X size={18} />
+            <button onClick={onDismiss} className="text-white hover:bg-black/10 p-1 rounded-full transition-colors">
+                <X size={16} />
             </button>
         </div>
     );
@@ -26,43 +26,55 @@ const NotificationsPage = ({ onClearAlerts }) => {
     const [error, setError] = useState(null);
     const [message, setMessage] = useState(null);
 
-    // Form state
+    // UI State
+    const [activeTab, setActiveTab] = useState('price'); // 'price' or 'ai'
+
+    // Standard Form State
     const [ticker, setTicker] = useState('');
     const [condition, setCondition] = useState('below');
     const [price, setPrice] = useState('');
+
+    // AI Form State
+    const [aiPrompt, setAiPrompt] = useState('');
+    const [isAiLoading, setIsAiLoading] = useState(false);
 
     const fetchAllAlerts = async () => {
         setLoading(true);
         setError(null);
         try {
             // Fetch both active and triggered alerts
+            // Note: Ensure your backend supports these endpoints
             const [activeRes, triggeredRes] = await Promise.all([
                 fetch('http://127.0.0.1:5001/notifications'),
-                fetch('http://127.0.0.1:5001/notifications/triggered?all=true') // Get all triggered
+                fetch('http://127.0.0.1:5001/notifications/triggered?all=true')
             ]);
 
             if (!activeRes.ok) throw new Error('Failed to fetch active alerts.');
-            if (!triggeredRes.ok) throw new Error('Failed to fetch triggered alerts.');
+
+            // Handle cases where triggered endpoint might not exist yet gracefully
+            let triggeredData = [];
+            if (triggeredRes.ok) {
+                triggeredData = await triggeredRes.json();
+            }
 
             const activeData = await activeRes.json();
-            const triggeredData = await triggeredRes.json();
 
             setActiveAlerts(activeData);
             setTriggeredAlerts(triggeredData);
 
-            // Clear the header bell count
             if (onClearAlerts) {
                 onClearAlerts();
             }
 
         } catch (err) {
-            setError(err.message);
+            console.error(err);
+            // Don't block the UI on error, just show empty states
+            setLoading(false);
         } finally {
             setLoading(false);
         }
     };
 
-    // Load all data when the page opens
     useEffect(() => {
         fetchAllAlerts();
     }, []);
@@ -77,18 +89,51 @@ const NotificationsPage = ({ onClearAlerts }) => {
                 body: JSON.stringify({
                     ticker: ticker.toUpperCase(),
                     condition: condition,
-                    target_price: parseFloat(price)
+                    target_price: parseFloat(price),
+                    type: 'price' // Tag as standard price alert
                 })
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Failed to create notification.');
 
-            setMessage({ type: 'success', text: 'Notification created successfully!' });
+            setMessage({ type: 'success', text: `Alert set for ${ticker.toUpperCase()}` });
             setTicker('');
             setPrice('');
-            fetchAllAlerts(); // Refresh both lists
+            fetchAllAlerts();
         } catch (err) {
             setMessage({ type: 'error', text: err.message });
+        }
+    };
+
+    const handleCreateSmartNotification = async (e) => {
+        e.preventDefault();
+        setMessage(null);
+        setIsAiLoading(true);
+
+        try {
+            // This endpoint needs to be implemented in your backend
+            // It should parse the natural language and return a structured alert
+            const response = await fetch('http://127.0.0.1:5001/notifications/smart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: aiPrompt,
+                    type: 'ai'
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'AI could not process this request.');
+
+            setMessage({ type: 'success', text: 'Smart Alert created successfully!' });
+            setAiPrompt('');
+            fetchAllAlerts();
+        } catch (err) {
+            // Fallback for demo purposes if backend endpoint doesn't exist yet
+            console.warn("Backend /notifications/smart might not be implemented yet.");
+            setMessage({ type: 'error', text: "AI Backend not connected: " + err.message });
+        } finally {
+            setIsAiLoading(false);
         }
     };
 
@@ -99,93 +144,212 @@ const NotificationsPage = ({ onClearAlerts }) => {
 
         try {
             const response = await fetch(endpoint, { method: 'DELETE' });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Failed to delete.');
+            if (!response.ok) throw new Error('Failed to delete.');
 
-            setMessage({ type: 'success', text: data.message });
-            fetchAllAlerts(); // Refresh both lists
+            fetchAllAlerts();
         } catch (err) {
             setMessage({ type: 'error', text: err.message });
         }
     };
 
     return (
-        <div className="container mx-auto px-6 py-8 max-w-4xl animate-fade-in">
-            <div className="flex items-center justify-center mb-6">
-                <Bell className="w-10 h-10 text-blue-600 dark:text-blue-400 mr-3" />
-                <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
-                    Price Alerts
+        <div className="container mx-auto px-4 py-8 max-w-5xl animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col items-center justify-center mb-10">
+                <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-2xl mb-4">
+                    <Bell className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                </div>
+                <h1 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight">
+                    Alert Center
                 </h1>
+                <p className="text-gray-500 dark:text-gray-400 mt-2">Monitor markets and get notified instantly.</p>
             </div>
 
-            {/* --- Create Notification Form --- */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8 border border-gray-200 dark:border-gray-700">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Create New Alert</h2>
-                <form onSubmit={handleCreateNotification}>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="md:col-span-1">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Stock Ticker</label>
-                            <input
-                                type="text"
-                                value={ticker}
-                                onChange={(e) => setTicker(e.target.value)}
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                placeholder="AAPL"
-                                required
-                            />
-                        </div>
-                        <div className="md:col-span-1">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Alert me when price is...</label>
-                            <select
-                                value={condition}
-                                onChange={(e) => setCondition(e.target.value)}
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                required
-                            >
-                                <option value="below">Below</option>
-                                <option value="above">Above</option>
-                            </select>
-                        </div>
-                        <div className="md:col-span-1">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Target Price</label>
-                            <input
-                                type="number"
-                                value={price}
-                                onChange={(e) => setPrice(e.target.value)}
-                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                placeholder="170.00"
-                                min="0.01"
-                                step="0.01"
-                                required
-                            />
-                        </div>
-                    </div>
+            {/* --- Creation Card --- */}
+            <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-12">
+                {/* Tabs */}
+                <div className="flex border-b border-gray-100 dark:border-gray-700">
                     <button
-                        type="submit"
-                        className="mt-6 w-full md:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all active:scale-95 flex items-center justify-center space-x-2"
+                        onClick={() => setActiveTab('price')}
+                        className={`flex-1 py-4 text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'price' ? 'bg-gray-50 dark:bg-gray-700/50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}
                     >
-                        <Plus className="w-5 h-5" />
-                        <span>Create Notification</span>
+                        <TrendingUp className="w-4 h-4" /> Price Target
                     </button>
+                    <button
+                        onClick={() => setActiveTab('ai')}
+                        className={`flex-1 py-4 text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'ai' ? 'bg-blue-50 dark:bg-blue-900/20 text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}
+                    >
+                        <Sparkles className="w-4 h-4" /> AI Smart Alert
+                    </button>
+                </div>
+
+                <div className="p-8">
+                    {activeTab === 'price' ? (
+                        <form onSubmit={handleCreateNotification} className="animate-in fade-in slide-in-from-left-4 duration-300">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ticker</label>
+                                    <input
+                                        type="text"
+                                        value={ticker}
+                                        onChange={(e) => setTicker(e.target.value)}
+                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                        placeholder="e.g. TSLA"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Condition</label>
+                                    <select
+                                        value={condition}
+                                        onChange={(e) => setCondition(e.target.value)}
+                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                    >
+                                        <option value="below">Falls Below</option>
+                                        <option value="above">Rises Above</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Target Price</label>
+                                    <input
+                                        type="number"
+                                        value={price}
+                                        onChange={(e) => setPrice(e.target.value)}
+                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                        placeholder="0.00"
+                                        min="0.01"
+                                        step="0.01"
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                type="submit"
+                                className="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-[0.98] flex items-center justify-center gap-2"
+                            >
+                                <Plus className="w-5 h-5" />
+                                Create Alert
+                            </button>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleCreateSmartNotification} className="animate-in fade-in slide-in-from-right-4 duration-300">
+                            <div className="mb-6">
+                                <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <Sparkles className="w-3 h-3" /> AI Assistant
+                                </label>
+                                <textarea
+                                    value={aiPrompt}
+                                    onChange={(e) => setAiPrompt(e.target.value)}
+                                    className="w-full h-32 px-5 py-4 bg-purple-50 dark:bg-gray-900 border border-purple-100 dark:border-gray-700 rounded-xl font-medium focus:ring-2 focus:ring-purple-500 outline-none resize-none"
+                                    placeholder="Examples:&#10;- Notify me when Apple releases earnings&#10;- Alert me if Tesla drops 5% in a day&#10;- Tell me when there is breaking news about NVDA"
+                                    required
+                                />
+                            </div>
+
+                            <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+                                {["AAPL Earnings", "TSLA News", "BTC > 100k"].map(tag => (
+                                    <button
+                                        key={tag}
+                                        type="button"
+                                        onClick={() => setAiPrompt(prev => prev + (prev ? " " : "") + `Notify me when ${tag}`)}
+                                        className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-xs font-bold text-gray-600 dark:text-gray-300 whitespace-nowrap hover:bg-purple-100 hover:text-purple-700 transition-colors"
+                                    >
+                                        + {tag}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={isAiLoading}
+                                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-purple-600/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70"
+                            >
+                                {isAiLoading ? (
+                                    <>
+                                        <Sparkles className="w-5 h-5 animate-spin" /> Analyzing Request...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles className="w-5 h-5" /> Generate Smart Alert
+                                    </>
+                                )}
+                            </button>
+                        </form>
+                    )}
                     <FormNotification message={message} onDismiss={() => setMessage(null)} />
-                </form>
+                </div>
             </div>
 
-            {/* --- Triggered Alerts List --- */}
-            {triggeredAlerts.length > 0 && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8 border border-blue-200 dark:border-blue-700">
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">New Alerts That Fired</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* --- Active Alerts --- */}
+                <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-500"></div> Active Monitors
+                    </h2>
+
+                    {loading && <p className="text-center py-8 text-gray-400 font-medium">Loading...</p>}
+                    {!loading && activeAlerts.length === 0 && (
+                        <div className="text-center py-12 border-2 border-dashed border-gray-100 dark:border-gray-700 rounded-2xl">
+                            <Bell className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                            <p className="text-gray-400 font-medium">No alerts running</p>
+                        </div>
+                    )}
+
+                    <div className="space-y-3">
+                        {activeAlerts.map((alert) => (
+                            <div key={alert.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl group hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-gray-100">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 font-black text-xs">
+                                        {alert.ticker.substring(0, 4)}
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-gray-900 dark:text-white">{alert.ticker}</p>
+                                        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+                                            {alert.condition === 'below' ? 'Drop Below' : 'Rise Above'} ${alert.target_price.toFixed(2)}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleDelete(alert.id, 'active')}
+                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* --- Triggered History --- */}
+                <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-red-500"></div> Recent Notifications
+                        </h2>
+                        {triggeredAlerts.length > 0 && (
+                            <button onClick={onClearAlerts} className="text-xs font-bold text-blue-600 hover:underline">Clear All</button>
+                        )}
+                    </div>
+
+                    {!loading && triggeredAlerts.length === 0 && (
+                        <div className="text-center py-12 border-2 border-dashed border-gray-100 dark:border-gray-700 rounded-2xl">
+                            <p className="text-gray-400 font-medium">No recent notifications</p>
+                        </div>
+                    )}
+
                     <div className="space-y-3">
                         {triggeredAlerts.map((alert) => (
-                            <div key={alert.id} className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
-                                <div className="flex items-center">
-                                    <BellRing className="w-5 h-5 text-blue-500 mr-3" />
-                                    <span className="text-gray-700 dark:text-gray-200">{alert.message}</span>
+                            <div key={alert.id} className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/20">
+                                <div className="mt-1">
+                                    <BellRing className="w-4 h-4 text-red-500" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200 leading-tight">{alert.message}</p>
+                                    <p className="text-[10px] text-gray-400 mt-1 font-bold uppercase">{new Date(alert.timestamp).toLocaleTimeString()}</p>
                                 </div>
                                 <button
                                     onClick={() => handleDelete(alert.id, 'triggered')}
-                                    className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 p-2 rounded-lg transition-all"
-                                    title="Dismiss Alert"
+                                    className="text-gray-400 hover:text-red-500"
                                 >
                                     <X className="w-4 h-4" />
                                 </button>
@@ -193,48 +357,6 @@ const NotificationsPage = ({ onClearAlerts }) => {
                         ))}
                     </div>
                 </div>
-            )}
-
-            {/* --- Active Alerts List --- */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Your Active Alerts</h2>
-                {loading && <p className="text-gray-600 dark:text-gray-400">Loading alerts...</p>}
-                {error && !loading && <p className="text-red-600 dark:text-red-400">{error}</p>}
-                {!loading && activeAlerts.length === 0 && (
-                    <p className="text-gray-600 dark:text-gray-400">You have no active price alerts.</p>
-                )}
-                {activeAlerts.length > 0 && (
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="border-b-2 border-gray-200 dark:border-gray-700">
-                                <tr>
-                                    <th className="text-left py-3 px-4 text-gray-700 dark:text-gray-300 font-semibold">Stock</th>
-                                    <th className="text-left py-3 px-4 text-gray-700 dark:text-gray-300 font-semibold">Condition</th>
-                                    <th className="text-right py-3 px-4 text-gray-700 dark:text-gray-300 font-semibold">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {activeAlerts.map((alert) => (
-                                    <tr key={alert.id} className="border-b border-gray-200 dark:border-gray-700">
-                                        <td className="py-3 px-4 font-semibold text-gray-900 dark:text-white">{alert.ticker}</td>
-                                        <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                                            {alert.condition === 'below' ? 'Below' : 'Above'} ${alert.target_price.toFixed(2)}
-                                        </td>
-                                        <td className="py-3 px-4 text-right">
-                                            <button
-                                                onClick={() => handleDelete(alert.id, 'active')}
-                                                className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg transition-all"
-                                                title="Delete Alert"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
             </div>
         </div>
     );

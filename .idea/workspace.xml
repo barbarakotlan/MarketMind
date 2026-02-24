@@ -4,11 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="81f5005b-826f-42f2-9831-b8d01b4fc32a" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/frontend/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/PaperTradingPage.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/PaperTradingPage.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/charts/PortfolioGrowthChart.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/charts/PortfolioGrowthChart.js" afterDir="false" />
-    </list>
+    <list default="true" id="81f5005b-826f-42f2-9831-b8d01b4fc32a" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -72,7 +68,8 @@
       <workItem from="1763156823275" duration="4285000" />
       <workItem from="1763435147690" duration="7862000" />
       <workItem from="1766171610237" duration="3220000" />
-      <workItem from="1770347421246" duration="683000" />
+      <workItem from="1770347421246" duration="4426000" />
+      <workItem from="1770759510310" duration="4206000" />
     </task>
     <servers />
   </component>
