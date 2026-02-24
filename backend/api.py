@@ -1796,18 +1796,86 @@ def reset_prediction_portfolio():
     })
 
 
+def _fundamentals_from_yfinance(sym):
+    """Build a fundamentals dict from yfinance when Alpha Vantage is unavailable."""
+    try:
+        info = yf.Ticker(sym).info
+        if not info or info.get('quoteType') not in ('EQUITY', 'ETF', 'MUTUALFUND'):
+            return None
+        def _s(key):
+            v = info.get(key)
+            return str(v) if v is not None else 'N/A'
+        return {
+            "symbol": info.get('symbol', sym),
+            "name": info.get('longName') or info.get('shortName') or 'N/A',
+            "description": info.get('longBusinessSummary', 'N/A'),
+            "exchange": info.get('exchange', 'N/A'),
+            "currency": info.get('currency', 'N/A'),
+            "sector": info.get('sector', 'N/A'),
+            "industry": info.get('industry', 'N/A'),
+            "country": info.get('country', 'N/A'),
+            "market_cap": _s('marketCap'),
+            "pe_ratio": _s('trailingPE'),
+            "forward_pe": _s('forwardPE'),
+            "trailing_pe": _s('trailingPE'),
+            "peg_ratio": _s('pegRatio'),
+            "eps": _s('trailingEps'),
+            "beta": _s('beta'),
+            "book_value": _s('bookValue'),
+            "dividend_per_share": _s('dividendRate'),
+            "dividend_yield": _s('dividendYield'),
+            "dividend_date": 'N/A',
+            "ex_dividend_date": 'N/A',
+            "profit_margin": _s('profitMargins'),
+            "operating_margin_ttm": _s('operatingMargins'),
+            "return_on_assets_ttm": _s('returnOnAssets'),
+            "return_on_equity_ttm": _s('returnOnEquity'),
+            "revenue_ttm": _s('totalRevenue'),
+            "gross_profit_ttm": _s('grossProfits'),
+            "diluted_eps_ttm": _s('trailingEps'),
+            "revenue_per_share_ttm": _s('revenuePerShare'),
+            "quarterly_earnings_growth_yoy": _s('earningsQuarterlyGrowth'),
+            "quarterly_revenue_growth_yoy": _s('revenueGrowth'),
+            "analyst_target_price": _s('targetMeanPrice'),
+            "price_to_sales_ratio_ttm": _s('priceToSalesTrailing12Months'),
+            "price_to_book_ratio": _s('priceToBook'),
+            "ev_to_revenue": _s('enterpriseToRevenue'),
+            "ev_to_ebitda": _s('enterpriseToEbitda'),
+            "week_52_high": _s('fiftyTwoWeekHigh'),
+            "week_52_low": _s('fiftyTwoWeekLow'),
+            "day_50_moving_average": _s('fiftyDayAverage'),
+            "day_200_moving_average": _s('twoHundredDayAverage'),
+            "shares_outstanding": _s('sharesOutstanding'),
+        }
+    except Exception as e:
+        logger.warning(f"yfinance fundamentals fallback failed for {sym}: {e}")
+        return None
+
+
 @app.route('/fundamentals/<string:ticker>')
 def get_fundamentals(ticker):
     try:
-        sanitized_ticker = ticker.split(':')[0]
-        if not ALPHA_VANTAGE_API_KEY:
-            return jsonify({"error": "Alpha Vantage API key not configured"}), 500
-            
-        url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={sanitized_ticker.upper()}&apikey={ALPHA_VANTAGE_API_KEY}'
-        response = requests.get(url)
-        data = response.json()
-        
-        if not data or 'Symbol' not in data:
+        sanitized_ticker = ticker.split(':')[0].upper()
+
+        # Try Alpha Vantage first (richer data), fall back to yfinance
+        av_data = None
+        if ALPHA_VANTAGE_API_KEY:
+            try:
+                url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={sanitized_ticker}&apikey={ALPHA_VANTAGE_API_KEY}'
+                av_resp = requests.get(url, timeout=10)
+                av_json = av_resp.json()
+                if av_json and 'Symbol' in av_json:
+                    av_data = av_json
+            except Exception as e:
+                logger.warning(f"Alpha Vantage fundamentals failed for {sanitized_ticker}: {e}")
+
+        if av_data:
+            data = av_data
+        else:
+            # Fallback: yfinance
+            yf_data = _fundamentals_from_yfinance(sanitized_ticker)
+            if yf_data:
+                return jsonify(yf_data)
             return jsonify({"error": f"No fundamental data found for {ticker}"}), 404
 
         # Map Alpha Vantage keys (PascalCase) to Frontend keys (snake_case)
@@ -1882,18 +1950,6 @@ def search_symbols():
         return jsonify({"error": str(e)}), 500
 
 
-# --- Main execution ---
-if __name__ == '__main__':
-    init_db()  # Initialize the SQLite history table
-
-    # --- NEW: Start the background thread ---
-    logger.info("Starting background alert checker...")
-    checker_thread = threading.Thread(target=run_scheduler, daemon=True)
-    checker_thread.start()
-
-    app.run(debug=True, port=5001, use_reloader=False)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # OpenBB-powered endpoints
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1911,91 +1967,87 @@ def _obb_to_float(val):
 
 @app.route('/fundamentals/financials/<string:ticker>')
 def get_financial_statements(ticker):
-    """4-year income statement, balance sheet snapshot, and cash flow via OpenBB/yfinance."""
+    """4-year income statement, balance sheet, and cash flow via OpenBB."""
     if not OPENBB_AVAILABLE:
         return jsonify({"error": "OpenBB not installed on this server."}), 503
-    t = ticker.split(':')[0].upper()
+    sym = ticker.upper().split(':')[0]
     try:
-        # ── Income statement ──────────────────────────────────────────────
-        inc_df = obb.equity.fundamental.income(t, limit=4, provider='yfinance').to_dataframe()
-        income = []
-        for _, row in inc_df.iterrows():
-            income.append({
-                "period": str(row.get('period_ending', '')),
-                "revenue":           _obb_to_float(row.get('total_revenue')),
-                "gross_profit":      _obb_to_float(row.get('gross_profit')),
-                "operating_income":  _obb_to_float(row.get('operating_income')),
-                "net_income":        _obb_to_float(row.get('net_income')),
-                "ebitda":            _obb_to_float(row.get('ebitda')),
-                "eps":               _obb_to_float(row.get('basic_earnings_per_share')),
-            })
+        def _stmt(fn, fields):
+            df = fn(sym, provider='yfinance').to_dataframe()
+            if df.empty:
+                return []
+            rows = []
+            for col in df.columns[:4]:  # up to 4 years
+                row = {"period": str(col)[:10]}
+                for key, src in fields:
+                    row[key] = _obb_to_float(df[src].iloc[0]) if src in df.index else None
+                rows.append(row)
+            return rows
 
-        # ── Balance sheet (most recent 4 years) ──────────────────────────
-        bal_df = obb.equity.fundamental.balance(t, limit=4, provider='yfinance').to_dataframe()
-        balance = []
-        for _, row in bal_df.iterrows():
-            balance.append({
-                "period":         str(row.get('period_ending', '')),
-                "total_assets":   _obb_to_float(row.get('total_assets')),
-                "total_liab":     _obb_to_float(row.get('total_liabilities_net_minority_interest')),
-                "total_equity":   _obb_to_float(row.get('common_stock_equity')),
-                "cash":           _obb_to_float(row.get('cash_and_cash_equivalents')),
-                "total_debt":     _obb_to_float(row.get('total_debt')),
-                "working_capital":_obb_to_float(row.get('working_capital')),
-            })
+        income_df  = obb.equity.fundamental.income(sym, provider='yfinance', period='annual', limit=4).to_dataframe()
+        balance_df = obb.equity.fundamental.balance(sym, provider='yfinance', period='annual', limit=4).to_dataframe()
+        cashflow_df = obb.equity.fundamental.cash(sym, provider='yfinance', period='annual', limit=4).to_dataframe()
 
-        # ── Cash flow ─────────────────────────────────────────────────────
-        cf_df = obb.equity.fundamental.cash(t, limit=4, provider='yfinance').to_dataframe()
-        # capex lives in investing activities — check both names
-        capex_col = 'capital_expenditure' if 'capital_expenditure' in cf_df.columns else \
-                    'purchase_of_ppe' if 'purchase_of_ppe' in cf_df.columns else None
-        cash_flow = []
-        for _, row in cf_df.iterrows():
-            op  = _obb_to_float(row.get('operating_cash_flow'))
-            inv = _obb_to_float(row.get('investing_cash_flow'))
-            fin = _obb_to_float(row.get('cash_flow_from_continuing_financing_activities'))
-            cap = _obb_to_float(row.get(capex_col)) if capex_col else None
-            fcf = round(op + cap, 4) if (op is not None and cap is not None) else None
-            cash_flow.append({
-                "period":     str(row.get('period_ending', '')),
-                "operating":  op,
-                "investing":  inv,
-                "financing":  fin,
-                "capex":      cap,
-                "free_cf":    fcf,
-            })
+        def _rows(df, field_map):
+            out = []
+            for _, row in df.iterrows():
+                rec = {"period": str(row.get('date', row.get('period_of_report', '')))[:10]}
+                for dest, src in field_map.items():
+                    rec[dest] = _obb_to_float(row.get(src))
+                out.append(rec)
+            return out
 
-        return jsonify({"income": income, "balance": balance, "cash_flow": cash_flow})
+        INCOME_FIELDS = {
+            "revenue": "revenue", "gross_profit": "gross_profit",
+            "operating_income": "operating_income", "net_income": "net_income",
+            "ebitda": "ebitda", "eps": "eps_diluted",
+        }
+        BALANCE_FIELDS = {
+            "total_assets": "total_assets", "total_liab": "total_liabilities",
+            "total_equity": "total_equity", "cash": "cash_and_cash_equivalents",
+            "total_debt": "total_debt", "working_capital": "net_current_assets",
+        }
+        CASHFLOW_FIELDS = {
+            "operating": "net_cash_flow_from_operating_activities",
+            "investing": "net_cash_flow_from_investing_activities",
+            "financing": "net_cash_flow_from_financing_activities",
+            "capex": "capital_expenditure",
+            "free_cf": "free_cash_flow",
+        }
+
+        return jsonify({
+            "income_statement": _rows(income_df, INCOME_FIELDS),
+            "balance_sheet":    _rows(balance_df, BALANCE_FIELDS),
+            "cash_flow":        _rows(cashflow_df, CASHFLOW_FIELDS),
+        })
     except Exception as e:
-        logger.error(f"Financial statements error for {t}: {e}")
+        logger.error(f"Financial statements error for {sym}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
 @app.route('/fundamentals/filings/<string:ticker>')
 def get_sec_filings(ticker):
-    """Recent SEC filings (10-K, 10-Q, 8-K) via OpenBB."""
+    """Recent SEC filings (10-K, 10-Q, 8-K, etc.) via OpenBB EDGAR."""
     if not OPENBB_AVAILABLE:
         return jsonify({"error": "OpenBB not installed on this server."}), 503
-    t = ticker.split(':')[0].upper()
+    sym = ticker.upper().split(':')[0]
     RELEVANT = {'10-K', '10-Q', '8-K', '10-K/A', '10-Q/A', 'DEF 14A', 'S-1', '20-F', '6-K'}
     try:
-        results = obb.equity.fundamental.filings(t, limit=50).results
-        filings = []
-        for f in results:
-            rt = str(f.report_type) if f.report_type is not None else ''
-            if rt not in RELEVANT:
+        df = obb.equity.fundamental.filings(sym, provider='sec', limit=50).to_dataframe()
+        results = []
+        for _, row in df.iterrows():
+            report_type = str(row.get('report_type', row.get('type', ''))).upper()
+            if report_type not in RELEVANT:
                 continue
-            filings.append({
-                "date":        str(f.filing_date) if f.filing_date else '',
-                "type":        rt,
-                "description": f.primary_doc_description or '',
-                "url":         f.filing_detail_url or f.report_url or '',
+            results.append({
+                "date":        str(row.get('date', row.get('filed', '')))[:10],
+                "type":        report_type,
+                "description": str(row.get('description', row.get('form', '')))[:200],
+                "url":         str(row.get('url', row.get('link', ''))) or None,
             })
-            if len(filings) >= 20:
-                break
-        return jsonify(filings)
+        return jsonify(results[:30])
     except Exception as e:
-        logger.error(f"SEC filings error for {t}: {e}")
+        logger.error(f"SEC filings error for {sym}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -2054,20 +2106,19 @@ def get_macro_overview():
                 df = df.sort_values('date')
                 last  = df.iloc[-1]
                 prev  = df.iloc[-2] if len(df) > 1 else last
-                val   = float(last['value']) * ind["multiplier"]
+                val      = float(last['value']) * ind["multiplier"]
                 prev_val = float(prev['value']) * ind["multiplier"]
-                # build 24-month sparkline
                 sparkline = [
                     {"date": str(row['date']), "value": round(float(row['value']) * ind["multiplier"], 4)}
                     for _, row in df.tail(24).iterrows()
                 ]
                 result.append({
-                    "symbol":   ind["symbol"],
-                    "name":     ind["name"],
-                    "unit":     ind["unit"],
-                    "value":    round(val, 3),
-                    "prev":     round(prev_val, 3),
-                    "date":     str(last['date']),
+                    "symbol":    ind["symbol"],
+                    "name":      ind["name"],
+                    "unit":      ind["unit"],
+                    "value":     round(val, 3),
+                    "prev":      round(prev_val, 3),
+                    "date":      str(last['date']),
                     "sparkline": sparkline,
                 })
             except Exception as e:
@@ -2099,4 +2150,17 @@ def get_macro_overview():
         return jsonify(result)
     except Exception as e:
         logger.error(f"Macro overview error: {e}")
-        return jsonify({"error": str(e)}), 500  # use_reloader=False is important for threads
+        return jsonify({"error": str(e)}), 500
+
+
+# --- Main execution ---
+if __name__ == '__main__':
+    init_db()  # Initialize the SQLite history table
+
+    # --- NEW: Start the background thread ---
+    logger.info("Starting background alert checker...")
+    checker_thread = threading.Thread(target=run_scheduler, daemon=True)
+    checker_thread.start()
+
+    app.run(debug=True, port=5001, use_reloader=False)
+

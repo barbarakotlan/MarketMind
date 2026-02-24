@@ -125,25 +125,8 @@ const FundamentalsPage = () => {
             return;
         }
 
-        setFundamentals({
-            name: ov.Name, symbol: ov.Symbol, exchange: ov.Exchange,
-            currency: ov.Currency, sector: ov.Sector, industry: ov.Industry,
-            description: ov.Description, market_cap: ov.MarketCapitalization,
-            pe_ratio: ov.PERatio, forward_pe: ov.ForwardPE, trailing_pe: ov.TrailingPE,
-            peg_ratio: ov.PEGRatio, eps: ov.EPS, beta: ov.Beta,
-            revenue_ttm: ov.RevenueTTM, gross_profit_ttm: ov.GrossProfitTTM,
-            diluted_eps_ttm: ov.DilutedEPSTTM, revenue_per_share_ttm: ov.RevenuePerShareTTM,
-            profit_margin: ov.ProfitMargin, operating_margin_ttm: ov.OperatingMarginTTM,
-            return_on_assets_ttm: ov.ReturnOnAssetsTTM, return_on_equity_ttm: ov.ReturnOnEquityTTM,
-            price_to_sales_ratio_ttm: ov.PriceToSalesRatioTTM, price_to_book_ratio: ov.PriceToBookRatio,
-            ev_to_revenue: ov.EVToRevenue, ev_to_ebitda: ov.EVToEBITDA,
-            week_52_high: ov["52WeekHigh"], week_52_low: ov["52WeekLow"],
-            day_50_moving_average: ov["50DayMovingAverage"], day_200_moving_average: ov["200DayMovingAverage"],
-            dividend_per_share: ov.DividendPerShare, dividend_yield: ov.DividendYield,
-            dividend_date: ov.DividendDate, ex_dividend_date: ov.ExDividendDate,
-            shares_outstanding: ov.SharesOutstanding, book_value: ov.BookValue,
-            analyst_target_price: ov.AnalystTargetPrice, country: ov.Country,
-        });
+        // Backend already returns snake_case keys — use directly
+        setFundamentals(ov);
 
         if (financialsRes.status === 'fulfilled' && !financialsRes.value?.error) {
             setFinancials(financialsRes.value);
