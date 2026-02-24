@@ -16,6 +16,7 @@ import time
 import threading
 import uuid  # For unique notification IDs
 import re  # Added for Smart Alert parsing
+import time
 
 # --- DOTENV MUST BE FIRST ---
 from dotenv import load_dotenv
@@ -1854,29 +1855,49 @@ def search_symbols():
         return jsonify({"error": str(e)}), 500
 
 
-# --- Add this right below your other routes in api.py ---
+# Create a "memory" cache so we don't spam the API
+CALENDAR_CACHE = {
+    "data": None,
+    "last_fetched": 0
+}
+
+
 @app.route('/calendar/economic', methods=['GET'])
 def get_economic_calendar():
+    global CALENDAR_CACHE
+    current_time = time.time()
+
+    # Check if we fetched the data less than 15 minutes ago (900 seconds).
+    # If we did, instantly return the saved data instead of hitting the API again.
+    if CALENDAR_CACHE["data"] is not None and (current_time - CALENDAR_CACHE["last_fetched"]) < 900:
+        return jsonify(CALENDAR_CACHE["data"])
+
     try:
-        # Pulls from a completely free, live JSON feed (no API key required)
         url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
-        headers = {'User-Agent': 'Mozilla/5.0'}
+
+        # Use a highly realistic User-Agent so their Cloudflare protection doesn't block us
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*'
+        }
+
         response = requests.get(url, headers=headers)
 
+        # If they still block us, but we have old data saved, just show the old data!
         if response.status_code != 200:
-            return jsonify({"error": "Failed to fetch calendar"}), 500
+            if CALENDAR_CACHE["data"] is not None:
+                return jsonify(CALENDAR_CACHE["data"])
+            return jsonify({"error": f"Failed to fetch calendar (Status {response.status_code})"}), 500
 
         data = response.json()
         formatted_events = []
 
         for index, item in enumerate(data):
-            # We only want to see US events for the main economic calendar
             if item.get('country') != 'USD':
                 continue
 
             raw_date = item.get('date', '')
             try:
-                # Parse the ISO date string into a clean format
                 dt = datetime.strptime(raw_date[:19], "%Y-%m-%dT%H:%M:%S")
                 date_str = dt.strftime("%Y-%m-%d")
                 time_str = dt.strftime("%I:%M %p").lstrip("0")
@@ -1885,11 +1906,8 @@ def get_economic_calendar():
                 time_str = "TBD"
 
             title = item.get('title', 'Unknown Event')
-
-            # Categorize as a speaker event or a report
             event_type = 'speaker' if 'Speaks' in title or 'Testifies' in title else 'report'
 
-            # Helper to return a dash instead of an empty box if data isn't out yet
             def clean_val(v):
                 return v if v and str(v).strip() != "" else "-"
 
@@ -1905,9 +1923,16 @@ def get_economic_calendar():
                 "previous": clean_val(item.get('previous'))
             })
 
+        # Success! Save the new data to our cache and log the time
+        CALENDAR_CACHE["data"] = formatted_events
+        CALENDAR_CACHE["last_fetched"] = current_time
+
         return jsonify(formatted_events)
+
     except Exception as e:
-        logger.error(f"Error fetching economic calendar: {e}")
+        # If the internet drops or it crashes, return the cached data as a fallback
+        if CALENDAR_CACHE["data"] is not None:
+            return jsonify(CALENDAR_CACHE["data"])
         return jsonify({"error": str(e)}), 500
 
 # --- Main execution ---
