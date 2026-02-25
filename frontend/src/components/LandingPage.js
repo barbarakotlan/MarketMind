@@ -56,22 +56,34 @@ function MarqueeTicker() {
     const [stocks, setStocks] = useState([]);
     const [news,   setNews]   = useState([]);
     const [paused, setPaused] = useState(false);
-    const [error, setError]   = useState(false);
+    const [error, setError]   = useState(null);
 
     useEffect(() => {
+        // Debug: Log when effect runs
+        console.log('[Ticker] Fetching stock data...');
+        
         // Stocks
         Promise.allSettled(
             STOCK_TICKERS.map(({ ticker }) =>
                 fetch(`http://127.0.0.1:5001/stock/${ticker}`)
                     .then(r => {
+                        console.log(`[Ticker] ${ticker}: HTTP ${r.status}`);
                         if (!r.ok) throw new Error(`HTTP ${r.status}`);
                         return r.json();
                     })
+                    .catch(e => {
+                        console.error(`[Ticker] ${ticker} failed:`, e.message);
+                        throw e;
+                    })
             )
         ).then(results => {
+            console.log('[Ticker] All requests completed:', results);
             const items = results
                 .map((r, i) => {
-                    if (r.status !== 'fulfilled' || r.value?.error) return null;
+                    if (r.status !== 'fulfilled' || r.value?.error) {
+                        console.log(`[Ticker] ${STOCK_TICKERS[i].ticker} skipped:`, r.status, r.reason || r.value?.error);
+                        return null;
+                    }
                     return {
                         type: 'stock',
                         label: STOCK_TICKERS[i].label,
@@ -80,20 +92,23 @@ function MarqueeTicker() {
                     };
                 })
                 .filter(Boolean);
+            console.log('[Ticker] Parsed items:', items);
             setStocks(items);
-            if (items.length === 0) setError(true);
+            if (items.length === 0) setError('No stock data received');
         }).catch((e) => {
-            console.error('Ticker stock fetch error:', e);
-            setError(true);
+            console.error('[Ticker] Fatal error:', e);
+            setError(e.message);
         });
 
         // News headlines (best-effort)
         fetch('http://127.0.0.1:5001/api/news?category=general&limit=6')
             .then(r => {
+                console.log('[Ticker] News: HTTP', r.status);
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
                 return r.json();
             })
             .then(d => {
+                console.log('[Ticker] News data:', d);
                 const articles = Array.isArray(d) ? d : (d.articles ?? d.news ?? []);
                 setNews(
                     articles
@@ -107,7 +122,7 @@ function MarqueeTicker() {
                 );
             })
             .catch((e) => {
-                console.error('Ticker news fetch error:', e);
+                console.error('[Ticker] News error:', e);
             });
     }, []);
 
@@ -134,9 +149,9 @@ function MarqueeTicker() {
         return (
             <div className="bg-gray-900/90 border-b border-gray-700/50 h-10 flex items-center px-6">
                 {error ? (
-                    <span className="text-xs text-red-400 flex items-center gap-2">
+                    <span className="text-xs text-red-400 flex items-center gap-2" title={error}>
                         <span className="w-2 h-2 rounded-full bg-red-500" />
-                        Market data unavailable
+                        Market data unavailable ({error})
                     </span>
                 ) : (
                     <div className="flex gap-8">

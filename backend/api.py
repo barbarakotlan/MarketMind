@@ -80,9 +80,14 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
 
 # Configure CORS - restrict to specific origins
-CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000')
-allowed_origins = [origin.strip() for origin in CORS_ORIGINS.split(',')]
-CORS(app, origins=allowed_origins, supports_credentials=True)
+# In development, allow all origins. In production, use specific origins
+if os.getenv('FLASK_ENV') == 'production':
+    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000')
+    allowed_origins = [origin.strip() for origin in CORS_ORIGINS.split(',')]
+    CORS(app, origins=allowed_origins, supports_credentials=True)
+else:
+    # Development - allow all origins
+    CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --- Security Headers Middleware ---
 @app.after_request
