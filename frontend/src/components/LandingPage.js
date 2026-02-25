@@ -56,74 +56,33 @@ function MarqueeTicker() {
     const [stocks, setStocks] = useState([]);
     const [news,   setNews]   = useState([]);
     const [paused, setPaused] = useState(false);
-    const [error, setError]   = useState(null);
 
     useEffect(() => {
-        // Debug: Log when effect runs
-        console.log('[Ticker] Fetching stock data...');
+        // Mock stock data
+        const mockStocks = [
+            { type: 'stock', label: 'S&P 500', price: 452.38, change: 0.72 },
+            { type: 'stock', label: 'NASDAQ', price: 398.42, change: 1.24 },
+            { type: 'stock', label: 'Dow Jones', price: 389.15, change: -0.34 },
+            { type: 'stock', label: 'AAPL', price: 182.52, change: 1.45 },
+            { type: 'stock', label: 'MSFT', price: 415.26, change: 0.89 },
+            { type: 'stock', label: 'NVDA', price: 875.28, change: 2.34 },
+            { type: 'stock', label: 'TSLA', price: 175.34, change: -1.23 },
+            { type: 'stock', label: 'GOOGL', price: 141.80, change: 0.56 },
+            { type: 'stock', label: 'AMZN', price: 178.25, change: 0.91 },
+            { type: 'stock', label: 'BTC', price: 51234.67, change: 3.45 },
+            { type: 'stock', label: 'ETH', price: 2987.43, change: 2.12 },
+            { type: 'stock', label: 'Gold', price: 2034.80, change: -0.15 },
+        ];
         
-        // Stocks
-        Promise.allSettled(
-            STOCK_TICKERS.map(({ ticker }) =>
-                fetch(`http://127.0.0.1:5001/stock/${ticker}`)
-                    .then(r => {
-                        console.log(`[Ticker] ${ticker}: HTTP ${r.status}`);
-                        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                        return r.json();
-                    })
-                    .catch(e => {
-                        console.error(`[Ticker] ${ticker} failed:`, e.message);
-                        throw e;
-                    })
-            )
-        ).then(results => {
-            console.log('[Ticker] All requests completed:', results);
-            const items = results
-                .map((r, i) => {
-                    if (r.status !== 'fulfilled' || r.value?.error) {
-                        console.log(`[Ticker] ${STOCK_TICKERS[i].ticker} skipped:`, r.status, r.reason || r.value?.error);
-                        return null;
-                    }
-                    return {
-                        type: 'stock',
-                        label: STOCK_TICKERS[i].label,
-                        price: r.value.price,
-                        change: r.value.change_percent,
-                    };
-                })
-                .filter(Boolean);
-            console.log('[Ticker] Parsed items:', items);
-            setStocks(items);
-            if (items.length === 0) setError('No stock data received');
-        }).catch((e) => {
-            console.error('[Ticker] Fatal error:', e);
-            setError(e.message);
-        });
-
-        // News headlines (best-effort)
-        fetch('http://127.0.0.1:5001/api/news?category=general&limit=6')
-            .then(r => {
-                console.log('[Ticker] News: HTTP', r.status);
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.json();
-            })
-            .then(d => {
-                console.log('[Ticker] News data:', d);
-                const articles = Array.isArray(d) ? d : (d.articles ?? d.news ?? []);
-                setNews(
-                    articles
-                        .filter(a => a.headline || a.title)
-                        .slice(0, 5)
-                        .map(a => ({
-                            type: 'news',
-                            text: (a.headline ?? a.title ?? '').slice(0, 80),
-                            source: a.source ?? '',
-                        }))
-                );
-            })
-            .catch((e) => {
-                console.error('[Ticker] News error:', e);
-            });
+        // Mock news headlines
+        const mockNews = [
+            { type: 'news', text: 'Fed signals potential rate cuts in coming months', source: 'Reuters' },
+            { type: 'news', text: 'Tech stocks rally on strong AI earnings', source: 'Bloomberg' },
+            { type: 'news', text: 'Oil prices stabilize amid Middle East tensions', source: 'CNBC' },
+        ];
+        
+        setStocks(mockStocks);
+        setNews(mockNews);
     }, []);
 
     // Interleave news into stock items then duplicate for seamless loop
@@ -145,24 +104,15 @@ function MarqueeTicker() {
     const looped = useMemo(() => [...combined, ...combined], [combined]);
 
     if (combined.length === 0) {
-        // Loading skeleton or error state
+        // Loading skeleton
         return (
-            <div className="bg-gray-900/90 border-b border-gray-700/50 h-10 flex items-center px-6">
-                {error ? (
-                    <span className="text-xs text-red-400 flex items-center gap-2" title={error}>
-                        <span className="w-2 h-2 rounded-full bg-red-500" />
-                        Market data unavailable ({error})
-                    </span>
-                ) : (
-                    <div className="flex gap-8">
-                        {[...Array(6)].map((_, i) => (
-                            <div key={i} className="flex gap-2 items-center flex-shrink-0">
-                                <div className="h-3 w-12 bg-gray-700 rounded animate-pulse" />
-                                <div className="h-3 w-14 bg-gray-700 rounded animate-pulse" />
-                            </div>
-                        ))}
+            <div className="bg-gray-900/90 border-b border-gray-700/50 h-10 flex items-center px-6 gap-8">
+                {[...Array(6)].map((_, i) => (
+                    <div key={i} className="flex gap-2 items-center flex-shrink-0">
+                        <div className="h-3 w-12 bg-gray-700 rounded animate-pulse" />
+                        <div className="h-3 w-14 bg-gray-700 rounded animate-pulse" />
                     </div>
-                )}
+                ))}
             </div>
         );
     }
