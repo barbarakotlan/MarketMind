@@ -56,12 +56,17 @@ function MarqueeTicker() {
     const [stocks, setStocks] = useState([]);
     const [news,   setNews]   = useState([]);
     const [paused, setPaused] = useState(false);
+    const [error, setError]   = useState(false);
 
     useEffect(() => {
         // Stocks
         Promise.allSettled(
             STOCK_TICKERS.map(({ ticker }) =>
-                fetch(`http://127.0.0.1:5001/stock/${ticker}`).then(r => r.json())
+                fetch(`http://127.0.0.1:5001/stock/${ticker}`)
+                    .then(r => {
+                        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                        return r.json();
+                    })
             )
         ).then(results => {
             const items = results
@@ -76,11 +81,18 @@ function MarqueeTicker() {
                 })
                 .filter(Boolean);
             setStocks(items);
-        }).catch(() => {});
+            if (items.length === 0) setError(true);
+        }).catch((e) => {
+            console.error('Ticker stock fetch error:', e);
+            setError(true);
+        });
 
         // News headlines (best-effort)
         fetch('http://127.0.0.1:5001/api/news?category=general&limit=6')
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+            })
             .then(d => {
                 const articles = Array.isArray(d) ? d : (d.articles ?? d.news ?? []);
                 setNews(
@@ -94,7 +106,9 @@ function MarqueeTicker() {
                         }))
                 );
             })
-            .catch(() => {});
+            .catch((e) => {
+                console.error('Ticker news fetch error:', e);
+            });
     }, []);
 
     // Interleave news into stock items then duplicate for seamless loop
@@ -116,15 +130,24 @@ function MarqueeTicker() {
     const looped = useMemo(() => [...combined, ...combined], [combined]);
 
     if (combined.length === 0) {
-        // Loading skeleton
+        // Loading skeleton or error state
         return (
-            <div className="bg-gray-900/90 border-b border-gray-700/50 h-10 flex items-center px-6 gap-8">
-                {[...Array(6)].map((_, i) => (
-                    <div key={i} className="flex gap-2 items-center flex-shrink-0">
-                        <div className="h-3 w-12 bg-gray-700 rounded animate-pulse" />
-                        <div className="h-3 w-14 bg-gray-700 rounded animate-pulse" />
+            <div className="bg-gray-900/90 border-b border-gray-700/50 h-10 flex items-center px-6">
+                {error ? (
+                    <span className="text-xs text-red-400 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-red-500" />
+                        Market data unavailable
+                    </span>
+                ) : (
+                    <div className="flex gap-8">
+                        {[...Array(6)].map((_, i) => (
+                            <div key={i} className="flex gap-2 items-center flex-shrink-0">
+                                <div className="h-3 w-12 bg-gray-700 rounded animate-pulse" />
+                                <div className="h-3 w-14 bg-gray-700 rounded animate-pulse" />
+                            </div>
+                        ))}
                     </div>
-                ))}
+                )}
             </div>
         );
     }
