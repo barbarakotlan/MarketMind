@@ -5,7 +5,6 @@ import {
     BookOpen,
     HelpCircle,
     Award,
-    TrendingUp,
     ShieldAlert,
     Activity,
     Search,
@@ -13,20 +12,17 @@ import {
     RefreshCw,
     ChevronRight,
     Brain,
-    Layers,
     ChevronLeft,
     Clock,
     Target,
     BarChart3,
-    CheckSquare,
     Square,
     Lock,
     Play,
-    RotateCcw,
     X,
     Keyboard
 } from 'lucide-react';
-import { learningModules, QUESTION_BANK, getTotalChapters, getEstimatedCourseTime } from '../data/content';
+import { learningModules, QUESTION_BANK, getTotalChapters } from '../data/content';
 
 // --- MASTERY LEVEL HELPER ---
 const getMasteryLevel = (progress) => {
@@ -616,7 +612,6 @@ const GettingStartedPage = () => {
     const totalChapters = getTotalChapters();
     const completedChapters = Object.values(progress).filter(Boolean).length;
     const courseProgress = Math.round((completedChapters / totalChapters) * 100);
-    const estimatedCourseTime = getEstimatedCourseTime();
 
     // Check if module is unlocked
     const isModuleUnlocked = (moduleIndex) => {

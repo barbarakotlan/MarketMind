@@ -35,22 +35,7 @@ const stagger = (delay = 0.08) => ({
 });
 
 const viewportOnce = { once: true, margin: '-60px' };
-
-// ── Marquee ticker ────────────────────────────────────────────────────────────
-const STOCK_TICKERS = [
-    { ticker: 'SPY',     label: 'S&P 500' },
-    { ticker: 'QQQ',     label: 'NASDAQ' },
-    { ticker: 'DIA',     label: 'Dow Jones' },
-    { ticker: 'AAPL',    label: 'AAPL' },
-    { ticker: 'MSFT',    label: 'MSFT' },
-    { ticker: 'NVDA',    label: 'NVDA' },
-    { ticker: 'TSLA',    label: 'TSLA' },
-    { ticker: 'GOOGL',   label: 'GOOGL' },
-    { ticker: 'AMZN',    label: 'AMZN' },
-    { ticker: 'BTC-USD', label: 'BTC' },
-    { ticker: 'ETH-USD', label: 'ETH' },
-    { ticker: 'GLD',     label: 'Gold' },
-];
+const BINARY_CHARS = ['0', '1', '░', '▒', '▓'];
 
 function MarqueeTicker() {
     const [stocks, setStocks] = useState([]);
@@ -308,12 +293,6 @@ function StepTerminals() {
         }
     };
 
-    const handleReset = () => {
-        setCompletedSteps(new Set());
-        setActiveStep(0);
-        setTimeout(() => setActiveStep(0), 50);
-    };
-
     return (
         <div className="relative">
             <div className="grid md:grid-cols-3 gap-6 relative">
@@ -434,11 +413,8 @@ function TerminalTyper({ lines, isActive, onComplete }) {
     const [decodedText, setDecodedText] = useState('');
     const [mode, setMode] = useState('idle'); // 'idle' | 'typing' | 'thinking' | 'decoding' | 'done'
     const [showCursor, setShowCursor] = useState(true);
-    const [autoScrollY, setAutoScrollY] = useState(0);
     const scrollRef = useRef(null);
     const processingRef = useRef(false);
-
-    const binaryChars = ['0', '1', '░', '▒', '▓'];
 
     // Auto-scroll to follow content
     useEffect(() => {
@@ -609,7 +585,7 @@ function TerminalTyper({ lines, isActive, onComplete }) {
                     }
                     
                     const partial = chars.map((char, i) => 
-                        i < decodeIndex ? char : binaryChars[Math.floor(Math.random() * binaryChars.length)]
+                        i < decodeIndex ? char : BINARY_CHARS[Math.floor(Math.random() * BINARY_CHARS.length)]
                     ).join('');
                     setDecodedText(partial);
                     decodeIndex++;
@@ -618,7 +594,7 @@ function TerminalTyper({ lines, isActive, onComplete }) {
             }
             
             const binary = chars.map((_, i) => 
-                i < fillIndex ? binaryChars[Math.floor(Math.random() * binaryChars.length)] : ''
+                i < fillIndex ? BINARY_CHARS[Math.floor(Math.random() * BINARY_CHARS.length)] : ''
             ).join('');
             setDecodedText(binary);
             fillIndex++;

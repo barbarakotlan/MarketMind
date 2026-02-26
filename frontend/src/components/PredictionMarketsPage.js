@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-    BarChart3, Search, TrendingUp, TrendingDown, RefreshCw,
+    BarChart3, Search, RefreshCw,
     RotateCcw, Loader2, AlertTriangle, CheckCircle, XCircle,
     ChevronDown, ChevronUp, DollarSign, Clock
 } from 'lucide-react';
