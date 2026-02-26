@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Plus, Trash2, BellRing, X, Sparkles, TrendingUp } from 'lucide-react';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 // Reusable Notification Component
 const FormNotification = ({ message, onDismiss }) => {
@@ -23,7 +24,6 @@ const NotificationsPage = ({ onClearAlerts }) => {
     const [activeAlerts, setActiveAlerts] = useState([]);
     const [triggeredAlerts, setTriggeredAlerts] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
     const [message, setMessage] = useState(null);
 
     // UI State
@@ -40,24 +40,14 @@ const NotificationsPage = ({ onClearAlerts }) => {
 
     const fetchAllAlerts = async () => {
         setLoading(true);
-        setError(null);
         try {
             // Fetch both active and triggered alerts
             // Note: Ensure your backend supports these endpoints
-            const [activeRes, triggeredRes] = await Promise.all([
-                fetch('http://127.0.0.1:5001/notifications'),
-                fetch('http://127.0.0.1:5001/notifications/triggered?all=true')
+            const [activeData, triggeredDataRaw] = await Promise.all([
+                apiRequest(API_ENDPOINTS.NOTIFICATIONS),
+                apiRequest(`${API_ENDPOINTS.NOTIFICATIONS_TRIGGERED}?all=true`).catch(() => [])
             ]);
-
-            if (!activeRes.ok) throw new Error('Failed to fetch active alerts.');
-
-            // Handle cases where triggered endpoint might not exist yet gracefully
-            let triggeredData = [];
-            if (triggeredRes.ok) {
-                triggeredData = await triggeredRes.json();
-            }
-
-            const activeData = await activeRes.json();
+            const triggeredData = Array.isArray(triggeredDataRaw) ? triggeredDataRaw : [];
 
             setActiveAlerts(activeData);
             setTriggeredAlerts(triggeredData);
@@ -77,13 +67,15 @@ const NotificationsPage = ({ onClearAlerts }) => {
 
     useEffect(() => {
         fetchAllAlerts();
+        // Intentionally load alerts once on mount.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleCreateNotification = async (e) => {
         e.preventDefault();
         setMessage(null);
         try {
-            const response = await fetch('http://127.0.0.1:5001/notifications', {
+            await apiRequest(API_ENDPOINTS.NOTIFICATIONS, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -93,8 +85,6 @@ const NotificationsPage = ({ onClearAlerts }) => {
                     type: 'price' // Tag as standard price alert
                 })
             });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Failed to create notification.');
 
             setMessage({ type: 'success', text: `Alert set for ${ticker.toUpperCase()}` });
             setTicker('');
@@ -113,7 +103,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
         try {
             // This endpoint needs to be implemented in your backend
             // It should parse the natural language and return a structured alert
-            const response = await fetch('http://127.0.0.1:5001/notifications/smart', {
+            await apiRequest(API_ENDPOINTS.NOTIFICATIONS_SMART, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -121,9 +111,6 @@ const NotificationsPage = ({ onClearAlerts }) => {
                     type: 'ai'
                 })
             });
-
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'AI could not process this request.');
 
             setMessage({ type: 'success', text: 'Smart Alert created successfully!' });
             setAiPrompt('');
@@ -139,13 +126,11 @@ const NotificationsPage = ({ onClearAlerts }) => {
 
     const handleDelete = async (id, type) => {
         const endpoint = type === 'active'
-            ? `http://127.0.0.1:5001/notifications/${id}`
-            : `http://127.0.0.1:5001/notifications/triggered/${id}`;
+            ? API_ENDPOINTS.NOTIFICATION(id)
+            : API_ENDPOINTS.NOTIFICATION_TRIGGERED(id);
 
         try {
-            const response = await fetch(endpoint, { method: 'DELETE' });
-            if (!response.ok) throw new Error('Failed to delete.');
-
+            await apiRequest(endpoint, { method: 'DELETE' });
             fetchAllAlerts();
         } catch (err) {
             setMessage({ type: 'error', text: err.message });
@@ -193,7 +178,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                                         type="text"
                                         value={ticker}
                                         onChange={(e) => setTicker(e.target.value)}
-                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 outline-none"
                                         placeholder="e.g. TSLA"
                                         required
                                     />
@@ -203,7 +188,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                                     <select
                                         value={condition}
                                         onChange={(e) => setCondition(e.target.value)}
-                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                                     >
                                         <option value="below">Falls Below</option>
                                         <option value="above">Rises Above</option>
@@ -215,7 +200,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                                         type="number"
                                         value={price}
                                         onChange={(e) => setPrice(e.target.value)}
-                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 outline-none"
                                         placeholder="0.00"
                                         min="0.01"
                                         step="0.01"
@@ -240,7 +225,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                                 <textarea
                                     value={aiPrompt}
                                     onChange={(e) => setAiPrompt(e.target.value)}
-                                    className="w-full h-32 px-5 py-4 bg-purple-50 dark:bg-gray-900 border border-purple-100 dark:border-gray-700 rounded-xl font-medium focus:ring-2 focus:ring-purple-500 outline-none resize-none"
+                                    className="w-full h-32 px-5 py-4 bg-purple-50 dark:bg-gray-900 border border-purple-100 dark:border-gray-700 rounded-xl font-medium text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-purple-500 outline-none resize-none"
                                     placeholder="Examples:&#10;- Notify me when Apple releases earnings&#10;- Alert me if Tesla drops 5% in a day&#10;- Tell me when there is breaking news about NVDA"
                                     required
                                 />
@@ -252,7 +237,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                                         key={tag}
                                         type="button"
                                         onClick={() => setAiPrompt(prev => prev + (prev ? " " : "") + `Notify me when ${tag}`)}
-                                        className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-xs font-bold text-gray-600 dark:text-gray-300 whitespace-nowrap hover:bg-purple-100 hover:text-purple-700 transition-colors"
+                                        className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-xs font-bold text-gray-600 dark:text-gray-300 whitespace-nowrap hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/30 dark:hover:text-purple-300 transition-colors"
                                     >
                                         + {tag}
                                     </button>
@@ -287,17 +272,17 @@ const NotificationsPage = ({ onClearAlerts }) => {
                         <div className="w-2 h-2 rounded-full bg-green-500"></div> Active Monitors
                     </h2>
 
-                    {loading && <p className="text-center py-8 text-gray-400 font-medium">Loading...</p>}
+                    {loading && <p className="text-center py-8 text-gray-500 dark:text-gray-400 font-medium">Loading...</p>}
                     {!loading && activeAlerts.length === 0 && (
                         <div className="text-center py-12 border-2 border-dashed border-gray-100 dark:border-gray-700 rounded-2xl">
                             <Bell className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                            <p className="text-gray-400 font-medium">No alerts running</p>
+                            <p className="text-gray-500 dark:text-gray-400 font-medium">No alerts running</p>
                         </div>
                     )}
 
                     <div className="space-y-3">
                         {activeAlerts.map((alert) => (
-                            <div key={alert.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl group hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-gray-100">
+                            <div key={alert.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl group hover:bg-white dark:hover:bg-gray-800 hover:shadow-md transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-700">
                                 <div className="flex items-center gap-4">
                                     <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 font-black text-xs">
                                         {alert.ticker.substring(0, 4)}
@@ -311,7 +296,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                                 </div>
                                 <button
                                     onClick={() => handleDelete(alert.id, 'active')}
-                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                                    className="p-2 text-gray-500 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </button>
@@ -333,7 +318,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
 
                     {!loading && triggeredAlerts.length === 0 && (
                         <div className="text-center py-12 border-2 border-dashed border-gray-100 dark:border-gray-700 rounded-2xl">
-                            <p className="text-gray-400 font-medium">No recent notifications</p>
+                            <p className="text-gray-500 dark:text-gray-400 font-medium">No recent notifications</p>
                         </div>
                     )}
 
@@ -345,11 +330,11 @@ const NotificationsPage = ({ onClearAlerts }) => {
                                 </div>
                                 <div className="flex-1">
                                     <p className="text-sm font-bold text-gray-800 dark:text-gray-200 leading-tight">{alert.message}</p>
-                                    <p className="text-[10px] text-gray-400 mt-1 font-bold uppercase">{new Date(alert.timestamp).toLocaleTimeString()}</p>
+                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-bold uppercase">{new Date(alert.timestamp).toLocaleTimeString()}</p>
                                 </div>
                                 <button
                                     onClick={() => handleDelete(alert.id, 'triggered')}
-                                    className="text-gray-400 hover:text-red-500"
+                                    className="text-gray-500 dark:text-gray-400 hover:text-red-500"
                                 >
                                     <X className="w-4 h-4" />
                                 </button>

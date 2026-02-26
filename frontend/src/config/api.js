@@ -87,10 +87,16 @@ export const API_ENDPOINTS = {
         `${API_BASE_URL}/prediction-markets/${exchange}/${marketId}`,
     PREDICTION_EXCHANGES: `${API_BASE_URL}/prediction-markets/exchanges`,
     PREDICTION_PRICES: (exchange) => `${API_BASE_URL}/prediction-markets/prices?exchange=${exchange}`,
+    PREDICTION_PORTFOLIO: `${API_BASE_URL}/prediction-markets/portfolio`,
+    PREDICTION_HISTORY: `${API_BASE_URL}/prediction-markets/history`,
+    PREDICTION_BUY: `${API_BASE_URL}/prediction-markets/buy`,
+    PREDICTION_SELL: `${API_BASE_URL}/prediction-markets/sell`,
+    PREDICTION_RESET: `${API_BASE_URL}/prediction-markets/reset`,
     
     // Macro & Calendar
     MACRO_INDICATORS: `${API_BASE_URL}/macro/indicators`,
     MACRO_CHART: (indicator, period = '5y') => `${API_BASE_URL}/macro/chart/${indicator}?period=${period}`,
+    MACRO_OVERVIEW: `${API_BASE_URL}/macro/overview`,
     ECONOMIC_CALENDAR: `${API_BASE_URL}/calendar/economic`,
     
     // Screener
@@ -99,6 +105,8 @@ export const API_ENDPOINTS = {
     // Fundamentals
     FUNDAMENTALS: (ticker) => `${API_BASE_URL}/fundamentals/${ticker}`,
     FILINGS: (ticker) => `${API_BASE_URL}/filings/${ticker}`,
+    FUNDAMENTALS_FINANCIALS: (ticker) => `${API_BASE_URL}/fundamentals/financials/${ticker}`,
+    FUNDAMENTALS_FILINGS: (ticker) => `${API_BASE_URL}/fundamentals/filings/${ticker}`,
 };
 
 /**

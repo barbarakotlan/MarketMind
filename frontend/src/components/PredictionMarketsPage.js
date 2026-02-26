@@ -4,8 +4,7 @@ import {
     RotateCcw, Loader2, AlertTriangle, CheckCircle, XCircle,
     ChevronDown, ChevronUp, DollarSign, Clock
 } from 'lucide-react';
-
-const API_BASE = 'http://127.0.0.1:5001';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const formatCurrency = (val) => {
     if (val === null || val === undefined || isNaN(val)) return '$0.00';
@@ -65,7 +64,7 @@ const MarketCard = ({ market, isExpanded, onToggle, onTradeComplete }) => {
         setTradeError('');
         setTradeSuccess('');
         try {
-            const res = await fetch(`${API_BASE}/prediction-markets/buy`, {
+            const data = await apiRequest(API_ENDPOINTS.PREDICTION_BUY, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -74,15 +73,10 @@ const MarketCard = ({ market, isExpanded, onToggle, onTradeComplete }) => {
                     contracts: parseFloat(contracts),
                 })
             });
-            const data = await res.json();
-            if (res.ok) {
-                setTradeSuccess(data.message);
-                setContracts('');
-                setBuyOutcome(null);
-                onTradeComplete();
-            } else {
-                setTradeError(data.error);
-            }
+            setTradeSuccess(data.message);
+            setContracts('');
+            setBuyOutcome(null);
+            onTradeComplete();
         } catch {
             setTradeError('Failed to execute trade');
         } finally {
@@ -206,10 +200,10 @@ const PredictionMarketsPage = () => {
     const fetchMarkets = async (search = '') => {
         setLoadingMarkets(true);
         try {
-            const params = new URLSearchParams({ exchange: 'polymarket', limit: '50' });
-            if (search) params.set('search', search);
-            const res = await fetch(`${API_BASE}/prediction-markets?${params}`);
-            const data = await res.json();
+            const url = `${API_ENDPOINTS.PREDICTION_MARKETS('polymarket', 50)}${
+                search ? `&search=${encodeURIComponent(search)}` : ''
+            }`;
+            const data = await apiRequest(url);
             setMarkets(data.markets || []);
         } catch (err) {
             console.error('Error fetching markets:', err);
@@ -220,8 +214,7 @@ const PredictionMarketsPage = () => {
 
     const fetchPortfolio = async () => {
         try {
-            const res = await fetch(`${API_BASE}/prediction-markets/portfolio`);
-            const data = await res.json();
+            const data = await apiRequest(API_ENDPOINTS.PREDICTION_PORTFOLIO);
             setPortfolio(data);
         } catch (err) {
             console.error('Error fetching prediction portfolio:', err);
@@ -232,8 +225,7 @@ const PredictionMarketsPage = () => {
 
     const fetchTradeHistory = async () => {
         try {
-            const res = await fetch(`${API_BASE}/prediction-markets/history`);
-            const data = await res.json();
+            const data = await apiRequest(API_ENDPOINTS.PREDICTION_HISTORY);
             setTradeHistory(data || []);
         } catch (err) {
             console.error('Error fetching prediction trade history:', err);
@@ -243,7 +235,7 @@ const PredictionMarketsPage = () => {
     const handleReset = async () => {
         if (!window.confirm('Reset your prediction markets portfolio to $10,000?')) return;
         try {
-            await fetch(`${API_BASE}/prediction-markets/reset`, { method: 'POST' });
+            await apiRequest(API_ENDPOINTS.PREDICTION_RESET, { method: 'POST' });
             setStatusMessage({ type: 'success', text: 'Prediction portfolio reset successfully' });
             fetchPortfolio();
             fetchTradeHistory();
@@ -258,7 +250,7 @@ const PredictionMarketsPage = () => {
         );
         if (!numContracts) return;
         try {
-            const res = await fetch(`${API_BASE}/prediction-markets/sell`, {
+            const data = await apiRequest(API_ENDPOINTS.PREDICTION_SELL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -267,14 +259,9 @@ const PredictionMarketsPage = () => {
                     contracts: parseFloat(numContracts),
                 })
             });
-            const data = await res.json();
-            if (res.ok) {
-                setStatusMessage({ type: 'success', text: data.message });
-                fetchPortfolio();
-                fetchTradeHistory();
-            } else {
-                setStatusMessage({ type: 'error', text: data.error });
-            }
+            setStatusMessage({ type: 'success', text: data.message });
+            fetchPortfolio();
+            fetchTradeHistory();
         } catch {
             setStatusMessage({ type: 'error', text: 'Failed to execute sell' });
         }

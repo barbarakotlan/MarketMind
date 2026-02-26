@@ -3,6 +3,7 @@ import { Search, TrendingUp, TrendingDown, Activity, Building, ChevronDown, Chev
 import StockDataCard from './ui/StockDataCard';
 import StockChart from './charts/StockChart';
 import PredictionPreviewCard from './ui/PredictionPreviewCard';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 // --- Helpers for Jimmy's cards ---
 const formatLargeNumber = (num) => {
@@ -153,21 +154,12 @@ const timeFrames = [
     { label: '1Y', value: '1y' },
 ];
 
-// --- Custom hook for debouncing ---
-function useDebounce(value, delay) {
-    const [debouncedValue, setDebouncedValue] = useState(value);
-    useEffect(() => {
-        const handler = setTimeout(() => {
-            setDebouncedValue(value);
-        }, delay);
-        
-        // Clean up the timeout on every render if value or delay changes
-        return () => {
-            clearTimeout(handler);
-        };
-    }, [value, delay]);
-    return debouncedValue;
-}
+const mapScreenerSuggestion = (stock = {}) => ({
+    ticker: stock.symbol || '',
+    name: stock.name || stock.symbol || '',
+    change_percent: typeof stock.percent_change === 'number' ? stock.percent_change * 100 : 0,
+    volume: typeof stock.volume === 'number' ? stock.volume : 0,
+});
 
 const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTicker }) => {
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -180,13 +172,18 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
     const fetchSuggestions = async () => {
         setLoadingSuggestions(true);
         try {
-            const response = await fetch('http://127.0.0.1:5001/search/suggestions');
-            if (response.ok) {
-                const data = await response.json();
-                setSuggestions(data);
-            }
+            const data = await apiRequest(API_ENDPOINTS.SCREENER());
+            setSuggestions({
+                trending: {
+                    gainers: (data?.gainers || []).map(mapScreenerSuggestion),
+                    losers: (data?.losers || []).map(mapScreenerSuggestion),
+                    most_active: (data?.active || []).map(mapScreenerSuggestion),
+                },
+                sectors: {},
+            });
         } catch (err) {
             console.error('Failed to fetch suggestions:', err);
+            setSuggestions({ trending: { gainers: [], losers: [], most_active: [] }, sectors: {} });
         } finally {
             setLoadingSuggestions(false);
         }
@@ -201,15 +198,9 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         }
         
         try {
-            const response = await fetch(`http://127.0.0.1:5001/search-symbols?q=${encodeURIComponent(query)}`);
-            if (response.ok) {
-                const data = await response.json();
-                setAutocompleteSuggestions(data.slice(0, 8)); // Limit to 8 results
-                setShowAutocomplete(true);
-            } else {
-                setAutocompleteSuggestions([]);
-                setShowAutocomplete(false);
-            }
+            const data = await apiRequest(API_ENDPOINTS.SEARCH_SYMBOLS(query));
+            setAutocompleteSuggestions(data.slice(0, 8));
+            setShowAutocomplete(data.length > 0);
         } catch (error) {
             console.error('Error fetching autocomplete suggestions:', error);
             setAutocompleteSuggestions([]);
@@ -220,7 +211,8 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
     // Handle suggestion click
     const handleSuggestionClick = async (ticker) => {
-        setTicker(ticker);
+        const normalizedTicker = ticker.toUpperCase();
+        setTicker(normalizedTicker);
         setLoading(true);
         setStockData(null);
         setChartData(null);
@@ -228,26 +220,16 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         const defaultTimeFrame = timeFrames.find(f => f.value === '14d');
         setActiveTimeFrame(defaultTimeFrame);
         try {
-            const stockResponse = await fetch(`http://127.0.0.1:5001/stock/${ticker}`);
-            if (!stockResponse.ok) {
-                const errorData = await stockResponse.json();
-                throw new Error(errorData.error || 'Stock data not found');
-            }
-            const stockJson = await stockResponse.json();
+            const stockJson = await apiRequest(API_ENDPOINTS.STOCK(normalizedTicker));
             setStockData(stockJson);
-            setSearchedTicker(ticker);
+            setSearchedTicker(normalizedTicker);
             fetchNewsData(stockJson.companyName);
-            await fetchChartData(ticker, defaultTimeFrame);
+            await fetchChartData(normalizedTicker, defaultTimeFrame);
             
             // Fetch prediction data
             try {
-                const predResponse = await fetch(`http://127.0.0.1:5001/predict/${ticker}`);
-                if (predResponse.ok) {
-                    const predJson = await predResponse.json();
-                    setPredictionData(predJson);
-                } else {
-                    setPredictionData(null);
-                }
+                const predJson = await apiRequest(API_ENDPOINTS.PREDICT_ENSEMBLE(normalizedTicker));
+                setPredictionData(predJson);
             } catch {
                 setPredictionData(null);
             }
@@ -290,10 +272,6 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
     // --- Autocomplete state ---
     const [suggestions, setSuggestions] = useState(null);
-    const [showSuggestions, setShowSuggestions] = useState(false);
-    
-    // --- Debounce the user's input ---
-    const debouncedQuery = useDebounce(ticker, 300); // 300ms delay
 
     useEffect(() => {
         if (initialTicker) {
@@ -315,42 +293,6 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         }
     }, []); 
 
-    // --- This effect runs when the DEBOUNCED query changes ---
-    useEffect(() => {
-        const fetchSuggestions = async () => {
-            // Don't search for 1-letter queries or if it's a known recent search
-            if (debouncedQuery.length < 2 || recentSearches.includes(debouncedQuery)) {
-                setSuggestions([]);
-                setShowSuggestions(false);
-                return;
-            }
-
-            try {
-                // Call our new backend endpoint
-                const response = await fetch(`http://127.0.0.1:5001/search-symbols?q=${debouncedQuery}`);
-                if (!response.ok) throw new Error("Search failed");
-                
-                const data = await response.json();
-                
-                // Don't show suggestions if the only match is what's typed
-                if (data.length === 1 && data[0].symbol === debouncedQuery) {
-                     setSuggestions([]);
-                     setShowSuggestions(false);
-                } else {
-                    setSuggestions(data);
-                    setShowSuggestions(data.length > 0);
-                }
-                
-            } catch (err) {
-                console.error("Suggestion fetch error:", err);
-                setSuggestions([]);
-                setShowSuggestions(false);
-            }
-        };
-
-        fetchSuggestions();
-    }, [debouncedQuery, recentSearches]); // <-- Linter warning fixed
-
     const saveRecentSearch = (ticker) => {
         const updated = [ticker.toUpperCase(), ...recentSearches.filter(t => t !== ticker.toUpperCase())].slice(0, 8);
         setRecentSearches(updated);
@@ -366,9 +308,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         if (!companyName) return;
         setNewsLoading(true);
         try {
-            const response = await fetch(`http://127.0.0.1:5001/news?q=${encodeURIComponent(companyName)}`);
-            if (!response.ok) throw new Error('News fetch failed');
-            const data = await response.json();
+            const data = await apiRequest(API_ENDPOINTS.NEWS(companyName));
             setNewsData(Array.isArray(data) ? data : null);
         } catch {
             setNewsData(null);
@@ -381,12 +321,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         setChartLoading(true);
         setError('');
         try {
-            const chartResponse = await fetch(`http://127.0.0.1:5001/chart/${symbol}?period=${timeFrame.value}`);
-            if (!chartResponse.ok) {
-                const errorData = await chartResponse.json();
-                throw new Error(errorData.error || 'Chart data not found');
-            }
-            const chartJson = await chartResponse.json();
+            const chartJson = await apiRequest(API_ENDPOINTS.CHART(symbol, timeFrame.value));
             setChartData(chartJson);
         } catch (err) {
             setError(err.message);
@@ -401,7 +336,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         setTicker(suggestion.symbol);
         setShowAutocomplete(false);
         setAutocompleteSuggestions([]);
-        handleSearch({ preventDefault: () => {} });
+        handleSearch({ preventDefault: () => {} }, suggestion.symbol);
     };
 
     const handleTickerChange = (e) => {
@@ -425,9 +360,10 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
     const handleSearch = async (e, overrideTicker) => {
         e.preventDefault();
-        const searchTicker = overrideTicker || ticker;
+        const searchTicker = (overrideTicker || ticker || '').trim().toUpperCase();
         if (!searchTicker) return;
 
+        setTicker(searchTicker);
         setLoading(true);
         setStockData(null);
         setChartData(null);
@@ -441,26 +377,16 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         setActiveTimeFrame(defaultTimeFrame);
 
         try {
-            const stockResponse = await fetch(`http://127.0.0.1:5001/stock/${ticker}`);
-            if (!stockResponse.ok) {
-                const errorData = await stockResponse.json();
-                throw new Error(errorData.error || 'Stock data not found');
-            }
-            const stockJson = await stockResponse.json();
+            const stockJson = await apiRequest(API_ENDPOINTS.STOCK(searchTicker));
             setStockData(stockJson);
-            setSearchedTicker(ticker);
-            saveRecentSearch(ticker);
+            setSearchedTicker(searchTicker);
+            saveRecentSearch(searchTicker);
             fetchNewsData(stockJson.companyName);
 
-            await fetchChartData(ticker, defaultTimeFrame);
+            await fetchChartData(searchTicker, defaultTimeFrame);
             try {
-                const predResponse = await fetch(`http://127.0.0.1:5001/predict/${ticker}`);
-                if (predResponse.ok) {
-                    const predJson = await predResponse.json();
-                    setPredictionData(predJson);
-                } else {
-                    setPredictionData(null);
-                }
+                const predJson = await apiRequest(API_ENDPOINTS.PREDICT_ENSEMBLE(searchTicker));
+                setPredictionData(predJson);
             } catch {
                 setPredictionData(null);
             }
@@ -476,14 +402,11 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
     const handleAddComparison = async (e) => {
         e.preventDefault();
         if (!compareTicker || !activeTimeFrame) return;
+        const normalizedTicker = compareTicker.trim().toUpperCase();
         
         try {
-            const chartResponse = await fetch(`http://127.0.0.1:5001/chart/${compareTicker}?period=${activeTimeFrame.value}`);
-            if (!chartResponse.ok) {
-                throw new Error('Comparison ticker data not found');
-            }
-            const chartJson = await chartResponse.json();
-            setComparisonData({ ticker: compareTicker.toUpperCase(), data: chartJson });
+            const chartJson = await apiRequest(API_ENDPOINTS.CHART(normalizedTicker, activeTimeFrame.value));
+            setComparisonData({ ticker: normalizedTicker, data: chartJson });
             setCompareTicker(''); 
         } catch (err) {
             alert(err.message);
@@ -492,7 +415,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
     const handleRecentSearchClick = (recentTicker) => {
         setTicker(recentTicker);
-        handleSearch({ preventDefault: () => {} });
+        handleSearch({ preventDefault: () => {} }, recentTicker);
     };
 
     const handleTimeFrameChange = (timeFrame) => {
@@ -502,8 +425,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
             if (comparisonData) {
                 (async () => {
                     try {
-                        const chartResponse = await fetch(`http://127.0.0.1:5001/chart/${comparisonData.ticker}?period=${timeFrame.value}`);
-                        const chartJson = await chartResponse.json();
+                        const chartJson = await apiRequest(API_ENDPOINTS.CHART(comparisonData.ticker, timeFrame.value));
                         setComparisonData({ ...comparisonData, data: chartJson });
                     } catch {
                         setComparisonData(null);
@@ -515,11 +437,10 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
     const handleAddToWatchlist = async (tickerToAdd) => {
         try {
-            const response = await fetch(`http://127.0.0.1:5001/watchlist/${tickerToAdd}`, {
+            const result = await apiRequest(API_ENDPOINTS.WATCHLIST_ITEM(tickerToAdd), {
                 method: 'POST',
             });
-            const result = await response.json();
-            alert(result.message);
+            alert(result.message || `${tickerToAdd} added to watchlist.`);
         } catch (err) {
             alert('Failed to add stock to watchlist. Is the server running?');
         }

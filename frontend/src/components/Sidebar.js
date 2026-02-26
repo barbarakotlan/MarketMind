@@ -60,6 +60,24 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
     const { isDarkMode, toggleDarkMode } = useDarkMode();
     const [newAlertCount, setNewAlertCount] = useState(0);
 
+    const theme = isDarkMode
+        ? {
+            aside: 'bg-gray-950 text-gray-100 border-r border-gray-800',
+            divider: 'border-gray-800',
+            inactiveNav: 'text-gray-400 hover:bg-gray-800 hover:text-white',
+            iconButton: 'text-gray-400 hover:bg-gray-800 hover:text-white',
+            sectionLabel: 'text-gray-500',
+            collapsedMark: 'text-gray-200',
+        }
+        : {
+            aside: 'bg-white text-gray-900 border-r border-gray-200 shadow-sm',
+            divider: 'border-gray-200',
+            inactiveNav: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+            iconButton: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900',
+            sectionLabel: 'text-gray-500',
+            collapsedMark: 'text-gray-900',
+        };
+
     const checkAlerts = () => {
         apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED)
             .then(data => {
@@ -94,7 +112,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                 } ${
                     isActive
                         ? 'bg-blue-600 text-white'
-                        : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+                        : theme.inactiveNav
                 }`}
             >
                 <Icon className="w-5 h-5 flex-shrink-0" />
@@ -111,12 +129,12 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
 
     return (
         <aside
-            className={`fixed left-0 top-0 h-screen z-40 flex flex-col bg-gray-800 dark:bg-gray-950 text-white transition-all duration-300 ${
+            className={`fixed left-0 top-0 h-screen z-40 flex flex-col transition-all duration-300 ${theme.aside} ${
                 isCollapsed ? 'w-16' : 'w-56'
             }`}
         >
             {/* Brand bar */}
-            <div className="flex items-center justify-between h-14 px-3 border-b border-gray-700 flex-shrink-0">
+            <div className={`flex items-center justify-between h-14 px-3 border-b flex-shrink-0 ${theme.divider}`}>
                 {!isCollapsed && (
                     <img
                         src={isDarkMode ? 'marketmindtransparentdark.png' : 'marketmindtransparent.png'}
@@ -125,11 +143,11 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                     />
                 )}
                 {isCollapsed && (
-                    <span className="text-lg font-bold mx-auto">M</span>
+                    <span className={`text-lg font-bold mx-auto ${theme.collapsedMark}`}>M</span>
                 )}
                 <button
                     onClick={onToggleCollapse}
-                    className="p-1 rounded-md text-gray-400 hover:bg-gray-700 hover:text-white transition-colors flex-shrink-0"
+                    className={`p-1 rounded-md transition-colors flex-shrink-0 ${theme.iconButton}`}
                     aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 >
                     {isCollapsed ? (
@@ -141,13 +159,13 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
+            <nav className="flex-1 overflow-y-auto sidebar-scrollbar px-2 py-3 space-y-1">
                 {NAV_GROUPS.map((group, gi) => (
                     <div key={gi}>
                         {group.label && (
                             isCollapsed
-                                ? <hr className="mx-1 my-2 border-gray-700" />
-                                : <p className="px-2 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">{group.label}</p>
+                                ? <hr className={`mx-1 my-2 ${theme.divider}`} />
+                                : <p className={`px-2 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider ${theme.sectionLabel}`}>{group.label}</p>
                         )}
                         {group.items.map(item => (
                             <NavItem key={item.page} item={item} />
@@ -157,12 +175,12 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             </nav>
 
             {/* Footer: profile + dark mode toggle */}
-            <div className="flex-shrink-0 border-t border-gray-700 p-2">
+            <div className={`flex-shrink-0 border-t p-2 ${theme.divider}`}>
                 <div className={`w-full flex items-center ${isCollapsed ? 'justify-center gap-2' : 'justify-between px-1'}`}>
                     <UserButton afterSignOutUrl="/" />
                     <button
                         onClick={toggleDarkMode}
-                        className="h-8 w-8 inline-flex items-center justify-center rounded-md text-gray-400 hover:bg-gray-700 hover:text-white transition-colors duration-150"
+                        className={`h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors duration-150 ${theme.iconButton}`}
                         aria-label="Toggle dark mode"
                         title={isDarkMode ? 'Light Mode' : 'Dark Mode'}
                     >

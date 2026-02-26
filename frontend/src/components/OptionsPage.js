@@ -14,6 +14,7 @@ import {
     BarChart2, 
     Activity 
 } from 'lucide-react';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 // Helper to format numbers or return 'N/A'
 const formatNum = (num, digits = 2) => {
@@ -413,8 +414,7 @@ const OptionsPage = () => {
 
     const fetchOwnedPositions = async () => {
         try {
-            const response = await fetch('http://127.0.0.1:5001/paper/portfolio');
-            const data = await response.json();
+            const data = await apiRequest(API_ENDPOINTS.PORTFOLIO);
             const optionsMap = (data.options_positions || []).reduce((acc, pos) => {
                 acc[pos.ticker] = pos; 
                 return acc;
@@ -428,15 +428,10 @@ const OptionsPage = () => {
     const fetchSuggestion = async (tickerToFetch) => {
         setSuggestionLoading(true);
         try {
-            const response = await fetch(`http://127.0.0.1:5001/options/suggest/${tickerToFetch}`);
-            const data = await response.json();
-            if (response.ok) {
-                setSuggestion(data);
-            } else {
-                setSuggestion({ suggestion: "Hold", reason: data.error || "Could not generate suggestion." });
-            }
+            const data = await apiRequest(API_ENDPOINTS.OPTIONS_SUGGEST(tickerToFetch));
+            setSuggestion(data);
         } catch (err) {
-            setSuggestion({ suggestion: "Hold", reason: "Error fetching suggestion." });
+            setSuggestion({ suggestion: "Hold", reason: err.message || "Error fetching suggestion." });
         } finally {
             setSuggestionLoading(false);
         }
@@ -460,12 +455,7 @@ const OptionsPage = () => {
         fetchOwnedPositions(); 
 
         try {
-            const expResponse = await fetch(`http://127.0.0.1:5001/options/${ticker}`);
-            if (!expResponse.ok) {
-                const errorData = await expResponse.json();
-                throw new Error(errorData.error || 'No options found for this ticker.');
-            }
-            const expData = await expResponse.json();
+            const expData = await apiRequest(API_ENDPOINTS.OPTIONS(ticker));
             setExpirations(expData);
             
             if (expData.length > 0) {
@@ -486,12 +476,7 @@ const OptionsPage = () => {
         setError('');
         setChain(null);
         try {
-            const chainResponse = await fetch(`http://127.0.0.1:5001/options/chain/${tickerToFetch}?date=${date}`);
-            if (!chainResponse.ok) {
-                const errorData = await chainResponse.json();
-                throw new Error(errorData.error || 'Could not load chain for this date.');
-            }
-            const chainData = await chainResponse.json();
+            const chainData = await apiRequest(`${API_ENDPOINTS.OPTIONS_CHAIN(tickerToFetch)}?date=${date}`);
             setChain(chainData);
             setStockPrice(chainData.stock_price); 
         } catch (err) {
@@ -514,7 +499,7 @@ const OptionsPage = () => {
     };
 
     const handleConfirmTrade = async (contractSymbol, quantity, price, isBuy) => {
-        const endpoint = isBuy ? '/paper/options/buy' : '/paper/options/sell';
+        const endpoint = isBuy ? API_ENDPOINTS.PAPER_OPTIONS_BUY : API_ENDPOINTS.PAPER_OPTIONS_SELL;
         const body = JSON.stringify({
             contractSymbol: contractSymbol,
             quantity: quantity,
@@ -522,15 +507,11 @@ const OptionsPage = () => {
         });
         
         try {
-            const response = await fetch(`http://127.0.0.1:5001${endpoint}`, {
+            const data = await apiRequest(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: body
             });
-            const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.error || 'Trade failed');
-            }
             setTradeMessage({ type: 'success', text: data.message });
             fetchOwnedPositions();
             return true;

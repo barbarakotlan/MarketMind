@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DollarSign, ArrowLeftRight, TrendingUp, AlertCircle, Search, ChevronDown } from 'lucide-react';
 import StockChart from './charts/StockChart';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const timeFrames = [
     { label: '1D', value: '1d' },
@@ -111,8 +112,7 @@ const ForexPage = () => {
     useEffect(() => {
         const init = async () => {
             try {
-                const res = await fetch('http://localhost:5001/forex/currencies');
-                const data = await res.json();
+                const data = await apiRequest(API_ENDPOINTS.FOREX_CURRENCIES);
                 setCurrencies(data);
                 
                 // Hydrate initial state with full objects if available
@@ -133,20 +133,12 @@ const ForexPage = () => {
         setLoading(true);
         try {
             // 1. Fetch Conversion
-            const convertRes = await fetch(`http://localhost:5001/forex/convert?from=${from.code}&to=${to.code}`);
-            if (convertRes.ok) {
-                setExchangeData(await convertRes.json());
-            }
+            setExchangeData(await apiRequest(API_ENDPOINTS.FOREX_CONVERT(from.code, to.code)));
 
             // 2. Fetch Chart (Parallel or sequential doesn't matter much here, keeping sequential for simplicity)
             const ticker = `${from.code}${to.code}=X`;
-            const chartRes = await fetch(`http://localhost:5001/chart/${ticker}?period=${period}`);
-            if (chartRes.ok) {
-                const cData = await chartRes.json();
-                setChartData(Array.isArray(cData) && cData.length > 0 ? cData : null);
-            } else {
-                setChartData(null);
-            }
+            const cData = await apiRequest(API_ENDPOINTS.CHART(ticker, period));
+            setChartData(Array.isArray(cData) && cData.length > 0 ? cData : null);
         } catch (err) {
             console.error(err);
             setChartData(null);

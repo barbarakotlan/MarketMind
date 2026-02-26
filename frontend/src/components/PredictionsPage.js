@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import StockPredictionCard from './ui/StockPredictionCard';
 import PredictionChart from './charts/PredictionChart';
 import ModelComparisonCard from './ui/ModelComparisonCard';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const PredictionsPage = ({ initialTicker }) => {
     const [ticker, setTicker] = useState('');
@@ -16,6 +17,8 @@ const PredictionsPage = ({ initialTicker }) => {
             setTicker(initialTicker);
             fetchPredictions(initialTicker);
         }
+        // Keep behavior tied to prop/mode changes without re-running on every render.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialTicker, useEnsemble]);
 
     const fetchPredictions = async (searchTicker) => {
@@ -25,16 +28,10 @@ const PredictionsPage = ({ initialTicker }) => {
 
         try {
             const endpoint = useEnsemble 
-                ? `http://localhost:5001/predict/ensemble/${searchTicker.toUpperCase()}`
-                : `http://localhost:5001/predict/${useModel}/${searchTicker.toUpperCase()}`;
-            
-            const response = await fetch(endpoint);
-            
-            if (!response.ok) {
-                throw new Error('Failed to fetch prediction data');
-            }
+                ? API_ENDPOINTS.PREDICT_ENSEMBLE(searchTicker.toUpperCase())
+                : API_ENDPOINTS.PREDICT(useModel, searchTicker.toUpperCase());
 
-            const data = await response.json();
+            const data = await apiRequest(endpoint);
             setPredictionData(data);
         } catch (err) {
             setError(`Error: Could not fetch predictions for ${searchTicker.toUpperCase()}. Please check the ticker and try again.`);

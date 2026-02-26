@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { TrendingUp, TrendingDown, Activity, ArrowUpDown, ExternalLink } from 'lucide-react';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const TABS = [
     { key: 'gainers', label: 'Top Gainers',   icon: TrendingUp,   color: 'text-green-600 dark:text-green-400' },
@@ -25,8 +26,7 @@ const ScreenerPage = ({ onSearchTicker }) => {
 
     useEffect(() => {
         setLoading(true);
-        fetch('http://127.0.0.1:5001/screener')
-            .then(r => r.json())
+        apiRequest(API_ENDPOINTS.SCREENER())
             .then(d => { setData(d); setLoading(false); })
             .catch(() => { setError('Failed to load screener data.'); setLoading(false); });
     }, []);

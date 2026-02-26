@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, TrendingUp, Zap, Globe, RefreshCw, Filter } from 'lucide-react';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const NewsPage = () => {
     const [articles, setArticles] = useState([]);
@@ -37,23 +38,16 @@ const NewsPage = () => {
         setArticles([]);
 
         try {
-            let url;
+            let data;
             
             // If searching or using a specific category filter, use the Search Endpoint
             if (query || (category !== 'General')) {
                 const searchTerm = query || category; // Use category name if no manual query
-                url = `http://127.0.0.1:5001/news?q=${encodeURIComponent(searchTerm)}`;
+                data = await apiRequest(API_ENDPOINTS.NEWS(searchTerm));
             } else {
                 // Default to General News Endpoint
-                url = 'http://127.0.0.1:5001/api/news';
+                data = await apiRequest(API_ENDPOINTS.NEWS());
             }
-
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error('Failed to fetch news. The server might be busy.');
-            }
-            
-            const data = await response.json();
             
             // Handle cases where API returns different structures
             const rawArticles = Array.isArray(data) ? data : [];
@@ -70,6 +64,8 @@ const NewsPage = () => {
     // Initial load
     useEffect(() => {
         fetchNews();
+        // Intentionally load default feed once on mount.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleSearchSubmit = (e) => {

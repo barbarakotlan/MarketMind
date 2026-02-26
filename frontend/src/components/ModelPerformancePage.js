@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { SearchIcon } from './Icons';
 import ActualVsPredictedChart from './charts/ActualVsPredictedChart';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const ModelPerformancePage = () => {
     const [ticker, setTicker] = useState('');
@@ -23,13 +23,7 @@ const ModelPerformancePage = () => {
         setEvaluationData(null);
 
         try {
-            const response = await fetch(`http://localhost:5001/evaluate/${ticker.toUpperCase()}?test_days=${testDays}`);
-            
-            if (!response.ok) {
-                throw new Error('Failed to evaluate model');
-            }
-
-            const data = await response.json();
+            const data = await apiRequest(API_ENDPOINTS.EVALUATE(ticker.toUpperCase(), { test_days: testDays }));
             setEvaluationData(data);
         } catch (err) {
             setError(`Error: Could not evaluate ${ticker.toUpperCase()}. Please check the ticker and try again.`);

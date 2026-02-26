@@ -80,15 +80,26 @@ app = Flask(__name__)
 # Set Flask secret key for session management
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
 
-# Configure CORS - restrict to specific origins
-# In development, allow all origins. In production, use specific origins
-if os.getenv('FLASK_ENV') == 'production':
-    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000')
-    allowed_origins = [origin.strip() for origin in CORS_ORIGINS.split(',')]
-    CORS(app, origins=allowed_origins, supports_credentials=True)
-else:
-    # Development - allow all origins
-    CORS(app, resources={r"/*": {"origins": "*"}})
+FLASK_ENV = os.getenv('FLASK_ENV', 'development').strip().lower()
+IS_PRODUCTION = FLASK_ENV == 'production'
+
+DEFAULT_DEV_CORS_ORIGINS = 'http://localhost:3000,http://127.0.0.1:3000'
+CORS_ORIGINS_RAW = os.getenv('CORS_ORIGINS', DEFAULT_DEV_CORS_ORIGINS if not IS_PRODUCTION else '')
+allowed_origins = [origin.strip().rstrip('/') for origin in CORS_ORIGINS_RAW.split(',') if origin.strip()]
+
+if IS_PRODUCTION and not allowed_origins:
+    raise ValueError("CORS_ORIGINS must be set in production (comma-separated origins).")
+
+if not allowed_origins:
+    allowed_origins = [origin.strip() for origin in DEFAULT_DEV_CORS_ORIGINS.split(',')]
+
+CORS(
+    app,
+    resources={r"/*": {"origins": allowed_origins}},
+    supports_credentials=False,
+    allow_headers=["Content-Type", "Authorization", "Accept"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
 
 # --- Security Headers Middleware ---
 @app.after_request
@@ -97,17 +108,23 @@ def add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     # Prevent clickjacking
     response.headers['X-Frame-Options'] = 'DENY'
-    # XSS Protection
+    # XSS Protection (legacy fallback for older browsers)
     response.headers['X-XSS-Protection'] = '1; mode=block'
     # Force HTTPS in production
-    if os.getenv('FLASK_ENV') == 'production':
+    if IS_PRODUCTION:
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    # Content Security Policy - connect-src allows API calls from frontend
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' http://127.0.0.1:5001 http://localhost:5001;"
+    # API-focused CSP (JSON API does not serve active web content)
+    response.headers['Content-Security-Policy'] = os.getenv(
+        'API_CONTENT_SECURITY_POLICY',
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';"
+    )
     # Referrer Policy
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     # Permissions Policy
     response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    # Cross-origin hardening for API responses
+    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+    response.headers['Cross-Origin-Resource-Policy'] = 'same-site'
     return response
 
 # --- Rate Limiting Setup ---
@@ -132,7 +149,7 @@ NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
 
 # Validate required environment variables in production
-if os.getenv('FLASK_ENV') == 'production':
+if IS_PRODUCTION:
     if not NEWS_API_KEY:
         logger.warning("⚠️ NEWS_API_KEY not set in production environment")
     if not ALPHA_VANTAGE_API_KEY:
@@ -149,6 +166,7 @@ PORTFOLIO_FILE = os.path.join(BASE_DIR, 'paper_portfolio.json')
 NOTIFICATIONS_FILE = os.path.join(BASE_DIR, 'notifications.json')
 PREDICTION_PORTFOLIO_FILE = os.path.join(BASE_DIR, 'prediction_portfolio.json')
 USER_DATA_DIR = os.path.join(BASE_DIR, 'user_data')
+ALLOW_LEGACY_USER_DATA_SEED = os.getenv('ALLOW_LEGACY_USER_DATA_SEED', 'false').strip().lower() == 'true'
 
 CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '').strip()
 CLERK_AUDIENCE = os.getenv('CLERK_AUDIENCE', '').strip()
@@ -367,11 +385,19 @@ def _watchlist_file(user_id=None):
     return _get_user_file_path(user_id, 'watchlist.json') if user_id else os.path.join(BASE_DIR, 'watchlist.json')
 
 
+def _should_seed_from_legacy(user_path, legacy_path):
+    return (
+        ALLOW_LEGACY_USER_DATA_SEED
+        and not os.path.exists(user_path)
+        and os.path.exists(legacy_path)
+    )
+
+
 def load_prediction_portfolio(user_id=None):
     """Load prediction market paper portfolio for a specific user."""
-    user_path = _prediction_portfolio_file(user_id)
+    user_path = _prediction_portfolio_file(user_id) if user_id else PREDICTION_PORTFOLIO_FILE
     source_path = user_path
-    if user_id and not os.path.exists(user_path) and os.path.exists(PREDICTION_PORTFOLIO_FILE):
+    if user_id and _should_seed_from_legacy(user_path, PREDICTION_PORTFOLIO_FILE):
         source_path = PREDICTION_PORTFOLIO_FILE
     data = _load_json(source_path, {})
     data.setdefault('cash', 10000.0)
@@ -388,9 +414,9 @@ def save_prediction_portfolio(portfolio, user_id=None):
 
 def load_portfolio(user_id=None):
     """Load stock/options paper portfolio for a specific user."""
-    user_path = _portfolio_file(user_id)
+    user_path = _portfolio_file(user_id) if user_id else PORTFOLIO_FILE
     source_path = user_path
-    if user_id and not os.path.exists(user_path) and os.path.exists(PORTFOLIO_FILE):
+    if user_id and _should_seed_from_legacy(user_path, PORTFOLIO_FILE):
         source_path = PORTFOLIO_FILE
     data = _load_json(source_path, {})
     data.setdefault('cash', 100000.0)
@@ -409,9 +435,9 @@ def save_portfolio(portfolio, user_id=None):
 
 def load_notifications(user_id=None):
     """Load active/triggered notifications for a specific user."""
-    user_path = _notifications_file(user_id)
+    user_path = _notifications_file(user_id) if user_id else NOTIFICATIONS_FILE
     source_path = user_path
-    if user_id and not os.path.exists(user_path) and os.path.exists(NOTIFICATIONS_FILE):
+    if user_id and _should_seed_from_legacy(user_path, NOTIFICATIONS_FILE):
         source_path = NOTIFICATIONS_FILE
     data = _load_json(source_path, {})
     data.setdefault('active', [])
@@ -426,10 +452,10 @@ def save_notifications(notifications, user_id=None):
 
 def load_watchlist(user_id=None):
     """Load watchlist tickers for a specific user."""
-    user_path = _watchlist_file(user_id)
-    source_path = user_path
     legacy_watchlist_file = os.path.join(BASE_DIR, 'watchlist.json')
-    if user_id and not os.path.exists(user_path) and os.path.exists(legacy_watchlist_file):
+    user_path = _watchlist_file(user_id) if user_id else legacy_watchlist_file
+    source_path = user_path
+    if user_id and _should_seed_from_legacy(user_path, legacy_watchlist_file):
         source_path = legacy_watchlist_file
     data = _load_json(source_path, [])
     if not isinstance(data, list):

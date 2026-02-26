@@ -1,6 +1,7 @@
 // components/AutocompleteSearch.js
 import React, { useState, useEffect } from 'react';
 import { SearchIcon } from 'lucide-react';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 // Debounce hook
 function useDebounce(value, delay) {
@@ -27,8 +28,7 @@ const AutocompleteSearch = ({ onSearch }) => {
 
         const fetchSuggestions = async () => {
             try {
-                const res = await fetch(`http://127.0.0.1:5001/search-symbols?q=${debouncedQuery}`);
-                const data = await res.json();
+                const data = await apiRequest(API_ENDPOINTS.SEARCH_SYMBOLS(debouncedQuery));
                 setSuggestions(data.slice(0, 8));
                 setShowSuggestions(data.length > 0);
             } catch (err) {

@@ -2,9 +2,11 @@ summarize what we did in the prompt:
 
 What did you do this week? 3 sentences
 
+This week I implemented Clerk authentication end-to-end, including sign in/sign up UI, app access gating, and token-aware API calls. I secured and refactored backend user-data endpoints so watchlists, paper trading, notifications, and prediction portfolios are authenticated and user-scoped. I also fixed startup/dependency issues, improved environment/config docs, and polished small UX details like the sidebar profile/dark-mode control layout. Also made some dark mode/light mode fixes/
  
 What is your plan next week? 3 sentences
 
+Next week I will prepare a clean integration path to main by merging only approved, low-risk commits and validating branch differences before merge. I will run full auth/data-isolation testing (login/logout, protected routes, per-user persistence checks) and close any remaining regressions. I will also finish production hardening tasks: normalize API usage, finalize env/CORS/security settings, and add a lightweight release smoke test checklist. An overall focus on cybersecurity.
 
  
 • Backend (in a new terminal):

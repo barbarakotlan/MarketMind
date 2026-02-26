@@ -21,6 +21,21 @@ const isBackendRequest = (url) => {
     return origin === apiOrigin || LEGACY_API_ORIGINS.has(origin);
 };
 
+const normalizeBackendUrl = (url) => {
+    try {
+        const parsed = new URL(url, window.location.origin);
+        if (!LEGACY_API_ORIGINS.has(parsed.origin)) {
+            return parsed.toString();
+        }
+        const apiBase = new URL(API_BASE_URL, window.location.origin);
+        parsed.protocol = apiBase.protocol;
+        parsed.host = apiBase.host;
+        return parsed.toString();
+    } catch (e) {
+        return url;
+    }
+};
+
 export const setAuthTokenGetter = (getter) => {
     tokenGetter = getter;
 };
@@ -35,23 +50,32 @@ export const installAuthFetchInterceptor = () => {
 
     window.fetch = async (input, init = {}) => {
         const requestUrl = typeof input === 'string' ? input : input.url;
-        if (!isBackendRequest(requestUrl) || !tokenGetter) {
+        if (!isBackendRequest(requestUrl)) {
             return originalFetch(input, init);
+        }
+
+        const normalizedUrl = normalizeBackendUrl(requestUrl);
+        const normalizedInput =
+            typeof input === 'string'
+                ? normalizedUrl
+                : (normalizedUrl !== requestUrl ? new Request(normalizedUrl, input) : input);
+
+        if (!tokenGetter) {
+            return originalFetch(normalizedInput, init);
         }
 
         const token = await tokenGetter();
         if (!token) {
-            return originalFetch(input, init);
+            return originalFetch(normalizedInput, init);
         }
 
-        const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
+        const headers = new Headers(init.headers || (normalizedInput instanceof Request ? normalizedInput.headers : undefined));
         if (!headers.has('Authorization')) {
             headers.set('Authorization', `Bearer ${token}`);
         }
 
-        return originalFetch(input, { ...init, headers });
+        return originalFetch(normalizedInput, { ...init, headers });
     };
 
     interceptorInstalled = true;
 };
-

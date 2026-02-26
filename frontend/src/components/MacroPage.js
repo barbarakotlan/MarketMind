@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Minus, Globe, RefreshCw } from 'lucide-react';
 import { Sparklines, SparklinesLine, SparklinesReferenceLine } from 'react-sparklines';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const INDICATOR_META = {
     URATE: { desc: 'U.S. jobless rate — lower is healthier for the economy.', invert: true  },
@@ -138,8 +139,7 @@ const MacroPage = () => {
     const load = () => {
         setLoading(true);
         setError('');
-        fetch('http://127.0.0.1:5001/macro/overview')
-            .then(r => r.json())
+        apiRequest(API_ENDPOINTS.MACRO_OVERVIEW)
             .then(d => {
                 if (d.error) throw new Error(d.error);
                 setIndicators(d);
