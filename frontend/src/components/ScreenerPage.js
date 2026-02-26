@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, ChevronDown, DownloadCloud, Settings, ArrowUpDown } from 'lucide-react';
+import { Search, Filter, ChevronDown, DownloadCloud, Settings, ArrowUpDown, TrendingUp, TrendingDown } from 'lucide-react';
 
 const INDICES = ['Any', 'S&P 500', 'DJIA', 'NASDAQ'];
 const SECTORS = ['Any', 'Basic Materials', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Energy', 'Financial', 'Healthcare', 'Industrials', 'Real Estate', 'Technology', 'Utilities'];
@@ -10,6 +10,27 @@ const TABS = [
     { id: 'valuation', label: 'Valuation', columns: ['Ticker', 'Company', 'Market Cap', 'P/E', 'Fwd P/E', 'PEG', 'P/B'] },
     { id: 'financial', label: 'Dividends & Profitability', columns: ['Ticker', 'Company', 'Dividend', 'ROE', 'ROA', 'ROI', 'Gross Margin'] },
 ];
+
+// --- NEW: Logo Fallback Component ---
+const LogoFallback = ({ ticker }) => {
+    const [hasError, setHasError] = useState(false);
+    const firstLetter = ticker ? ticker.charAt(0).toUpperCase() : '?';
+
+    return (
+        <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden shrink-0 border border-gray-200 dark:border-gray-600">
+            {!hasError ? (
+                <img
+                    src={`https://financialmodelingprep.com/image-stock/${ticker}.png`}
+                    alt={`${ticker} logo`}
+                    className="w-full h-full object-contain p-1 bg-white"
+                    onError={() => setHasError(true)}
+                />
+            ) : (
+                <span className="text-sm font-bold text-gray-500 dark:text-gray-400">{firstLetter}</span>
+            )}
+        </div>
+    );
+};
 
 const ScreenerPage = ({ onSearchTicker }) => {
     const [activeTab, setActiveTab] = useState(TABS[0]);
@@ -48,7 +69,6 @@ const ScreenerPage = ({ onSearchTicker }) => {
 
             const result = await response.json();
 
-            // Handle background warming
             if (response.status === 503 && result.error && result.error.includes('warming up')) {
                 if (retryCount < 6) {
                     setTimeout(() => fetchScreenerData(retryCount + 1), 5000);
@@ -69,7 +89,6 @@ const ScreenerPage = ({ onSearchTicker }) => {
         fetchScreenerData();
     }, [activeTab, index, sector, marketCap]);
 
-    // Handle Header Clicks for Sorting
     const handleSort = (column) => {
         let direction = 'desc';
         if (sortConfig.key === column && sortConfig.direction === 'desc') {
@@ -78,7 +97,6 @@ const ScreenerPage = ({ onSearchTicker }) => {
         setSortConfig({ key: column, direction });
     };
 
-    // Helper to turn strings like "1.50B" into real numbers for accurate sorting
     const parseForSort = (val) => {
         if (val === null || val === undefined || val === '-') return -Infinity;
         if (typeof val === 'number') return val;
@@ -91,11 +109,10 @@ const ScreenerPage = ({ onSearchTicker }) => {
         else if (str.endsWith('%')) return parseFloat(str.slice(0, -1));
 
         let num = parseFloat(str.replace(/[^\d.-]/g, ''));
-        if (isNaN(num)) return str; // Return as string for alphabetical sorting (like Company Name)
+        if (isNaN(num)) return str;
         return num * multi;
     };
 
-    // Apply the active sort to the data array
     const sortedData = [...data].sort((a, b) => {
         if (!sortConfig.key) return 0;
         const valA = parseForSort(a[sortConfig.key]);
@@ -107,11 +124,9 @@ const ScreenerPage = ({ onSearchTicker }) => {
         return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
     });
 
-    // Format the UI cells correctly
     const renderCell = (col, value) => {
         if (value === null || value === undefined || value === '-') return '—';
 
-        // Handle pre-formatted string percentages
         if (typeof value === 'string' && value.endsWith('%')) {
             const num = parseFloat(value);
             if (num > 0) return <span className="text-green-600 dark:text-green-400 font-medium">+{value}</span>;
@@ -119,7 +134,6 @@ const ScreenerPage = ({ onSearchTicker }) => {
             return value;
         }
 
-        // Handle raw decimals from Finviz (like 0.2062 -> 20.62%)
         if (typeof value === 'number') {
             const isPercentMetric = ['Dividend', 'ROE', 'ROA', 'ROI', 'Gross Margin', 'Change'].includes(col);
             if (isPercentMetric) {
@@ -150,8 +164,24 @@ const ScreenerPage = ({ onSearchTicker }) => {
             </div>
 
             <div className="flex flex-wrap items-center gap-3 mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                <div className="flex items-center gap-2 mr-4 text-gray-500 dark:text-gray-400 font-medium">
+                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 font-medium">
                     <Filter className="w-4 h-4" /> Filters
+                </div>
+
+                {/* --- NEW: Quick Sort Buttons --- */}
+                <div className="flex gap-2 mr-2 border-r border-gray-200 dark:border-gray-700 pr-4">
+                    <button
+                        onClick={() => { setActiveTab(TABS[0]); setSortConfig({ key: 'Change', direction: 'desc' }); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${sortConfig.key === 'Change' && sortConfig.direction === 'desc' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                    >
+                        <TrendingUp className="w-4 h-4 text-green-500" /> Gainers
+                    </button>
+                    <button
+                        onClick={() => { setActiveTab(TABS[0]); setSortConfig({ key: 'Change', direction: 'asc' }); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${sortConfig.key === 'Change' && sortConfig.direction === 'asc' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                    >
+                        <TrendingDown className="w-4 h-4 text-red-500" /> Losers
+                    </button>
                 </div>
 
                 <select value={index} onChange={(e) => setIndex(e.target.value)} className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg px-3 py-2 outline-none">
@@ -169,9 +199,9 @@ const ScreenerPage = ({ onSearchTicker }) => {
                     {MARKET_CAPS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
 
-                {(index !== 'Any' || sector !== 'Any' || marketCap !== 'Any') && (
-                    <button onClick={() => { setIndex('Any'); setSector('Any'); setMarketCap('Any'); }} className="ml-auto text-sm text-red-500 hover:text-red-600 font-medium">
-                        Clear Filters
+                {(index !== 'Any' || sector !== 'Any' || marketCap !== 'Any' || sortConfig.key) && (
+                    <button onClick={() => { setIndex('Any'); setSector('Any'); setMarketCap('Any'); setSortConfig({key: null, direction: 'desc'}); }} className="ml-auto text-sm text-red-500 hover:text-red-600 font-medium">
+                        Clear All
                     </button>
                 )}
             </div>
@@ -216,8 +246,12 @@ const ScreenerPage = ({ onSearchTicker }) => {
                                     <tr key={idx} onClick={() => onSearchTicker && onSearchTicker(row['Ticker'])} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer transition-colors">
                                         {activeTab.columns.map((col, cIdx) => (
                                             <td key={cIdx} className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                                                {/* --- NEW: Rendering the Logo --- */}
                                                 {col === 'Ticker' ? (
-                                                    <span className="font-bold text-gray-900 dark:text-white">{row[col]}</span>
+                                                    <div className="flex items-center gap-3">
+                                                        <LogoFallback ticker={row[col]} />
+                                                        <span className="font-bold text-gray-900 dark:text-white">{row[col]}</span>
+                                                    </div>
                                                 ) : col === 'Company' ? (
                                                     <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px] block">
                                                         {row[col]}
