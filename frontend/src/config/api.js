@@ -16,6 +16,9 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
  * All API endpoints are defined here for consistency
  */
 export const API_ENDPOINTS = {
+    // Authentication
+    AUTH_ME: `${API_BASE_URL}/auth/me`,
+
     // Stock & Market Data
     STOCK: (ticker) => `${API_BASE_URL}/stock/${ticker}`,
     CHART: (ticker, period = '6mo') => `${API_BASE_URL}/chart/${ticker}?period=${period}`,

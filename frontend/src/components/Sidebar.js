@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { UserButton } from '@clerk/clerk-react';
 import { useDarkMode } from '../context/DarkModeContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 import {
@@ -155,25 +156,23 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                 ))}
             </nav>
 
-            {/* Footer: dark mode toggle */}
+            {/* Footer: profile + dark mode toggle */}
             <div className="flex-shrink-0 border-t border-gray-700 p-2">
-                <button
-                    onClick={toggleDarkMode}
-                    className={`w-full flex items-center rounded-lg px-2 py-2 text-sm font-medium text-gray-400 hover:bg-gray-700 hover:text-white transition-colors duration-150 ${
-                        isCollapsed ? 'justify-center' : 'justify-start space-x-3'
-                    }`}
-                    aria-label="Toggle dark mode"
-                    title={isCollapsed ? (isDarkMode ? 'Light Mode' : 'Dark Mode') : undefined}
-                >
-                    {isDarkMode ? (
-                        <Sun className="w-5 h-5 flex-shrink-0 text-yellow-400" />
-                    ) : (
-                        <Moon className="w-5 h-5 flex-shrink-0" />
-                    )}
-                    {!isCollapsed && (
-                        <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
-                    )}
-                </button>
+                <div className={`w-full flex items-center ${isCollapsed ? 'justify-center gap-2' : 'justify-between px-1'}`}>
+                    <UserButton afterSignOutUrl="/" />
+                    <button
+                        onClick={toggleDarkMode}
+                        className="h-8 w-8 inline-flex items-center justify-center rounded-md text-gray-400 hover:bg-gray-700 hover:text-white transition-colors duration-150"
+                        aria-label="Toggle dark mode"
+                        title={isDarkMode ? 'Light Mode' : 'Dark Mode'}
+                    >
+                        {isDarkMode ? (
+                            <Sun className="w-4 h-4 text-yellow-400" />
+                        ) : (
+                            <Moon className="w-4 h-4" />
+                        )}
+                    </button>
+                </div>
             </div>
         </aside>
     );

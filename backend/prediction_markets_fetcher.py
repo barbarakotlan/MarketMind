@@ -6,7 +6,12 @@ import time
 import threading
 from typing import Optional, Dict, List, Any
 
-import dr_manhattan
+try:
+    import dr_manhattan
+    DR_MANHATTAN_AVAILABLE = True
+except ImportError:
+    dr_manhattan = None
+    DR_MANHATTAN_AVAILABLE = False
 
 # --- In-memory cache ---
 _cache: Dict[str, Dict] = {}
@@ -14,10 +19,12 @@ _cache_lock = threading.Lock()
 CACHE_TTL_SECONDS = 120  # 2-minute TTL
 
 # Map exchange names to their dr-manhattan classes
-EXCHANGE_CLASSES = {
-    'polymarket': dr_manhattan.Polymarket,
-    'limitless': dr_manhattan.Limitless,
-}
+EXCHANGE_CLASSES = {}
+if DR_MANHATTAN_AVAILABLE:
+    EXCHANGE_CLASSES = {
+        'polymarket': dr_manhattan.Polymarket,
+        'limitless': dr_manhattan.Limitless,
+    }
 SUPPORTED_EXCHANGES = list(EXCHANGE_CLASSES.keys())
 DEFAULT_EXCHANGE = 'polymarket'
 DEFAULT_LIMIT = 50
@@ -60,6 +67,9 @@ def fetch_markets(exchange: str = DEFAULT_EXCHANGE, limit: int = DEFAULT_LIMIT) 
     Fetch markets from a prediction market exchange.
     Results are cached for CACHE_TTL_SECONDS.
     """
+    if not DR_MANHATTAN_AVAILABLE:
+        return []
+
     exchange = exchange.lower()
     if exchange not in SUPPORTED_EXCHANGES:
         return []

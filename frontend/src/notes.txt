@@ -2,16 +2,13 @@ summarize what we did in the prompt:
 
 What did you do this week? 3 sentences
 
-This week I conducted a comprehensive security audit that identified and fixed hardcoded API keys, implemented secure CORS configuration, and added security headers (CSP, X-Frame-Options, etc.) to protect against XSS and clickjacking attacks. I created a fully animated "How It Works" section with binary-decode terminal effects, an infinite marquee ticker with mock market data, and enhanced the landing page with full-screen sections and improved visual polish. I also centralized frontend API configuration, added environment variable templates, and created a security check script for pre-deployment validation.
-
  
 What is your plan next week? 3 sentences
 
-Next week I plan to deploy the application to production with proper environment configuration, SSL certificates, and domain setup. I'll implement user authentication with JWT tokens to secure the paper trading and portfolio features. I'll also add comprehensive error boundaries, loading states, and fallback UIs throughout the application to ensure a polished user experience.
 
  
 • Backend (in a new terminal):
-  cd backend && source venv/bin/activate && python api.py
+  cd backend && source venv/bin/activate && python3 api.py
 
 • Frontend (in a new terminal):
   cd frontend && npm start

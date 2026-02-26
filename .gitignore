@@ -44,6 +44,7 @@ backend/__pycache__/
 # Virtual Environments
 venv/
 backend/venv/
+backend/.venv/
 env/
 
 # Distribution / Installs
@@ -80,3 +81,4 @@ backend/marketmind.db
 paper_portfolio.json
 backend/paper_portfolio.json
 backend/notifications.json
+backend/user_data/

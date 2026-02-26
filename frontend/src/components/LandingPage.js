@@ -1083,7 +1083,7 @@ const LandingPage = ({ onEnterApp }) => {
                                 Start trading smarter today.
                             </h2>
                             <p className="text-blue-100 mb-8 text-lg">
-                                Free to use. No account required. Launch the full platform and start exploring.
+                                Create a free account to sync your portfolio, watchlist, and alerts across sessions.
                             </p>
                             <button onClick={onEnterApp}
                                 className="group inline-flex items-center gap-2 px-8 py-4 bg-white text-blue-700 font-bold rounded-xl hover:bg-blue-50 transition-colors active:scale-95 shadow-lg">
