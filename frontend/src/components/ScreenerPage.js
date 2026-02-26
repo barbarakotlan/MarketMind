@@ -127,6 +127,18 @@ const ScreenerPage = ({ onSearchTicker }) => {
     const renderCell = (col, value) => {
         if (value === null || value === undefined || value === '-') return '—';
 
+        // --- NEW: Make Market Cap and Volume look pretty (e.g., $1.50B) ---
+        if (col === 'Market Cap' || col === 'Volume') {
+            const num = parseFloat(value);
+            if (isNaN(num)) return value;
+            const prefix = col === 'Market Cap' ? '$' : '';
+            const abs = Math.abs(num);
+            if (abs >= 1e12) return `${prefix}${(num / 1e12).toFixed(2)}T`;
+            if (abs >= 1e9) return `${prefix}${(num / 1e9).toFixed(2)}B`;
+            if (abs >= 1e6) return `${prefix}${(num / 1e6).toFixed(2)}M`;
+            return `${prefix}${num.toLocaleString()}`;
+        }
+
         if (typeof value === 'string' && value.endsWith('%')) {
             const num = parseFloat(value);
             if (num > 0) return <span className="text-green-600 dark:text-green-400 font-medium">+{value}</span>;

@@ -229,19 +229,37 @@ SCREENER_CACHE = {
     "is_updating": False
 }
 
-def parse_market_cap(val_str):
-    """Helper to convert Finviz string '2.50B' into actual math numbers for filtering."""
-    if not val_str or val_str == '-': return 0
-    val_str = str(val_str).replace(',', '')
+
+def parse_market_cap(val):
+    """Helper to safely convert market cap to a raw number for filtering."""
+    if val is None or val == '-':
+        return 0
+
+    # If the library already did the math and it's a pure number, just return it!
+    if isinstance(val, (int, float)):
+        return float(val)
+
+    # Fallback in case it ever comes through as a string like "1.50B"
+    val_str = str(val).upper().replace(',', '')
+    if not val_str.endswith(('B', 'M', 'T')):
+        try:
+            return float(val_str)
+        except:
+            return 0
+
     multiplier = 1
-    if val_str.endswith('B'): multiplier = 1e9
-    elif val_str.endswith('M'): multiplier = 1e6
-    elif val_str.endswith('T'): multiplier = 1e12
-    else: return 0
+    if val_str.endswith('B'):
+        multiplier = 1e9
+    elif val_str.endswith('M'):
+        multiplier = 1e6
+    elif val_str.endswith('T'):
+        multiplier = 1e12
+
     try:
         return float(val_str[:-1]) * multiplier
     except:
         return 0
+
 
 def filter_cached_data(data, filters):
     """Manually filters the cached dataset based on user dropdowns."""
