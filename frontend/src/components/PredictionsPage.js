@@ -212,7 +212,6 @@ const PredictionsPage = ({ initialTicker }) => {
     </div>
   )}
 </div>
-
             </div>
 
             {/* Error Message */}
