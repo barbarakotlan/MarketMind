@@ -18,14 +18,60 @@
     animation: fade-in 0.2s ease-out;
 }
 
-/* Prevent overscroll/bounce effect */
-html,
-body {
+/* Prevent horizontal overflow globally without creating a scroll container */
+html {
     overscroll-behavior: none;
-    overscroll-behavior-y: none;
 }
 
-/* Smooth scrolling but no bounce */
-* {
-    overscroll-behavior: contain;
+body {
+    overflow-x: clip;
+    overscroll-behavior: none;
+}
+
+/* Infinite marquee ticker */
+@keyframes marquee {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+}
+
+/* Progress bar shimmer */
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+    animation: shimmer 2s infinite;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+/* Sidebar scrollbar: thin with transparent track */
+.sidebar-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.38) transparent;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.38);
+    border-radius: 9999px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(100, 116, 139, 0.52);
 }

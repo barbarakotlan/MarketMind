@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bitcoin, Zap, Activity, ChevronDown, Search, ArrowRightLeft } from 'lucide-react';
+import { Bitcoin, Activity, ChevronDown, Search, ArrowRightLeft } from 'lucide-react';
 import StockChart from './charts/StockChart';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const timeFrames = [
     { label: '1D', value: '1d' },
@@ -136,11 +137,11 @@ const CryptoPage = () => {
     }, []);
 
     const fetchCryptos = async () => {
-        try { return await (await fetch('http://localhost:5001/crypto/list')).json(); } catch (e) { return []; }
+        try { return await apiRequest(API_ENDPOINTS.CRYPTO_LIST); } catch (e) { return []; }
     };
 
     const fetchCurrencies = async () => {
-        try { return await (await fetch('http://localhost:5001/crypto/currencies')).json(); } catch (e) { return []; }
+        try { return await apiRequest(API_ENDPOINTS.CRYPTO_CURRENCIES); } catch (e) { return []; }
     };
 
     const fetchData = (from, to, period) => {
@@ -152,11 +153,7 @@ const CryptoPage = () => {
     const fetchConversionData = async (from, to) => {
         setLoadingData(true);
         try {
-            // Note: The backend endpoint is named /crypto/convert but often supports any pair 
-            // supported by the underlying provider (AlphaVantage). 
-            const res = await fetch(`http://localhost:5001/crypto/convert?from=${from.code}&to=${to.code}`);
-            if (!res.ok) throw new Error('Conversion failed');
-            setExchangeData(await res.json());
+            setExchangeData(await apiRequest(API_ENDPOINTS.CRYPTO_CONVERT(from.code, to.code)));
         } catch (err) {
             console.error(err);
             setExchangeData(null);
@@ -177,9 +174,7 @@ const CryptoPage = () => {
             else if (from.type === 'fiat' && to.type === 'crypto') ticker = `${from.code}-${to.code}`; // Yahoo often supports EUR-BTC=X reverse pairs
             else ticker = `${from.code}-${to.code}`;
 
-            const res = await fetch(`http://localhost:5001/chart/${ticker}?period=${period}`);
-            if (res.ok) setChartData(await res.json());
-            else setChartData(null);
+            setChartData(await apiRequest(API_ENDPOINTS.CHART(ticker, period)));
         } catch (err) {
             setChartData(null);
         } finally {

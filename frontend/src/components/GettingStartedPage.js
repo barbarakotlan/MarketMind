@@ -5,7 +5,6 @@ import {
     BookOpen,
     HelpCircle,
     Award,
-    TrendingUp,
     ShieldAlert,
     Activity,
     Search,
@@ -13,20 +12,17 @@ import {
     RefreshCw,
     ChevronRight,
     Brain,
-    Layers,
     ChevronLeft,
     Clock,
     Target,
     BarChart3,
-    CheckSquare,
     Square,
     Lock,
     Play,
-    RotateCcw,
     X,
     Keyboard
 } from 'lucide-react';
-import { learningModules, QUESTION_BANK, getTotalChapters, getEstimatedCourseTime } from '../data/content';
+import { learningModules, QUESTION_BANK, getTotalChapters } from '../data/content';
 
 // --- MASTERY LEVEL HELPER ---
 const getMasteryLevel = (progress) => {
@@ -39,7 +35,6 @@ const getMasteryLevel = (progress) => {
 
 // --- PROGRESS STORAGE UTILITIES ---
 const STORAGE_KEY = 'marketmind_course_progress';
-
 
 const loadProgress = () => {
     try {
@@ -57,9 +52,6 @@ const saveProgress = (progress) => {
         // Silently fail if localStorage is unavailable
     }
 };
-
-
-
 
 // --- SCROLL PROGRESS HOOK ---
 const useScrollProgress = (ref) => {
@@ -218,28 +210,53 @@ const QuizSection = () => {
             </div>
             <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 mb-8 animate-in slide-in-from-right duration-300" key={currentQ.id}>
                 <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">{currentQ.question}</h3>
+                
+                {/* --- Multiple Choice Fix --- */}
                 {currentQ.type === 'multiple' && (
                     <div className="space-y-3">
                         {currentQ.options.map((option) => (
-                            <button key={option} onClick={() => handleAnswer(option)} className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium ${userAnswers[currentQ.id] === option ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'border-gray-100 dark:border-gray-700 hover:border-blue-200 dark:hover:border-gray-600'}`}>{option}</button>
+                            <button 
+                                key={option} 
+                                onClick={() => handleAnswer(option)} 
+                                className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium ${
+                                    userAnswers[currentQ.id] === option 
+                                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 
+                                        : 'border-gray-100 dark:border-gray-700 hover:border-blue-200 dark:hover:border-gray-600 text-gray-900 dark:text-gray-200'
+                                }`}
+                            >
+                                {option}
+                            </button>
                         ))}
                     </div>
                 )}
+                
+                {/* --- Checkbox Fix --- */}
                 {currentQ.type === 'checkbox' && (
                     <div className="space-y-3">
                         {currentQ.options.map((option) => {
                             const isSelected = (userAnswers[currentQ.id] || []).includes(option);
                             return (
-                                <button key={option} onClick={() => handleAnswer(option)} className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium flex items-center gap-3 ${isSelected ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'border-gray-100 dark:border-gray-700 hover:border-blue-200'}`}>
-                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300'}`}>{isSelected && <CheckCircle className="w-3 h-3" />}</div>
+                                <button 
+                                    key={option} 
+                                    onClick={() => handleAnswer(option)} 
+                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-medium flex items-center gap-3 ${
+                                        isSelected 
+                                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 
+                                            : 'border-gray-100 dark:border-gray-700 hover:border-blue-200 dark:hover:border-gray-600 text-gray-900 dark:text-gray-200'
+                                    }`}
+                                >
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300 dark:border-gray-600'}`}>
+                                        {isSelected && <CheckCircle className="w-3 h-3" />}
+                                    </div>
                                     {option}
                                 </button>
                             );
                         })}
                     </div>
                 )}
+                
                 {currentQ.type === 'text' && (
-                    <input type="text" value={userAnswers[currentQ.id] || ''} onChange={(e) => handleAnswer(e.target.value)} placeholder="Type your answer here..." className="w-full p-4 text-lg border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none bg-transparent dark:text-white" />
+                    <input type="text" value={userAnswers[currentQ.id] || ''} onChange={(e) => handleAnswer(e.target.value)} placeholder="Type your answer here..." className="w-full p-4 text-lg border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500" />
                 )}
             </div>
             <div className="flex justify-end">
@@ -344,7 +361,7 @@ const ChapterContent = ({ chapter, isCompleted, onToggleComplete }) => {
                     <span className="font-medium text-sm">
                         {isCompleted ? 'Done' : 'Complete'}
                     </span>
-                    {!isCompleted && <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs">Space</span>}
+                    {!isCompleted && <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs">M</span>}
                 </button>
             </div>
         </div>
@@ -467,15 +484,16 @@ const KeyboardHelp = ({ onClose }) => (
             
             <div className="space-y-3">
                 {[
-                    { key: '← / →', desc: 'Previous / Next chapter' },
-                    { key: 'Space', desc: 'Mark chapter complete' },
-                    { key: 'Esc', desc: 'Exit to module view' },
+                    { key: '← / K', desc: 'Previous chapter' },
+                    { key: '→ / J', desc: 'Next chapter' },
+                    { key: 'M', desc: 'Mark chapter complete' },
+                    { key: 'Esc', desc: 'Exit / Close modals' },
                     { key: '/', desc: 'Open search' },
                     { key: '?', desc: 'Show this help' },
                 ].map(({ key, desc }) => (
                     <div key={key} className="flex items-center justify-between py-2">
                         <span className="text-gray-600 dark:text-gray-300">{desc}</span>
-                        <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm font-mono text-gray-700 dark:text-gray-300">
+                        <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm font-mono text-gray-700 dark:text-gray-300 shadow-sm border border-gray-200 dark:border-gray-600">
                             {key}
                         </kbd>
                     </div>
@@ -506,58 +524,80 @@ const GettingStartedPage = () => {
         }
     }, [progress]);
 
+    // Toggle chapter completion
+    const toggleChapterComplete = useCallback((chapterId) => {
+        setProgress(prev => ({
+            ...prev,
+            [chapterId]: !prev[chapterId]
+        }));
+    }, []);
+
+    // Navigate back to modules
+    const backToModules = () => {
+        setSelectedModule(null);
+        setSelectedChapter(null);
+    };
+
     // Keyboard navigation
     useEffect(() => {
         const handleKeyDown = (e) => {
-            // Don't capture if user is typing in an input
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            // Robust check to ensure we don't hijack typing in search or quiz inputs
+            const activeTag = document.activeElement?.tagName.toLowerCase();
+            if (activeTag === 'input' || activeTag === 'textarea' || e.isComposing) {
+                // Let Escape bubble up to close search even if input is focused
+                if (e.key === 'Escape' && showSearch) {
+                    setShowSearch(false);
+                }
+                return; 
+            }
 
-            // Show search on /
+            // Global Shortcuts
             if (e.key === '/' && !showSearch) {
                 e.preventDefault();
                 setShowSearch(true);
                 return;
             }
 
-            // Show keyboard help on ?
-            if (e.key === '?' && !showKeyboardHelp) {
+            if (e.key === '?' && !showKeyboardHelp && !showSearch) {
                 e.preventDefault();
                 setShowKeyboardHelp(true);
                 return;
             }
+            
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                if (showSearch) setShowSearch(false);
+                else if (showKeyboardHelp) setShowKeyboardHelp(false);
+                else if (selectedChapter) setSelectedChapter(null);
+                else if (selectedModule) backToModules();
+                return;
+            }
 
-            // Only handle navigation when reading a chapter
-            if (!selectedChapter || !selectedModule) return;
+            // Chapter-Specific Shortcuts
+            if (!selectedChapter || !selectedModule || showSearch || showKeyboardHelp) return;
 
             const currentIdx = selectedModule.chapters.findIndex(ch => ch.id === selectedChapter.id);
 
-            switch (e.key) {
-                case 'ArrowLeft':
+            switch (e.key.toLowerCase()) {
+                case 'arrowleft':
+                case 'k':
                     e.preventDefault();
                     if (currentIdx > 0) {
                         setSelectedChapter(selectedModule.chapters[currentIdx - 1]);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                     }
                     break;
-                case 'ArrowRight':
+                case 'arrowright':
+                case 'j':
                     e.preventDefault();
                     if (currentIdx < selectedModule.chapters.length - 1) {
                         setSelectedChapter(selectedModule.chapters[currentIdx + 1]);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                     }
                     break;
-                case ' ':
-                case 'Spacebar':
+                case 'm': // Replaced Spacebar with M to protect native page scrolling
                     e.preventDefault();
                     toggleChapterComplete(selectedChapter.id);
-                    break;
-                case 'Escape':
-                    e.preventDefault();
-                    if (selectedChapter) {
-                        setSelectedChapter(null);
-                    } else if (selectedModule) {
-                        backToModules();
-                    }
                     break;
                 default:
                     break;
@@ -566,13 +606,12 @@ const GettingStartedPage = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedChapter, selectedModule, showSearch, showKeyboardHelp]);
+    }, [selectedChapter, selectedModule, showSearch, showKeyboardHelp, toggleChapterComplete]);
 
     // Calculate stats
     const totalChapters = getTotalChapters();
     const completedChapters = Object.values(progress).filter(Boolean).length;
     const courseProgress = Math.round((completedChapters / totalChapters) * 100);
-    const estimatedCourseTime = getEstimatedCourseTime();
 
     // Check if module is unlocked
     const isModuleUnlocked = (moduleIndex) => {
@@ -582,14 +621,6 @@ const GettingStartedPage = () => {
         const completedInPrev = prevModuleChapters.filter(ch => progress[ch.id]).length;
         return completedInPrev >= Math.ceil(prevModuleChapters.length * 0.5);
     };
-
-    // Toggle chapter completion
-    const toggleChapterComplete = useCallback((chapterId) => {
-        setProgress(prev => ({
-            ...prev,
-            [chapterId]: !prev[chapterId]
-        }));
-    }, []);
 
     // Calculate module progress
     const getModuleProgress = (module) => {
@@ -602,12 +633,6 @@ const GettingStartedPage = () => {
         setSelectedModule(module);
         setSelectedChapter(chapter);
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    // Navigate back to modules
-    const backToModules = () => {
-        setSelectedModule(null);
-        setSelectedChapter(null);
     };
 
     // Navigate back to module overview
@@ -1014,7 +1039,7 @@ const GettingStartedPage = () => {
                                                 >
                                                     <ChevronLeft className="w-4 h-4" />
                                                     Previous
-                                                    <span className="hidden sm:inline text-xs text-gray-400">←</span>
+                                                    <span className="hidden sm:inline text-xs text-gray-400">← / K</span>
                                                 </button>
                                             ) : <div />}
                                             
@@ -1024,7 +1049,7 @@ const GettingStartedPage = () => {
                                                     className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                                                 >
                                                     Next Chapter
-                                                    <span className="hidden sm:inline text-xs text-blue-200">→</span>
+                                                    <span className="hidden sm:inline text-xs text-blue-200">→ / J</span>
                                                     <ChevronRight className="w-4 h-4" />
                                                 </button>
                                             ) : (

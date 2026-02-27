@@ -1,5 +1,4 @@
 import React from 'react';
-import { TrendingUpIcon, TrendingDownIcon } from '../Icons';
 
 const StockPredictionCard = ({ data }) => {
     const spe = Math.abs(((data.recentPredicted - data.recentClose) / data.recentClose) * 100);

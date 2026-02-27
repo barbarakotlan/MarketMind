@@ -9,9 +9,13 @@ echo "Starting MarketMind Backend with Ensemble ML Models..."
 echo "Ensemble includes: Linear Regression, Random Forest, XGBoost"
 echo ""
 
-# Activate virtual environment if it exists
-if [ -d "venv" ]; then
+# Activate virtual environment if it exists (.venv preferred)
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+elif [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
+else
+    echo "No virtual environment found at .venv or venv."
 fi
 
 # Start the Flask API

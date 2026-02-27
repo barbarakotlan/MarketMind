@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Sparklines, SparklinesLine, SparklinesReferenceLine } from 'react-sparklines';
 // --- MODIFIED: Import the named StockChart component from SearchPage ---
 import StockChart from './charts/StockChart';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 // --- Helper Functions & Components ---
 
@@ -139,8 +140,7 @@ const WatchlistPage = () => {
     const fetchWatchlistData = useCallback(async () => {
         setError(null);
         try {
-            const response = await fetch('http://127.0.0.1:5001/watchlist');
-            const tickers = await response.json();
+            const tickers = await apiRequest(API_ENDPOINTS.WATCHLIST);
             if (tickers.length === 0) {
                 setWatchlistData([]);
                 setLoading(false);
@@ -148,7 +148,7 @@ const WatchlistPage = () => {
             }
             // --- MODIFIED: Fetch from the new /stock endpoint ---
             const promises = tickers.map(ticker =>
-                fetch(`http://127.0.0.1:5001/stock/${ticker}`).then(res => res.json())
+                apiRequest(API_ENDPOINTS.STOCK(ticker))
             );
             const detailedData = await Promise.all(promises);
             setWatchlistData(detailedData.filter(data => !data.error));
@@ -161,7 +161,7 @@ const WatchlistPage = () => {
 
     const handleRemoveStock = async (ticker) => {
         try {
-            await fetch(`http://127.0.0.1:5001/watchlist/${ticker}`, { method: 'DELETE' });
+            await apiRequest(API_ENDPOINTS.WATCHLIST_ITEM(ticker), { method: 'DELETE' });
             setWatchlistData(prevData => prevData.filter(stock => stock.symbol !== ticker));
         } catch (err) {
             setError('Failed to remove stock.');
@@ -172,9 +172,7 @@ const WatchlistPage = () => {
         setChartData(null);
         setChartError(null);
         try {
-            const chartResponse = await fetch(`http://127.0.0.1:5001/chart/${symbol}?period=${timeFrame.value}`);
-            if (!chartResponse.ok) throw new Error('Chart data not found');
-            const chartJson = await chartResponse.json();
+            const chartJson = await apiRequest(API_ENDPOINTS.CHART(symbol, timeFrame.value));
             setChartData(chartJson);
         } catch (err) {
             setChartError(err.message);

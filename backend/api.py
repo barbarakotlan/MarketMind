@@ -6,7 +6,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, g
 from flask_cors import CORS
 from datetime import datetime, timedelta, date
 import json
@@ -16,12 +16,22 @@ import time
 import threading
 import uuid  # For unique notification IDs
 import re  # Added for Smart Alert parsing
+import math
+import jwt
+from functools import wraps
 
 # --- DOTENV MUST BE FIRST ---
 from dotenv import load_dotenv
 
 load_dotenv()
 # --- END FIX ---
+
+# --- OpenBB (optional, used for financials/filings/screener/macro) ---
+try:
+    from openbb import obb
+    OPENBB_AVAILABLE = True
+except ImportError:
+    OPENBB_AVAILABLE = False
 
 # --- Tazeem's Imports ---
 from model import create_dataset, estimate_week, try_today, estimate_new, good_model
@@ -65,7 +75,57 @@ logger.info("🚀 MarketMind API Starting...")
 
 # Initialize the Flask application
 app = Flask(__name__)
-CORS(app)
+
+# --- Security Configuration ---
+# Set Flask secret key for session management
+app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
+
+FLASK_ENV = os.getenv('FLASK_ENV', 'development').strip().lower()
+IS_PRODUCTION = FLASK_ENV == 'production'
+
+DEFAULT_DEV_CORS_ORIGINS = 'http://localhost:3000,http://127.0.0.1:3000'
+CORS_ORIGINS_RAW = os.getenv('CORS_ORIGINS', DEFAULT_DEV_CORS_ORIGINS if not IS_PRODUCTION else '')
+allowed_origins = [origin.strip().rstrip('/') for origin in CORS_ORIGINS_RAW.split(',') if origin.strip()]
+
+if IS_PRODUCTION and not allowed_origins:
+    raise ValueError("CORS_ORIGINS must be set in production (comma-separated origins).")
+
+if not allowed_origins:
+    allowed_origins = [origin.strip() for origin in DEFAULT_DEV_CORS_ORIGINS.split(',')]
+
+CORS(
+    app,
+    resources={r"/*": {"origins": allowed_origins}},
+    supports_credentials=False,
+    allow_headers=["Content-Type", "Authorization", "Accept"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
+
+# --- Security Headers Middleware ---
+@app.after_request
+def add_security_headers(response):
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    # Prevent clickjacking
+    response.headers['X-Frame-Options'] = 'DENY'
+    # XSS Protection (legacy fallback for older browsers)
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    # Force HTTPS in production
+    if IS_PRODUCTION:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # API-focused CSP (JSON API does not serve active web content)
+    response.headers['Content-Security-Policy'] = os.getenv(
+        'API_CONTENT_SECURITY_POLICY',
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';"
+    )
+    # Referrer Policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # Permissions Policy
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    # Cross-origin hardening for API responses
+    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+    response.headers['Cross-Origin-Resource-Policy'] = 'same-site'
+    return response
 
 # --- Rate Limiting Setup ---
 from flask_limiter import Limiter
@@ -79,17 +139,39 @@ limiter = Limiter(
 
 # Define rate limits
 class RateLimits:
-    LIGHT = "10/minute"
-    STANDARD = "20/minute"
-    HEAVY = "2/minute" 
-    WRITE = "5/minute"
+    LIGHT = os.getenv('RATE_LIMIT_LIGHT', '10/minute')
+    STANDARD = os.getenv('RATE_LIMIT_STANDARD', '20/minute')
+    HEAVY = os.getenv('RATE_LIMIT_HEAVY', '2/minute')
+    WRITE = os.getenv('RATE_LIMIT_WRITE', '5/minute')
 
 # --- CONFIGURATION ---
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
 
-# --- Database Setup (for history snapshots) ---
-DATABASE = 'marketmind.db'
+# Validate required environment variables in production
+if IS_PRODUCTION:
+    if not NEWS_API_KEY:
+        logger.warning("⚠️ NEWS_API_KEY not set in production environment")
+    if not ALPHA_VANTAGE_API_KEY:
+        logger.warning("⚠️ ALPHA_VANTAGE_API_KEY not set in production environment")
+    if not os.getenv('FLASK_SECRET_KEY'):
+        logger.error("❌ FLASK_SECRET_KEY must be set in production environment")
+        raise ValueError("FLASK_SECRET_KEY environment variable is required in production")
+
+# --- Paths & Auth Configuration ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE = os.path.join(BASE_DIR, 'marketmind.db')
+
+PORTFOLIO_FILE = os.path.join(BASE_DIR, 'paper_portfolio.json')
+NOTIFICATIONS_FILE = os.path.join(BASE_DIR, 'notifications.json')
+PREDICTION_PORTFOLIO_FILE = os.path.join(BASE_DIR, 'prediction_portfolio.json')
+USER_DATA_DIR = os.path.join(BASE_DIR, 'user_data')
+ALLOW_LEGACY_USER_DATA_SEED = os.getenv('ALLOW_LEGACY_USER_DATA_SEED', 'false').strip().lower() == 'true'
+
+CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '').strip()
+CLERK_AUDIENCE = os.getenv('CLERK_AUDIENCE', '').strip()
+CLERK_JWKS_CACHE_TTL_SECONDS = int(os.getenv('CLERK_JWKS_CACHE_TTL_SECONDS', '3600'))
+_JWKS_CACHE = {}
 
 
 def get_db():
@@ -105,9 +187,15 @@ def init_db():
             CREATE TABLE IF NOT EXISTS portfolio_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME NOT NULL,
-                portfolio_value REAL NOT NULL
+                portfolio_value REAL NOT NULL,
+                user_id TEXT
             );
         ''')
+        # Backward-compatible schema evolution for existing DBs.
+        cursor.execute("PRAGMA table_info(portfolio_history)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'user_id' not in columns:
+            cursor.execute("ALTER TABLE portfolio_history ADD COLUMN user_id TEXT")
         conn.commit()
         logger.info("Database initialized.")
     except Exception as e:
@@ -116,7 +204,125 @@ def init_db():
         if conn:
             conn.close()
 
-from functools import wraps
+
+def _safe_user_id(user_id):
+    return re.sub(r'[^a-zA-Z0-9_-]', '_', str(user_id))
+
+
+def _get_user_file_path(user_id, filename):
+    safe_user_id = _safe_user_id(user_id)
+    user_dir = os.path.join(USER_DATA_DIR, safe_user_id)
+    os.makedirs(user_dir, exist_ok=True)
+    return os.path.join(user_dir, filename)
+
+
+def _iter_user_ids():
+    if not os.path.isdir(USER_DATA_DIR):
+        return []
+    return [
+        entry
+        for entry in os.listdir(USER_DATA_DIR)
+        if os.path.isdir(os.path.join(USER_DATA_DIR, entry))
+    ]
+
+
+def _get_bearer_token():
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return None
+    return auth_header.split(' ', 1)[1].strip()
+
+
+def _resolve_clerk_jwks_url(issuer):
+    if CLERK_JWKS_URL:
+        return CLERK_JWKS_URL
+    if not issuer:
+        return None
+    return issuer.rstrip('/') + '/.well-known/jwks.json'
+
+
+def _fetch_jwks(jwks_url):
+    now = time.time()
+    cached = _JWKS_CACHE.get(jwks_url)
+    if cached and (now - cached['fetched_at']) < CLERK_JWKS_CACHE_TTL_SECONDS:
+        return cached['jwks']
+
+    response = requests.get(jwks_url, timeout=5)
+    response.raise_for_status()
+    jwks = response.json()
+    _JWKS_CACHE[jwks_url] = {'jwks': jwks, 'fetched_at': now}
+    return jwks
+
+
+def _get_signing_key(token, jwks_url):
+    header = jwt.get_unverified_header(token)
+    kid = header.get('kid')
+    if not kid:
+        raise ValueError("Missing token header 'kid'")
+
+    jwks = _fetch_jwks(jwks_url)
+    for jwk_key in jwks.get('keys', []):
+        if jwk_key.get('kid') == kid:
+            return jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(jwk_key))
+
+    raise ValueError("Matching signing key not found in JWKS")
+
+
+def verify_clerk_token(token):
+    unverified_payload = jwt.decode(
+        token,
+        options={
+            "verify_signature": False,
+            "verify_aud": False,
+            "verify_iss": False,
+            "verify_exp": False,
+        },
+    )
+    issuer = unverified_payload.get('iss')
+    jwks_url = _resolve_clerk_jwks_url(issuer)
+    if not jwks_url:
+        raise ValueError("Unable to resolve Clerk JWKS URL")
+
+    signing_key = _get_signing_key(token, jwks_url)
+
+    decode_kwargs = {
+        "key": signing_key,
+        "algorithms": ["RS256"],
+        "options": {"verify_aud": bool(CLERK_AUDIENCE)},
+    }
+    if issuer:
+        decode_kwargs["issuer"] = issuer
+    if CLERK_AUDIENCE:
+        decode_kwargs["audience"] = CLERK_AUDIENCE
+
+    payload = jwt.decode(token, **decode_kwargs)
+    if not payload.get('sub'):
+        raise ValueError("Token is missing 'sub' claim")
+    return payload
+
+
+def get_current_user_id():
+    return getattr(g, 'current_user_id', None)
+
+
+def require_auth(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        token = _get_bearer_token()
+        if not token:
+            return jsonify({"error": "Missing Authorization Bearer token"}), 401
+
+        try:
+            payload = verify_clerk_token(token)
+        except Exception as e:
+            logger.warning(f"Auth verification failed: {e}")
+            return jsonify({"error": "Invalid or expired token"}), 401
+
+        g.current_user_id = payload['sub']
+        g.auth_payload = payload
+        return f(*args, **kwargs)
+
+    return wrapper
 
 def validate_request_json(required_fields):
     """
@@ -148,88 +354,131 @@ def validate_request_json(required_fields):
         return wrapper
     return decorator
 
-
-
-# --- Persistent Storage Setup ---
-PORTFOLIO_FILE = 'paper_portfolio.json'
-NOTIFICATIONS_FILE = 'notifications.json'  # <-- NEW FILE FOR ALERTS
-PREDICTION_PORTFOLIO_FILE = 'prediction_portfolio.json'
-
-
-def load_prediction_portfolio():
-    """Loads the prediction markets portfolio from its own JSON file."""
-    if os.path.exists(PREDICTION_PORTFOLIO_FILE):
+def _load_json(path, default):
+    if os.path.exists(path):
         try:
-            with open(PREDICTION_PORTFOLIO_FILE, 'r') as f:
-                data = json.load(f)
-                data.setdefault('cash', 10000.0)
-                data.setdefault('starting_cash', 10000.0)
-                data.setdefault('positions', {})
-                data.setdefault('trade_history', [])
-                return data
+            with open(path, 'r') as f:
+                return json.load(f)
         except json.JSONDecodeError:
             pass
-    return {
-        "cash": 10000.0, "starting_cash": 10000.0,
-        "positions": {}, "trade_history": []
-    }
+    return default
 
 
-def save_prediction_portfolio(portfolio):
-    """Saves the prediction markets portfolio to its own JSON file."""
-    with open(PREDICTION_PORTFOLIO_FILE, 'w') as f:
-        json.dump(portfolio, f, indent=4)
+def _save_json(path, payload):
+    with open(path, 'w') as f:
+        json.dump(payload, f, indent=4)
 
 
-def load_portfolio():
-    """Loads the portfolio from a JSON file."""
-    if os.path.exists(PORTFOLIO_FILE):
-        try:
-            with open(PORTFOLIO_FILE, 'r') as f:
-                data = json.load(f)
-                data.setdefault('cash', 100000.0)
-                data.setdefault('starting_cash', 100000.0)
-                data.setdefault('positions', {})
-                data.setdefault('options_positions', {})
-                data.setdefault('transactions', [])
-                data.setdefault('trade_history', [])
-                return data
-        except json.JSONDecodeError:
-            pass
-    return {
-        "cash": 100000.0, "starting_cash": 100000.0, "positions": {},
-        "options_positions": {}, "transactions": [], "trade_history": []
-    }
+def _portfolio_file(user_id=None):
+    return _get_user_file_path(user_id, 'paper_portfolio.json') if user_id else PORTFOLIO_FILE
 
 
-def save_portfolio(portfolio):
-    """Saves the portfolio to a JSON file."""
-    with open(PORTFOLIO_FILE, 'w') as f:
-        json.dump(portfolio, f, indent=4)
+def _prediction_portfolio_file(user_id=None):
+    return _get_user_file_path(user_id, 'prediction_portfolio.json') if user_id else PREDICTION_PORTFOLIO_FILE
 
 
-# --- NEW: Notification Storage ---
-def load_notifications():
-    """Loads notifications from a JSON file."""
-    if os.path.exists(NOTIFICATIONS_FILE):
-        try:
-            with open(NOTIFICATIONS_FILE, 'r') as f:
-                data = json.load(f)
-                data.setdefault('active', [])
-                data.setdefault('triggered', [])
-                return data
-        except json.JSONDecodeError:
-            pass
-    return {"active": [], "triggered": []}
+def _notifications_file(user_id=None):
+    return _get_user_file_path(user_id, 'notifications.json') if user_id else NOTIFICATIONS_FILE
 
 
-def save_notifications(notifications):
-    """Saves notifications to a JSON file."""
-    with open(NOTIFICATIONS_FILE, 'w') as f:
-        json.dump(notifications, f, indent=4)
+def _watchlist_file(user_id=None):
+    return _get_user_file_path(user_id, 'watchlist.json') if user_id else os.path.join(BASE_DIR, 'watchlist.json')
 
 
-# --- END NEW ---
+def _should_seed_from_legacy(user_path, legacy_path):
+    return (
+        ALLOW_LEGACY_USER_DATA_SEED
+        and not os.path.exists(user_path)
+        and os.path.exists(legacy_path)
+    )
+
+
+def load_prediction_portfolio(user_id=None):
+    """Load prediction market paper portfolio for a specific user."""
+    user_path = _prediction_portfolio_file(user_id) if user_id else PREDICTION_PORTFOLIO_FILE
+    source_path = user_path
+    if user_id and _should_seed_from_legacy(user_path, PREDICTION_PORTFOLIO_FILE):
+        source_path = PREDICTION_PORTFOLIO_FILE
+    data = _load_json(source_path, {})
+    data.setdefault('cash', 10000.0)
+    data.setdefault('starting_cash', 10000.0)
+    data.setdefault('positions', {})
+    data.setdefault('trade_history', [])
+    return data
+
+
+def save_prediction_portfolio(portfolio, user_id=None):
+    """Save prediction market paper portfolio for a specific user."""
+    _save_json(_prediction_portfolio_file(user_id), portfolio)
+
+
+def load_portfolio(user_id=None):
+    """Load stock/options paper portfolio for a specific user."""
+    user_path = _portfolio_file(user_id) if user_id else PORTFOLIO_FILE
+    source_path = user_path
+    if user_id and _should_seed_from_legacy(user_path, PORTFOLIO_FILE):
+        source_path = PORTFOLIO_FILE
+    data = _load_json(source_path, {})
+    data.setdefault('cash', 100000.0)
+    data.setdefault('starting_cash', 100000.0)
+    data.setdefault('positions', {})
+    data.setdefault('options_positions', {})
+    data.setdefault('transactions', [])
+    data.setdefault('trade_history', [])
+    return data
+
+
+def save_portfolio(portfolio, user_id=None):
+    """Save stock/options paper portfolio for a specific user."""
+    _save_json(_portfolio_file(user_id), portfolio)
+
+
+def load_notifications(user_id=None):
+    """Load active/triggered notifications for a specific user."""
+    user_path = _notifications_file(user_id) if user_id else NOTIFICATIONS_FILE
+    source_path = user_path
+    if user_id and _should_seed_from_legacy(user_path, NOTIFICATIONS_FILE):
+        source_path = NOTIFICATIONS_FILE
+    data = _load_json(source_path, {})
+    data.setdefault('active', [])
+    data.setdefault('triggered', [])
+    return data
+
+
+def save_notifications(notifications, user_id=None):
+    """Save active/triggered notifications for a specific user."""
+    _save_json(_notifications_file(user_id), notifications)
+
+
+def load_watchlist(user_id=None):
+    """Load watchlist tickers for a specific user."""
+    legacy_watchlist_file = os.path.join(BASE_DIR, 'watchlist.json')
+    user_path = _watchlist_file(user_id) if user_id else legacy_watchlist_file
+    source_path = user_path
+    if user_id and _should_seed_from_legacy(user_path, legacy_watchlist_file):
+        source_path = legacy_watchlist_file
+    data = _load_json(source_path, [])
+    if not isinstance(data, list):
+        return []
+    return sorted(list({str(t).upper() for t in data if str(t).strip()}))
+
+
+def save_watchlist(tickers, user_id=None):
+    """Save watchlist tickers for a specific user."""
+    normalized = sorted(list({str(t).upper() for t in tickers if str(t).strip()}))
+    _save_json(_watchlist_file(user_id), normalized)
+
+
+@app.route('/auth/me', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def auth_me():
+    payload = getattr(g, 'auth_payload', {})
+    return jsonify({
+        "user_id": get_current_user_id(),
+        "email": payload.get('email'),
+        "username": payload.get('username'),
+    })
 
 # --- Helper function ---
 def clean_value(val):
@@ -259,31 +508,36 @@ def get_symbol_suggestions(query):
         return []
 
 
-# --- In-memory storage for Watchlist ---
-watchlist = set()
-
-
 # --- Watchlist Endpoints ---
 @app.route('/watchlist', methods=['GET'])
+@require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_watchlist():
-    return jsonify(list(watchlist))
+    return jsonify(load_watchlist(get_current_user_id()))
 
 
 @app.route('/watchlist/<string:ticker>', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 def add_to_watchlist(ticker):
-    ticker = ticker.upper()
-    watchlist.add(ticker)
-    return jsonify({"message": f"{ticker} added to watchlist.", "watchlist": list(watchlist)}), 201
+    user_id = get_current_user_id()
+    current_watchlist = load_watchlist(user_id)
+    normalized_ticker = ticker.upper()
+    if normalized_ticker not in current_watchlist:
+        current_watchlist.append(normalized_ticker)
+    save_watchlist(current_watchlist, user_id)
+    return jsonify({"message": f"{normalized_ticker} added to watchlist.", "watchlist": current_watchlist}), 201
 
 
 @app.route('/watchlist/<string:ticker>', methods=['DELETE'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 def remove_from_watchlist(ticker):
-    ticker = ticker.upper()
-    watchlist.discard(ticker)
-    return jsonify({"message": f"{ticker} removed from watchlist.", "watchlist": list(watchlist)})
+    user_id = get_current_user_id()
+    normalized_ticker = ticker.upper()
+    current_watchlist = [t for t in load_watchlist(user_id) if t != normalized_ticker]
+    save_watchlist(current_watchlist, user_id)
+    return jsonify({"message": f"{normalized_ticker} removed from watchlist.", "watchlist": current_watchlist})
 
 
 # --- Stock Data Endpoint ---
@@ -463,36 +717,64 @@ def get_option_expirations(ticker):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/options/chain/<string:ticker>', methods=['GET'])
+@app.route('/options/chain/<ticker>', methods=['GET'])
 def get_option_chain(ticker):
-    date = request.args.get('date')
-    if not date: return jsonify({"error": "A date query parameter is required."}), 400
     try:
-        sanitized_ticker = ticker.split(':')[0]
-        stock = yf.Ticker(sanitized_ticker)
-        chain = stock.option_chain(date)
+        date = request.args.get('date')
+        stock = yf.Ticker(ticker)
+        
+        # Get the current stock price for moneyness calculations
         info = stock.info
-        price = info.get('regularMarketPrice', 0)
-        if price == 0: price = info.get('previousClose', 0)
+        stock_price = info.get('regularMarketPrice', info.get('previousClose', 0))
 
-        def format_chain(df):
-            cols_to_keep = ['contractSymbol', 'strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest',
-                            'impliedVolatility']
-            existing_cols = [col for col in cols_to_keep if col in df.columns]
-            df_filtered = df[existing_cols]
-            df_cleaned = df_filtered.replace({np.nan: None})
-            records = df_cleaned.to_dict('records')
-            for record in records:
-                for col in existing_cols:
-                    record[col] = clean_value(record.get(col))
-            return records
+        if date:
+            chain = stock.option_chain(date)
+        else:
+            # Default to the first available expiration if no date is provided
+            chain = stock.option_chain(stock.options[0])
 
-        return jsonify(
-            {"calls": format_chain(chain.calls), "puts": format_chain(chain.puts), "stock_price": clean_value(price)})
+        # --- UPDATED MAPPING LOGIC ---
+        # We must explicitly cast NaNs to 0 or None so JSON serialization doesn't crash,
+        # and ensure the new frontend fields are included.
+        def safe_float(val):
+            return 0 if math.isnan(float(val)) else float(val)
+
+        def safe_int(val):
+            return 0 if math.isnan(float(val)) else int(val)
+
+        calls = chain.calls.to_dict('records')
+        formatted_calls = [{
+            "contractSymbol": c["contractSymbol"],
+            "strike": safe_float(c["strike"]),
+            "bid": safe_float(c["bid"]),
+            "ask": safe_float(c["ask"]),
+            "lastPrice": safe_float(c["lastPrice"]),
+            "volume": safe_int(c.get("volume", 0)),
+            "openInterest": safe_int(c.get("openInterest", 0)),
+            "impliedVolatility": safe_float(c.get("impliedVolatility", 0))
+        } for c in calls]
+
+        puts = chain.puts.to_dict('records')
+        formatted_puts = [{
+            "contractSymbol": p["contractSymbol"],
+            "strike": safe_float(p["strike"]),
+            "bid": safe_float(p["bid"]),
+            "ask": safe_float(p["ask"]),
+            "lastPrice": safe_float(p["lastPrice"]),
+            "volume": safe_int(p.get("volume", 0)),
+            "openInterest": safe_int(p.get("openInterest", 0)),
+            "impliedVolatility": safe_float(p.get("impliedVolatility", 0))
+        } for p in puts]
+
+        return jsonify({
+            "stock_price": stock_price,
+            "calls": formatted_calls,
+            "puts": formatted_puts
+        })
+        
     except Exception as e:
-        logger.error(f"Error getting option chain: {e}")
-        return jsonify({"error": "Could not retrieve option chain for this date."}), 404
-
+        print(f"Error fetching option chain: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # --- Options Suggestion Endpoint ---
 @app.route('/options/suggest/<string:ticker>', methods=['GET'])
@@ -614,7 +896,7 @@ def predict_ensemble(ticker):
 
 # --- Paper Trading Endpoints (Using JSON persistence) ---
 
-def record_portfolio_snapshot(portfolio_data):
+def record_portfolio_snapshot(portfolio_data, user_id):
     total_value = portfolio_data['cash']
     for ticker, pos in portfolio_data.get("positions", {}).items():
         total_value += pos['shares'] * pos['avg_cost']
@@ -623,8 +905,10 @@ def record_portfolio_snapshot(portfolio_data):
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO portfolio_history (timestamp, portfolio_value) VALUES (?, ?)",
-                       (datetime.now(), total_value))
+        cursor.execute(
+            "INSERT INTO portfolio_history (timestamp, portfolio_value, user_id) VALUES (?, ?, ?)",
+            (datetime.now(), total_value, user_id),
+        )
         conn.commit()
     except Exception as e:
         logger.error(f"Failed to record portfolio snapshot: {e}")
@@ -633,8 +917,10 @@ def record_portfolio_snapshot(portfolio_data):
 
 
 @app.route('/paper/portfolio', methods=['GET'])
+@require_auth
 def get_paper_portfolio():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     positions = portfolio.get("positions", {})
     options_positions = portfolio.get("options_positions", {})
 
@@ -784,10 +1070,12 @@ def get_paper_portfolio():
 
 
 @app.route('/paper/buy', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
 def buy_stock():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     try:
         data = request.get_json();
         ticker = data.get('ticker', '').upper();
@@ -812,8 +1100,8 @@ def buy_stock():
         portfolio["transactions"].append(
             {"date": datetime.now().strftime('%Y-%m-%d'), "type": "BUY", "ticker": ticker, "shares": shares,
              "price": price, "total": total_cost})
-        save_portfolio(portfolio)
-        record_portfolio_snapshot(portfolio)
+        save_portfolio(portfolio, user_id)
+        record_portfolio_snapshot(portfolio, user_id)
         return jsonify({"success": True, "message": f"Bought {shares} shares of {ticker} at ${price:.2f}"}), 200
     except Exception as e:
         log_api_error(logger, '/paper/buy', e)
@@ -821,10 +1109,12 @@ def buy_stock():
 
 
 @app.route('/paper/sell', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
 def sell_stock():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     try:
         data = request.get_json();
         ticker = data.get('ticker', '').upper();
@@ -850,8 +1140,8 @@ def sell_stock():
         portfolio["transactions"].append(
             {"date": datetime.now().strftime('%Y-%m-%d'), "type": "SELL", "ticker": ticker, "shares": shares,
              "price": price, "total": proceeds})
-        save_portfolio(portfolio)
-        record_portfolio_snapshot(portfolio)
+        save_portfolio(portfolio, user_id)
+        record_portfolio_snapshot(portfolio, user_id)
         return jsonify({"success": True, "message": f"Sold {shares} shares of {ticker} at ${price:.2f}",
                         "profit": round(profit, 2)}), 200
     except Exception as e:
@@ -860,8 +1150,10 @@ def sell_stock():
 
 
 @app.route('/paper/options/buy', methods=['POST'])
+@require_auth
 def buy_option():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     try:
         data = request.get_json();
         contract_symbol = data.get('contractSymbol');
@@ -880,8 +1172,8 @@ def buy_option():
         trade = {"type": "BUY_OPTION", "ticker": contract_symbol, "shares": quantity, "price": price,
                  "total": total_cost, "timestamp": datetime.now().isoformat()}
         portfolio["trade_history"].append(trade)
-        save_portfolio(portfolio)
-        record_portfolio_snapshot(portfolio)
+        save_portfolio(portfolio, user_id)
+        record_portfolio_snapshot(portfolio, user_id)
         return jsonify(
             {"success": True, "message": f"Bought {quantity} {contract_symbol} contract(s) at ${price:.2f}"}), 200
     except Exception as e:
@@ -889,8 +1181,10 @@ def buy_option():
 
 
 @app.route('/paper/options/sell', methods=['POST'])
+@require_auth
 def sell_option():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     try:
         data = request.get_json();
         contract_symbol = data.get('contractSymbol');
@@ -910,8 +1204,8 @@ def sell_option():
         trade = {"type": "SELL_OPTION", "ticker": contract_symbol, "shares": quantity, "price": price,
                  "total": proceeds, "profit": profit, "timestamp": datetime.now().isoformat()}
         portfolio["trade_history"].append(trade)
-        save_portfolio(portfolio)
-        record_portfolio_snapshot(portfolio)
+        save_portfolio(portfolio, user_id)
+        record_portfolio_snapshot(portfolio, user_id)
         return jsonify({"success": True, "message": f"Sold {quantity} {contract_symbol} contract(s) at ${price:.2f}",
                         "profit": round(profit, 2)}), 200
     except Exception as e:
@@ -920,8 +1214,10 @@ def sell_option():
 
 # --- This is YOUR corrected portfolio history endpoint ---
 @app.route('/paper/history', methods=['GET'])
+@require_auth
 def get_paper_history():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     transactions = portfolio.get("transactions", [])
     if not transactions:
         return jsonify({"dates": [], "values": [], "summary": {}})
@@ -1057,24 +1353,29 @@ def get_paper_history():
 
 
 @app.route('/paper/transactions', methods=['GET'])
+@require_auth
 def get_trade_history():
-    portfolio = load_portfolio()
+    portfolio = load_portfolio(get_current_user_id())
     return jsonify(portfolio.get("trade_history", [])[-50:])
 
 
 @app.route('/paper/reset', methods=['POST'])
+@require_auth
 def reset_portfolio():
+    user_id = get_current_user_id()
     new_portfolio = {
         "cash": 100000.0, "starting_cash": 100000.0, "positions": {},
         "options_positions": {}, "transactions": [], "trade_history": []
     }
-    save_portfolio(new_portfolio)
+    save_portfolio(new_portfolio, user_id)
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM portfolio_history")
-        cursor.execute("INSERT INTO portfolio_history (timestamp, portfolio_value) VALUES (?, ?)",
-                       (datetime.now(), 100000.0))
+        cursor.execute("DELETE FROM portfolio_history WHERE user_id = ?", (user_id,))
+        cursor.execute(
+            "INSERT INTO portfolio_history (timestamp, portfolio_value, user_id) VALUES (?, ?, ?)",
+            (datetime.now(), 100000.0, user_id),
+        )
         conn.commit()
     except Exception as e:
         logger.error(f"Failed to reset portfolio_history table: {e}")
@@ -1086,8 +1387,10 @@ def reset_portfolio():
 
 # --- NEW: Notification Endpoints ---
 @app.route('/notifications', methods=['GET', 'POST'])
+@require_auth
 def handle_notifications():
-    notifications = load_notifications()
+    user_id = get_current_user_id()
+    notifications = load_notifications(user_id)
 
     if request.method == 'POST':
         try:
@@ -1111,7 +1414,7 @@ def handle_notifications():
                 "created_at": datetime.now().isoformat()
             }
             notifications['active'].append(new_alert)
-            save_notifications(notifications)
+            save_notifications(notifications, user_id)
             return jsonify(new_alert), 201
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -1121,8 +1424,10 @@ def handle_notifications():
 
 
 @app.route('/notifications/smart', methods=['POST'])
+@require_auth
 def create_smart_alert():
     try:
+        user_id = get_current_user_id()
         data = request.json
         prompt = data.get('prompt', '').strip()  # Keep case for now
 
@@ -1229,7 +1534,7 @@ def create_smart_alert():
                     target_price = current_price * 1.01
 
         # --- 2. CREATE AND SAVE ALERT ---
-        notifications = load_notifications()  # returns {'active': [], 'triggered': []}
+        notifications = load_notifications(user_id)  # returns {'active': [], 'triggered': []}
 
         new_alert = {
             "id": str(uuid.uuid4()),
@@ -1243,7 +1548,7 @@ def create_smart_alert():
         }
 
         notifications['active'].append(new_alert)
-        save_notifications(notifications)
+        save_notifications(notifications, user_id)
 
         return jsonify({
             'message': 'Smart alert created successfully',
@@ -1257,16 +1562,20 @@ def create_smart_alert():
 
 
 @app.route('/notifications/<string:alert_id>', methods=['DELETE'])
+@require_auth
 def delete_notification(alert_id):
-    notifications = load_notifications()
+    user_id = get_current_user_id()
+    notifications = load_notifications(user_id)
     notifications['active'] = [a for a in notifications['active'] if a['id'] != alert_id]
-    save_notifications(notifications)
+    save_notifications(notifications, user_id)
     return jsonify({"message": "Alert deleted"}), 200
 
 
 @app.route('/notifications/triggered', methods=['GET', 'DELETE'])
+@require_auth
 def get_triggered_notifications():
-    notifications = load_notifications()
+    user_id = get_current_user_id()
+    notifications = load_notifications(user_id)
 
     if request.method == 'GET':
         # Check for 'all' query param
@@ -1278,7 +1587,7 @@ def get_triggered_notifications():
         # Mark them as 'seen'
         for alert in notifications['triggered']:
             alert['seen'] = True
-        save_notifications(notifications)
+        save_notifications(notifications, user_id)
         return jsonify(unseen_alerts)
 
     # DELETE request
@@ -1288,15 +1597,17 @@ def get_triggered_notifications():
     else:
         # Clear all
         notifications['triggered'] = []
-    save_notifications(notifications)
+    save_notifications(notifications, user_id)
     return jsonify({"message": "Triggered alerts cleared"}), 200
 
 
 @app.route('/notifications/triggered/<string:alert_id>', methods=['DELETE'])
+@require_auth
 def delete_triggered_notification(alert_id):
-    notifications = load_notifications()
+    user_id = get_current_user_id()
+    notifications = load_notifications(user_id)
     notifications['triggered'] = [a for a in notifications['triggered'] if a['id'] != alert_id]
-    save_notifications(notifications)
+    save_notifications(notifications, user_id)
     return jsonify({"message": "Alert dismissed"}), 200
 
 
@@ -1304,11 +1615,10 @@ def delete_triggered_notification(alert_id):
 
 
 # --- NEW: Background Price Checker ---
-def check_alerts():
-    logger.info(f"Running price alert check...")
-    notifications_data = load_notifications()
+def _check_alerts_for_user(user_id):
+    notifications_data = load_notifications(user_id)
     if not notifications_data['active']:
-        return  # No active alerts, do nothing
+        return
 
     active_alerts_copy = notifications_data['active'].copy()
     tickers_to_check = list(set([a['ticker'] for a in active_alerts_copy]))
@@ -1387,11 +1697,20 @@ def check_alerts():
         # Remove triggered alerts from active list
         if triggered_ids:
             notifications_data['active'] = [a for a in notifications_data['active'] if a['id'] not in triggered_ids]
-            save_notifications(notifications_data)
+            save_notifications(notifications_data, user_id)
             logger.info(f"Triggered and moved {len(triggered_ids)} alerts.")
 
     except Exception as e:
         logger.error(f"Failed to check all alert prices: {e}")
+
+
+def check_alerts():
+    logger.info("Running price alert check...")
+    for user_id in _iter_user_ids():
+        try:
+            _check_alerts_for_user(user_id)
+        except Exception as e:
+            logger.error(f"Alert check failed for user {user_id}: {e}")
 
 
 def run_scheduler():
@@ -1571,11 +1890,13 @@ def get_prediction_market(market_id):
 
 
 @app.route('/prediction-markets/portfolio', methods=['GET'])
+@require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_prediction_portfolio():
     """Get the prediction markets paper trading portfolio with live P&L."""
     try:
-        portfolio = load_prediction_portfolio()
+        user_id = get_current_user_id()
+        portfolio = load_prediction_portfolio(user_id)
         positions = portfolio.get("positions", {})
         positions_list = []
         total_positions_value = 0
@@ -1634,11 +1955,13 @@ def get_prediction_portfolio():
 
 
 @app.route('/prediction-markets/buy', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['market_id', 'outcome', 'contracts'])
 def buy_prediction_contract():
     """Buy Yes/No contracts on a prediction market at current market price."""
-    portfolio = load_prediction_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_prediction_portfolio(user_id)
     try:
         data = request.get_json()
         market_id = data['market_id']
@@ -1696,7 +2019,7 @@ def buy_prediction_contract():
             "timestamp": datetime.now().isoformat()
         }
         portfolio["trade_history"].append(trade)
-        save_prediction_portfolio(portfolio)
+        save_prediction_portfolio(portfolio, user_id)
 
         return jsonify({
             "success": True,
@@ -1709,11 +2032,13 @@ def buy_prediction_contract():
 
 
 @app.route('/prediction-markets/sell', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['market_id', 'outcome', 'contracts'])
 def sell_prediction_contract():
     """Sell prediction market contracts at current market price."""
-    portfolio = load_prediction_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_prediction_portfolio(user_id)
     try:
         data = request.get_json()
         market_id = data['market_id']
@@ -1756,7 +2081,7 @@ def sell_prediction_contract():
             "timestamp": datetime.now().isoformat()
         }
         portfolio["trade_history"].append(trade)
-        save_prediction_portfolio(portfolio)
+        save_prediction_portfolio(portfolio, user_id)
 
         return jsonify({
             "success": True,
@@ -1769,24 +2094,27 @@ def sell_prediction_contract():
 
 
 @app.route('/prediction-markets/history', methods=['GET'])
+@require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_prediction_trade_history():
     """Get prediction market trade history (last 50 trades)."""
-    portfolio = load_prediction_portfolio()
+    portfolio = load_prediction_portfolio(get_current_user_id())
     return jsonify(portfolio.get("trade_history", [])[-50:])
 
 
 @app.route('/prediction-markets/reset', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 def reset_prediction_portfolio():
     """Reset prediction markets portfolio to starting state."""
+    user_id = get_current_user_id()
     new_portfolio = {
         "cash": 10000.0,
         "starting_cash": 10000.0,
         "positions": {},
         "trade_history": []
     }
-    save_prediction_portfolio(new_portfolio)
+    save_prediction_portfolio(new_portfolio, user_id)
     return jsonify({
         "success": True,
         "message": "Prediction markets portfolio reset to starting state",
@@ -1794,18 +2122,86 @@ def reset_prediction_portfolio():
     })
 
 
+def _fundamentals_from_yfinance(sym):
+    """Build a fundamentals dict from yfinance when Alpha Vantage is unavailable."""
+    try:
+        info = yf.Ticker(sym).info
+        if not info or info.get('quoteType') not in ('EQUITY', 'ETF', 'MUTUALFUND'):
+            return None
+        def _s(key):
+            v = info.get(key)
+            return str(v) if v is not None else 'N/A'
+        return {
+            "symbol": info.get('symbol', sym),
+            "name": info.get('longName') or info.get('shortName') or 'N/A',
+            "description": info.get('longBusinessSummary', 'N/A'),
+            "exchange": info.get('exchange', 'N/A'),
+            "currency": info.get('currency', 'N/A'),
+            "sector": info.get('sector', 'N/A'),
+            "industry": info.get('industry', 'N/A'),
+            "country": info.get('country', 'N/A'),
+            "market_cap": _s('marketCap'),
+            "pe_ratio": _s('trailingPE'),
+            "forward_pe": _s('forwardPE'),
+            "trailing_pe": _s('trailingPE'),
+            "peg_ratio": _s('pegRatio'),
+            "eps": _s('trailingEps'),
+            "beta": _s('beta'),
+            "book_value": _s('bookValue'),
+            "dividend_per_share": _s('dividendRate'),
+            "dividend_yield": _s('dividendYield'),
+            "dividend_date": 'N/A',
+            "ex_dividend_date": 'N/A',
+            "profit_margin": _s('profitMargins'),
+            "operating_margin_ttm": _s('operatingMargins'),
+            "return_on_assets_ttm": _s('returnOnAssets'),
+            "return_on_equity_ttm": _s('returnOnEquity'),
+            "revenue_ttm": _s('totalRevenue'),
+            "gross_profit_ttm": _s('grossProfits'),
+            "diluted_eps_ttm": _s('trailingEps'),
+            "revenue_per_share_ttm": _s('revenuePerShare'),
+            "quarterly_earnings_growth_yoy": _s('earningsQuarterlyGrowth'),
+            "quarterly_revenue_growth_yoy": _s('revenueGrowth'),
+            "analyst_target_price": _s('targetMeanPrice'),
+            "price_to_sales_ratio_ttm": _s('priceToSalesTrailing12Months'),
+            "price_to_book_ratio": _s('priceToBook'),
+            "ev_to_revenue": _s('enterpriseToRevenue'),
+            "ev_to_ebitda": _s('enterpriseToEbitda'),
+            "week_52_high": _s('fiftyTwoWeekHigh'),
+            "week_52_low": _s('fiftyTwoWeekLow'),
+            "day_50_moving_average": _s('fiftyDayAverage'),
+            "day_200_moving_average": _s('twoHundredDayAverage'),
+            "shares_outstanding": _s('sharesOutstanding'),
+        }
+    except Exception as e:
+        logger.warning(f"yfinance fundamentals fallback failed for {sym}: {e}")
+        return None
+
+
 @app.route('/fundamentals/<string:ticker>')
 def get_fundamentals(ticker):
     try:
-        sanitized_ticker = ticker.split(':')[0]
-        if not ALPHA_VANTAGE_API_KEY:
-            return jsonify({"error": "Alpha Vantage API key not configured"}), 500
-            
-        url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={sanitized_ticker.upper()}&apikey={ALPHA_VANTAGE_API_KEY}'
-        response = requests.get(url)
-        data = response.json()
-        
-        if not data or 'Symbol' not in data:
+        sanitized_ticker = ticker.split(':')[0].upper()
+
+        # Try Alpha Vantage first (richer data), fall back to yfinance
+        av_data = None
+        if ALPHA_VANTAGE_API_KEY:
+            try:
+                url = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={sanitized_ticker}&apikey={ALPHA_VANTAGE_API_KEY}'
+                av_resp = requests.get(url, timeout=10)
+                av_json = av_resp.json()
+                if av_json and 'Symbol' in av_json:
+                    av_data = av_json
+            except Exception as e:
+                logger.warning(f"Alpha Vantage fundamentals failed for {sanitized_ticker}: {e}")
+
+        if av_data:
+            data = av_data
+        else:
+            # Fallback: yfinance
+            yf_data = _fundamentals_from_yfinance(sanitized_ticker)
+            if yf_data:
+                return jsonify(yf_data)
             return jsonify({"error": f"No fundamental data found for {ticker}"}), 404
 
         # Map Alpha Vantage keys (PascalCase) to Frontend keys (snake_case)
@@ -1880,6 +2276,290 @@ def search_symbols():
         return jsonify({"error": str(e)}), 500
 
 
+
+# Create a "memory" cache so we don't spam the API
+CALENDAR_CACHE = {
+    "data": None,
+    "last_fetched": 0
+}
+
+
+@app.route('/calendar/economic', methods=['GET'])
+def get_economic_calendar():
+    global CALENDAR_CACHE
+    current_time = time.time()
+
+    # Check if we fetched the data less than 15 minutes ago (900 seconds).
+    # If we did, instantly return the saved data instead of hitting the API again.
+    if CALENDAR_CACHE["data"] is not None and (current_time - CALENDAR_CACHE["last_fetched"]) < 900:
+        return jsonify(CALENDAR_CACHE["data"])
+
+    try:
+        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+
+        # Use a highly realistic User-Agent so their Cloudflare protection doesn't block us
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*'
+        }
+
+        response = requests.get(url, headers=headers)
+
+        # If they still block us, but we have old data saved, just show the old data!
+        if response.status_code != 200:
+            if CALENDAR_CACHE["data"] is not None:
+                return jsonify(CALENDAR_CACHE["data"])
+            return jsonify({"error": f"Failed to fetch calendar (Status {response.status_code})"}), 500
+
+        data = response.json()
+        formatted_events = []
+
+        for index, item in enumerate(data):
+            if item.get('country') != 'USD':
+                continue
+
+            raw_date = item.get('date', '')
+            try:
+                dt = datetime.strptime(raw_date[:19], "%Y-%m-%dT%H:%M:%S")
+                date_str = dt.strftime("%Y-%m-%d")
+                time_str = dt.strftime("%I:%M %p").lstrip("0")
+            except Exception:
+                date_str = raw_date
+                time_str = "TBD"
+
+            title = item.get('title', 'Unknown Event')
+            event_type = 'speaker' if 'Speaks' in title or 'Testifies' in title else 'report'
+
+            def clean_val(v):
+                return v if v and str(v).strip() != "" else "-"
+
+            formatted_events.append({
+                "id": index,
+                "date": date_str,
+                "time": time_str,
+                "type": event_type,
+                "event": title,
+                "impact": item.get('impact', 'Low'),
+                "actual": clean_val(item.get('actual')),
+                "forecast": clean_val(item.get('forecast')),
+                "previous": clean_val(item.get('previous'))
+            })
+
+        # Success! Save the new data to our cache and log the time
+        CALENDAR_CACHE["data"] = formatted_events
+        CALENDAR_CACHE["last_fetched"] = current_time
+
+        return jsonify(formatted_events)
+
+    except Exception as e:
+        # If the internet drops or it crashes, return the cached data as a fallback
+        if CALENDAR_CACHE["data"] is not None:
+            return jsonify(CALENDAR_CACHE["data"])
+        return jsonify({"error": str(e)}), 500
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenBB-powered endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _obb_to_float(val):
+    """Safely convert OpenBB field values to JSON-serialisable floats."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return None if (f != f) else round(f, 4)  # NaN check
+    except (TypeError, ValueError):
+        return None
+
+
+@app.route('/fundamentals/financials/<string:ticker>')
+def get_financial_statements(ticker):
+    """4-year income statement, balance sheet, and cash flow via OpenBB."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+    sym = ticker.upper().split(':')[0]
+    try:
+        def _stmt(fn, fields):
+            df = fn(sym, provider='yfinance').to_dataframe()
+            if df.empty:
+                return []
+            rows = []
+            for col in df.columns[:4]:  # up to 4 years
+                row = {"period": str(col)[:10]}
+                for key, src in fields:
+                    row[key] = _obb_to_float(df[src].iloc[0]) if src in df.index else None
+                rows.append(row)
+            return rows
+
+        income_df  = obb.equity.fundamental.income(sym, provider='yfinance', period='annual', limit=4).to_dataframe()
+        balance_df = obb.equity.fundamental.balance(sym, provider='yfinance', period='annual', limit=4).to_dataframe()
+        cashflow_df = obb.equity.fundamental.cash(sym, provider='yfinance', period='annual', limit=4).to_dataframe()
+
+        def _rows(df, field_map):
+            out = []
+            for _, row in df.iterrows():
+                rec = {"period": str(row.get('date', row.get('period_of_report', '')))[:10]}
+                for dest, src in field_map.items():
+                    rec[dest] = _obb_to_float(row.get(src))
+                out.append(rec)
+            return out
+
+        INCOME_FIELDS = {
+            "revenue": "revenue", "gross_profit": "gross_profit",
+            "operating_income": "operating_income", "net_income": "net_income",
+            "ebitda": "ebitda", "eps": "eps_diluted",
+        }
+        BALANCE_FIELDS = {
+            "total_assets": "total_assets", "total_liab": "total_liabilities",
+            "total_equity": "total_equity", "cash": "cash_and_cash_equivalents",
+            "total_debt": "total_debt", "working_capital": "net_current_assets",
+        }
+        CASHFLOW_FIELDS = {
+            "operating": "net_cash_flow_from_operating_activities",
+            "investing": "net_cash_flow_from_investing_activities",
+            "financing": "net_cash_flow_from_financing_activities",
+            "capex": "capital_expenditure",
+            "free_cf": "free_cash_flow",
+        }
+
+        return jsonify({
+            "income_statement": _rows(income_df, INCOME_FIELDS),
+            "balance_sheet":    _rows(balance_df, BALANCE_FIELDS),
+            "cash_flow":        _rows(cashflow_df, CASHFLOW_FIELDS),
+        })
+    except Exception as e:
+        logger.error(f"Financial statements error for {sym}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/fundamentals/filings/<string:ticker>')
+def get_sec_filings(ticker):
+    """Recent SEC filings (10-K, 10-Q, 8-K, etc.) via OpenBB EDGAR."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+    sym = ticker.upper().split(':')[0]
+    RELEVANT = {'10-K', '10-Q', '8-K', '10-K/A', '10-Q/A', 'DEF 14A', 'S-1', '20-F', '6-K'}
+    try:
+        df = obb.equity.fundamental.filings(sym, provider='sec', limit=50).to_dataframe()
+        results = []
+        for _, row in df.iterrows():
+            report_type = str(row.get('report_type', row.get('type', ''))).upper()
+            if report_type not in RELEVANT:
+                continue
+            results.append({
+                "date":        str(row.get('date', row.get('filed', '')))[:10],
+                "type":        report_type,
+                "description": str(row.get('description', row.get('form', '')))[:200],
+                "url":         str(row.get('url', row.get('link', ''))) or None,
+            })
+        return jsonify(results[:30])
+    except Exception as e:
+        logger.error(f"SEC filings error for {sym}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/screener')
+def get_screener():
+    """Top gainers, losers, and most-active via OpenBB/yfinance."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+
+    def _fmt(results):
+        out = []
+        for r in results:
+            out.append({
+                "symbol":          r.symbol,
+                "name":            r.name or '',
+                "price":           _obb_to_float(r.price),
+                "change":          _obb_to_float(r.change),
+                "percent_change":  _obb_to_float(r.percent_change),
+                "market_cap":      _obb_to_float(r.market_cap),
+                "volume":          int(r.volume) if r.volume else None,
+                "pe_forward":      _obb_to_float(r.pe_forward),
+                "year_high":       _obb_to_float(r.year_high),
+                "year_low":        _obb_to_float(r.year_low),
+                "eps_ttm":         _obb_to_float(r.eps_ttm),
+            })
+        return out
+
+    try:
+        gainers = _fmt(obb.equity.discovery.gainers(provider='yfinance').results)
+        losers  = _fmt(obb.equity.discovery.losers(provider='yfinance').results)
+        active  = _fmt(obb.equity.discovery.active(provider='yfinance').results)
+        return jsonify({"gainers": gainers, "losers": losers, "active": active})
+    except Exception as e:
+        logger.error(f"Screener error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+MACRO_INDICATORS = [
+    {"symbol": "URATE", "name": "Unemployment Rate",     "unit": "%",    "multiplier": 100},
+    {"symbol": "CPI",   "name": "Consumer Price Index",  "unit": "Index","multiplier": 1},
+    {"symbol": "IP",    "name": "Industrial Production", "unit": "Index","multiplier": 1},
+]
+
+@app.route('/macro/overview')
+def get_macro_overview():
+    """Key US macro indicators + 10-Year Treasury yield via OpenBB/econdb + yfinance."""
+    if not OPENBB_AVAILABLE:
+        return jsonify({"error": "OpenBB not installed on this server."}), 503
+    result = []
+    try:
+        for ind in MACRO_INDICATORS:
+            try:
+                df = obb.economy.indicators(
+                    symbol=ind["symbol"], country='US', provider='econdb'
+                ).to_dataframe().reset_index()
+                df = df.sort_values('date')
+                last  = df.iloc[-1]
+                prev  = df.iloc[-2] if len(df) > 1 else last
+                val      = float(last['value']) * ind["multiplier"]
+                prev_val = float(prev['value']) * ind["multiplier"]
+                sparkline = [
+                    {"date": str(row['date']), "value": round(float(row['value']) * ind["multiplier"], 4)}
+                    for _, row in df.tail(24).iterrows()
+                ]
+                result.append({
+                    "symbol":    ind["symbol"],
+                    "name":      ind["name"],
+                    "unit":      ind["unit"],
+                    "value":     round(val, 3),
+                    "prev":      round(prev_val, 3),
+                    "date":      str(last['date']),
+                    "sparkline": sparkline,
+                })
+            except Exception as e:
+                logger.warning(f"Macro indicator {ind['symbol']} failed: {e}")
+
+        # 10-Year Treasury yield from yfinance
+        try:
+            tnx = yf.Ticker('^TNX')
+            info = tnx.info
+            rate = info.get('regularMarketPrice') or info.get('previousClose')
+            hist = tnx.history(period='2y', interval='1mo')
+            sparkline = [
+                {"date": str(d.date()), "value": round(float(v), 3)}
+                for d, v in zip(hist.index, hist['Close'])
+            ]
+            prev_rate = float(hist['Close'].iloc[-2]) if len(hist) > 1 else rate
+            result.append({
+                "symbol":    "TNX",
+                "name":      "10-Year Treasury Yield",
+                "unit":      "%",
+                "value":     round(float(rate), 3) if rate else None,
+                "prev":      round(prev_rate, 3),
+                "date":      str(hist.index[-1].date()) if not hist.empty else '',
+                "sparkline": sparkline,
+            })
+        except Exception as e:
+            logger.warning(f"TNX fetch failed: {e}")
+
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Macro overview error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 # --- Main execution ---
 if __name__ == '__main__':
     init_db()  # Initialize the SQLite history table
@@ -1889,4 +2569,4 @@ if __name__ == '__main__':
     checker_thread = threading.Thread(target=run_scheduler, daemon=True)
     checker_thread.start()
 
-    app.run(debug=True, port=5001, use_reloader=False)  # use_reloader=False is important for threads
+    app.run(debug=True, port=5001, use_reloader=False)

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Droplets, Hammer, Wheat, AlertTriangle, Search, X } from 'lucide-react';
 import StockChart from './charts/StockChart';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const timeFrames = [
     { label: '1M', value: '1mo' },
@@ -26,12 +27,13 @@ const CommoditiesPage = () => {
 
     useEffect(() => {
         fetchCommodities();
+        // Intentionally load on mount only; this dataset is user-trigger refreshed.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const fetchCommodities = async () => {
         try {
-            const res = await fetch('http://localhost:5001/commodities/list');
-            const data = await res.json();
+            const data = await apiRequest(API_ENDPOINTS.COMMODITIES_LIST);
             setCommodities(data);
             if (data.length > 0) loadCommodity(data[0].code);
         } catch (err) { console.error(err); } finally { setLoadingList(false); }
@@ -39,8 +41,7 @@ const CommoditiesPage = () => {
 
     const loadCommodity = async (code) => {
         try {
-            const res = await fetch(`http://localhost:5001/commodities/price/${code}`);
-            const data = await res.json();
+            const data = await apiRequest(API_ENDPOINTS.COMMODITIES_PRICE(code));
             if (!data.error) {
                 setSelectedCommodity(data);
                 fetchChart(data.name, activeTimeFrame.value);
@@ -54,12 +55,7 @@ const CommoditiesPage = () => {
             const mappedTicker = tickerMap[commodityName] || tickerMap[Object.keys(tickerMap).find(k => commodityName.includes(k))];
             
             if (mappedTicker) {
-                const res = await fetch(`http://localhost:5001/chart/${mappedTicker}?period=${period}`);
-                if (res.ok) {
-                    setChartData(await res.json());
-                } else {
-                    setChartData(null);
-                }
+                setChartData(await apiRequest(API_ENDPOINTS.CHART(mappedTicker, period)));
             } else {
                 setChartData(null);
             }

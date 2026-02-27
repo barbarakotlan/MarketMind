@@ -4,6 +4,7 @@ import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title,
   Tooltip, Legend, Filler,
 } from 'chart.js';
+import { API_ENDPOINTS, apiRequest } from '../../config/api';
 
 // Register all Chart.js components and controllers
 // Removed TimeScale and the adapter to prevent build errors
@@ -32,8 +33,7 @@ function PortfolioGrowthChart({ onDataFetched }) {
         setActivePeriod(period);
 
         // Fetch data from the endpoint we built in api.py
-        fetch(`http://127.0.0.1:5001/paper/history?period=${period}`)
-            .then(res => res.json())
+        apiRequest(API_ENDPOINTS.PORTFOLIO_HISTORY(period))
             .then(data => {
                 if (data.error) throw new Error(data.error);
                 if (!data.dates || data.dates.length === 0) {

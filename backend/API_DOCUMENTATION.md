@@ -768,9 +768,11 @@ All endpoints follow consistent error response format:
 
 ## 🔐 Authentication
 
-**Current Version:** No authentication required (development mode)
+**Current Version:** Hybrid mode
+- Public market-data endpoints are open
+- User-data endpoints require `Authorization: Bearer <Clerk session token>`
 
-**Future:** API key authentication will be added for production deployment.
+**Implemented Protected Areas:** watchlist, paper trading, notifications, prediction portfolio routes.
 
 ---
 
