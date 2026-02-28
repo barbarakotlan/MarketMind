@@ -36,7 +36,7 @@ except ImportError:
 # --- Tazeem's Imports ---
 from model import create_dataset, estimate_week, try_today, estimate_new, good_model
 from news_fetcher import get_general_news
-from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict
+from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
@@ -805,6 +805,9 @@ def predict_stock(model, ticker):
         elif model in ("RandomForest", "XGBoost"):
             period = "6mo"
             min_rows = 40
+        elif model == "LSTM":
+            period = "1y"
+            min_rows = 120
         else:
             return jsonify({"error": "Unknown model"}), 400
 
@@ -818,9 +821,14 @@ def predict_stock(model, ticker):
             preds = linear_regression_predict(df, days_ahead=7)
         elif model == "RandomForest":
             preds = random_forest_predict(df, days_ahead=7)
-        else:  # XGBoost
+        elif model == "XGBoost":
             preds = xgboost_predict(df, days_ahead=7)
-
+        elif model == "LSTM":
+            lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=100, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+            preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device, days_ahead=7)
+        else:
+            return jsonify({"error": "Unknown model"}), 400
+        
         if preds is None or len(preds) == 0:
             return jsonify({
                 "error": f"{model} prediction failed."
@@ -829,10 +837,7 @@ def predict_stock(model, ticker):
         recent_close = float(df["Close"].iloc[-1])
         recent_date = df.index[-1]
 
-        future_dates = [
-            recent_date + pd.Timedelta(days=i + 1)
-            for i in range(len(preds))
-        ]
+        future_dates = pd.bdate_range(start=recent_date + pd.Timedelta(days=1), periods=len(preds))
 
         response = {
             "symbol": info.get('symbol', sanitized_ticker.upper()),
@@ -870,7 +875,7 @@ def predict_ensemble(ticker):
         if ensemble_preds is None: return jsonify({"error": "Ensemble prediction failed."}), 500
         recent_close = float(df["Close"].iloc[-1])
         recent_date = df.index[-1]
-        future_dates = [recent_date + pd.Timedelta(days=i + 1) for i in range(6)]
+        future_dates = pd.bdate_range(start=recent_date + pd.Timedelta(days=1), periods=len(ensemble_preds))
         response = {
             "symbol": info.get('symbol', ticker.upper()), "companyName": info.get('longName', 'N/A'),
             "recentDate": recent_date.strftime('%Y-%m-%d'), "recentClose": round(recent_close, 2),

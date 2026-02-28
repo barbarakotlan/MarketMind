@@ -164,42 +164,51 @@ const PredictionsPage = ({ initialTicker }) => {
   {/* 👇 CONDITIONAL BUTTONS */}
   {!useEnsemble && (
     <div className="flex gap-3">
-      <button
+        <button
         onClick={() => setUseModel("LinReg")}
-className={`px-3 py-2 rounded-md transition-all ${
-  useModel === "LinReg"
-    ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
-    : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-}`}
-      >
+        className={`px-3 py-2 rounded-md transition-all ${
+        useModel === "LinReg"
+            ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
+            : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+        }`}
+        >
         Linear Regression
-      </button>
+        </button>
 
-      <button
-        onClick={() => setUseModel("RandomForest")}
-className={`px-3 py-2 rounded-md transition-all ${
-  useModel === "RandomForest"
-    ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
-    : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-}`}
-      >
+        <button
+            onClick={() => setUseModel("RandomForest")}
+            className={`px-3 py-2 rounded-md transition-all ${
+            useModel === "RandomForest"
+                ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
+                : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+            }`}
+        >
         Random Forest
-      </button>
+        </button>
 
-      <button
+        <button
         onClick={() => setUseModel("XGBoost")}
-className={`px-3 py-2 rounded-md transition-all ${
-  useModel === "XGBoost"
-    ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
-    : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-}`}
-      >
+        className={`px-3 py-2 rounded-md transition-all ${
+        useModel === "XGBoost"
+            ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
+            : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+        }`}
+        >
         XGBoost
-      </button>
+        </button>
+        <button
+            onClick={() => setUseModel("LSTM")}
+            className={`px-3 py-2 rounded-md transition-all ${
+            useModel === "LSTM"
+                ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
+                : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+            }`}
+        >
+            LSTM
+        </button>
     </div>
   )}
 </div>
-
             </div>
 
             {/* Error Message */}
@@ -237,15 +246,19 @@ className={`px-3 py-2 rounded-md transition-all ${
                         </div>
                     </div>
 
-                    <PredictionChart predictionData={predictionData} />
+                    <PredictionChart predictionData={{...predictionData, predictions: predictionData.predictions.filter(pred => {
+                        const day = new Date(pred.date).getDay();
+                        return day !== 0 && day !== 6; // skip Sundays (0) and Saturdays (6)
+                        })
+                    }}  />
 
                     {useEnsemble && predictionData.modelBreakdown && (
-  <ModelComparisonCard 
-    modelBreakdown={predictionData.modelBreakdown}
-    modelsUsed={predictionData.modelsUsed}
-    confidence={predictionData.confidence}
-  />
-)}
+                    <ModelComparisonCard 
+                        modelBreakdown={predictionData.modelBreakdown}
+                        modelsUsed={predictionData.modelsUsed}
+                        confidence={predictionData.confidence}
+                    />
+                    )}
 
 
                     <StockPredictionCard data={predictionData} />

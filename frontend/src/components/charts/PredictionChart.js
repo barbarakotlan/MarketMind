@@ -35,7 +35,7 @@ const PredictionChart = ({ predictionData }) => {
 
     // Add recent actual price as the starting point
     const allDates = [
-        new Date(predictionData.recentDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         ...dates
     ];
     const allPrices = [predictionData.recentClose, ...predictedPrices];
