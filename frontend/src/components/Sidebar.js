@@ -137,7 +137,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             <div className={`flex items-center justify-between h-14 px-3 border-b flex-shrink-0 ${theme.divider}`}>
                 {!isCollapsed && (
                     <img
-                        src={isDarkMode ? 'marketmindtransparentdark.png' : 'marketmindtransparent.png'}
+                        src={isDarkMode ? 'marketmindtransparent.png' : 'marketmindtransparentdark.png'}
                         alt="MarketMind"
                         className="h-9 w-auto object-contain"
                     />
