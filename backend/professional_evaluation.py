@@ -18,6 +18,7 @@ except:
     XGBOOST_AVAILABLE = False
 
 from data_fetcher import prepare_data_for_ml
+from selective_prediction import run_selective_evaluation, SelectiveConfig
 
 
 def create_fixed_features(df, lookback=30):
@@ -228,7 +229,15 @@ def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
         },
         'dates': [d.strftime('%Y-%m-%d') for d in dates],
         'actuals': [float(a) for a in actuals],
-        'models': {}
+        'models': {},
+        'selected_thresholds': {},
+        'selective_scenarios': {},
+        'coverage_pred': {},
+        'coverage_trade': {},
+        'regime_metrics': {},
+        'lift_curve': [],
+        'regime_distribution': {},
+        'selector_diagnostics': {},
     }
     
     for model_name, preds in predictions.items():
@@ -269,6 +278,27 @@ def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
     ensemble_preds = np.array(predictions['ensemble'])
     returns_data = calculate_trading_returns(ensemble_preds, actuals_array)
     results['returns'] = returns_data
+
+    # Add leakage-safe selective prediction evaluation (non-breaking: defaults remain unchanged)
+    try:
+        selective = run_selective_evaluation(
+            ticker=ticker,
+            config=SelectiveConfig(retrain_frequency=retrain_frequency),
+        )
+        if selective:
+            results['selected_thresholds'] = selective.get('selected_thresholds', {})
+            results['selective_scenarios'] = selective.get('selective_scenarios', {})
+            results['coverage_pred'] = selective.get('coverage_pred', {})
+            results['coverage_trade'] = selective.get('coverage_trade', {})
+            results['regime_metrics'] = selective.get('regime_metrics', {})
+            results['lift_curve'] = selective.get('lift_curve', [])
+            results['regime_distribution'] = selective.get('regime_distribution', {})
+            results['selector_diagnostics'] = selective.get('diagnostics', {})
+    except Exception as selective_error:
+        results['selector_diagnostics'] = {
+            'status': 'failed',
+            'error': str(selective_error),
+        }
     
     # Best model
     best_by_mape = min(

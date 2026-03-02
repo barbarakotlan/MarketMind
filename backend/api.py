@@ -38,6 +38,7 @@ from model import create_dataset, estimate_week, try_today, estimate_new, good_m
 from news_fetcher import get_general_news
 from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict
 from professional_evaluation import rolling_window_backtest
+from selective_prediction import infer_selective_decision, SELECTIVE_MODES, SELECTIVE_DISABLED_STATUSES
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
 from commodities_fetcher import get_commodity_price, get_commodity_list, get_commodities_by_category
@@ -855,6 +856,61 @@ def predict_stock(model, ticker):
         log_api_error(logger, f'/predict/{ticker}', e, ticker)
         return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
 
+def _to_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+    return False
+
+
+def _live_ensemble_signal_components(sanitized_ticker):
+    df = create_dataset(sanitized_ticker, period="1y")
+    if df.empty or len(df) < 30:
+        return None
+
+    ensemble_preds, individual_preds = ensemble_predict(df, days_ahead=6)
+    if ensemble_preds is None or len(ensemble_preds) == 0:
+        return None
+
+    recent_close = float(df["Close"].iloc[-1])
+    if recent_close == 0:
+        raw_signal = 0.0
+    else:
+        raw_signal = float((float(ensemble_preds[0]) - recent_close) / recent_close)
+
+    model_returns = []
+    for preds in individual_preds.values():
+        if preds is None or len(preds) == 0 or recent_close == 0:
+            continue
+        model_returns.append((float(preds[0]) - recent_close) / recent_close)
+    disagreement = float(np.std(model_returns)) if len(model_returns) > 1 else 0.0
+
+    return {
+        "df": df,
+        "ensemble_preds": ensemble_preds,
+        "individual_preds": individual_preds,
+        "recent_close": recent_close,
+        "raw_signal": raw_signal,
+        "disagreement": disagreement,
+    }
+
+
+def _resolve_selector_gate_for_ticker(sanitized_ticker, requested_mode):
+    signal_parts = _live_ensemble_signal_components(sanitized_ticker)
+    raw_signal = signal_parts["raw_signal"] if signal_parts else 0.0
+    disagreement = signal_parts["disagreement"] if signal_parts else 0.0
+    return infer_selective_decision(
+        ticker=sanitized_ticker,
+        requested_mode=requested_mode,
+        raw_signal=raw_signal,
+        ensemble_disagreement=disagreement,
+        logger=logger,
+    )
 
 
 @app.route('/predict/ensemble/<string:ticker>')
@@ -862,27 +918,76 @@ def predict_stock(model, ticker):
 def predict_ensemble(ticker):
     try:
         sanitized_ticker = ticker.split(':')[0]
+        requested_mode = str(request.args.get('abstain_mode', 'none')).strip().lower()
+        if requested_mode not in SELECTIVE_MODES:
+            requested_mode = 'none'
+
         stock = yf.Ticker(sanitized_ticker)
         info = stock.info
-        df = create_dataset(sanitized_ticker, period="1y")
-        if df.empty or len(df) < 30: return jsonify({"error": "Insufficient historical data."}), 404
-        ensemble_preds, individual_preds = ensemble_predict(df, days_ahead=6)
-        if ensemble_preds is None: return jsonify({"error": "Ensemble prediction failed."}), 500
-        recent_close = float(df["Close"].iloc[-1])
+        signal_parts = _live_ensemble_signal_components(sanitized_ticker)
+        if signal_parts is None:
+            return jsonify({"error": "Insufficient historical data."}), 404
+
+        df = signal_parts["df"]
+        ensemble_preds = signal_parts["ensemble_preds"]
+        individual_preds = signal_parts["individual_preds"]
+        recent_close = signal_parts["recent_close"]
+        raw_signal = signal_parts["raw_signal"]
+        disagreement = signal_parts["disagreement"]
+
         recent_date = df.index[-1]
         future_dates = [recent_date + pd.Timedelta(days=i + 1) for i in range(6)]
+
+        selector = infer_selective_decision(
+            ticker=sanitized_ticker,
+            requested_mode=requested_mode,
+            raw_signal=raw_signal,
+            ensemble_disagreement=disagreement,
+            logger=logger,
+        )
+
         response = {
-            "symbol": info.get('symbol', ticker.upper()), "companyName": info.get('longName', 'N/A'),
-            "recentDate": recent_date.strftime('%Y-%m-%d'), "recentClose": round(recent_close, 2),
+            "symbol": info.get('symbol', ticker.upper()),
+            "companyName": info.get('longName', 'N/A'),
+            "recentDate": recent_date.strftime('%Y-%m-%d'),
+            "recentClose": round(recent_close, 2),
             "recentPredicted": round(float(ensemble_preds[0]), 2),
-            "predictions": [{"date": date.strftime('%Y-%m-%d'), "predictedClose": round(float(pred), 2)}
-                            for date, pred in zip(future_dates, ensemble_preds)],
-            "modelBreakdown": {model_name: [round(float(p), 2) for p in preds]
-                               for model_name, preds in individual_preds.items()},
-            "modelsUsed": list(individual_preds.keys()), "ensembleMethod": "weighted_average",
-            "confidence": round(95.0 - (np.std(list(individual_preds.values())) * 2), 1) if len(
-                individual_preds) > 1 else 85.0
+            "predictions": [
+                {"date": date.strftime('%Y-%m-%d'), "predictedClose": round(float(pred), 2)}
+                for date, pred in zip(future_dates, ensemble_preds)
+            ],
+            "modelBreakdown": {
+                model_name: [round(float(p), 2) for p in preds]
+                for model_name, preds in individual_preds.items()
+            },
+            "modelsUsed": list(individual_preds.keys()),
+            "ensembleMethod": "weighted_average",
+            "confidence": round(95.0 - (np.std(list(individual_preds.values())) * 2), 1)
+            if len(individual_preds) > 1
+            else 85.0,
+            "abstain": bool(selector.get("abstain", False)),
+            "selector_prob": selector.get("selector_prob"),
+            "selector_threshold": selector.get("selector_threshold"),
+            "selector_mode_requested": selector.get("selector_mode_requested", requested_mode),
+            "selector_mode_effective": selector.get("selector_mode_effective", "none"),
+            "selector_status": selector.get("selector_status", "model_unavailable"),
+            "abstain_reason": selector.get("abstain_reason"),
+            "regime_bucket": selector.get("regime_bucket", "unknown"),
         }
+
+        logger.info(
+            "selector gate ticker=%s mode_req=%s mode_eff=%s status=%s prob=%s threshold=%s abstain=%s reason=%s regime=%s",
+            sanitized_ticker,
+            response["selector_mode_requested"],
+            response["selector_mode_effective"],
+            response["selector_status"],
+            response["selector_prob"],
+            response["selector_threshold"],
+            response["abstain"],
+            response["abstain_reason"],
+            response["regime_bucket"],
+        )
+
         return jsonify(response)
     except Exception as e:
         logger.error(f"Error in ensemble prediction for {ticker}: {e}")
@@ -1076,6 +1181,19 @@ def buy_stock():
         ticker = data.get('ticker', '').upper();
         shares = float(data.get('shares', 0))
         if shares <= 0: return jsonify({"error": "Shares must be positive"}), 400
+        enforce_selector = _to_bool(data.get('enforce_selector', False))
+        requested_mode = str(data.get('abstain_mode', 'conservative')).strip().lower() if enforce_selector else 'none'
+        if requested_mode not in SELECTIVE_MODES:
+            requested_mode = 'conservative' if enforce_selector else 'none'
+        if enforce_selector:
+            selector_gate = _resolve_selector_gate_for_ticker(ticker, requested_mode)
+            mode_disabled = selector_gate.get('selector_status') in SELECTIVE_DISABLED_STATUSES
+            if selector_gate.get('abstain') or mode_disabled:
+                return jsonify({
+                    "error": "Trade blocked by selective prediction gate",
+                    "reason": selector_gate.get('abstain_reason') or selector_gate.get('selector_status'),
+                    "selector_gate": selector_gate,
+                }), 409
         stock = yf.Ticker(ticker);
         info = stock.info;
         price = info.get('regularMarketPrice')
@@ -1115,6 +1233,19 @@ def sell_stock():
         ticker = data.get('ticker', '').upper();
         shares = float(data.get('shares', 0))
         if shares <= 0: return jsonify({"error": "Shares must be positive"}), 400
+        enforce_selector = _to_bool(data.get('enforce_selector', False))
+        requested_mode = str(data.get('abstain_mode', 'conservative')).strip().lower() if enforce_selector else 'none'
+        if requested_mode not in SELECTIVE_MODES:
+            requested_mode = 'conservative' if enforce_selector else 'none'
+        if enforce_selector:
+            selector_gate = _resolve_selector_gate_for_ticker(ticker, requested_mode)
+            mode_disabled = selector_gate.get('selector_status') in SELECTIVE_DISABLED_STATUSES
+            if selector_gate.get('abstain') or mode_disabled:
+                return jsonify({
+                    "error": "Trade blocked by selective prediction gate",
+                    "reason": selector_gate.get('abstain_reason') or selector_gate.get('selector_status'),
+                    "selector_gate": selector_gate,
+                }), 409
         pos = portfolio["positions"].get(ticker)
         if not pos or pos["shares"] < shares:
             return jsonify(
