@@ -22,3 +22,9 @@
 
 - Selector abstention is enabled only when ranking quality is positive on validation (lift gate) and remains stable on a guard slice.
 - When those conditions are not met, the system fails safe to non-abstaining behavior.
+- This is a selective prediction layer inspired by Learn-to-Abstain: we only trust the selector when it demonstrates stable ranking of informative vs uninformative periods.
+
+## Validation Scope
+
+- Artifact-based sanity checks verify status plumbing only (`ok`/`disabled_*` propagation and coverage monotonic diagnostics recording).
+- These checks are not performance claims because artifacts are not regenerated as part of CI.
