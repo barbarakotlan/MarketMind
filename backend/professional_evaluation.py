@@ -2,6 +2,9 @@
 Professional-grade ML model evaluation system
 Implements DATA_SPECS.md with 42 fixed features and rolling window backtesting
 """
+import copy
+import os
+import time
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
@@ -18,7 +21,36 @@ except:
     XGBOOST_AVAILABLE = False
 
 from data_fetcher import prepare_data_for_ml
-from selective_prediction import run_selective_evaluation, SelectiveConfig
+from selective_prediction import run_selective_evaluation_from_df, SelectiveConfig
+
+
+_EVAL_CACHE = {}
+_EVAL_CACHE_TTL_SECONDS = int(os.getenv('EVAL_CACHE_TTL_SECONDS', '900'))
+
+
+def _cache_key(ticker, test_days, retrain_frequency, include_selective, fast_mode, max_train_rows):
+    return (
+        str(ticker).upper(),
+        int(test_days),
+        int(retrain_frequency),
+        bool(include_selective),
+        bool(fast_mode),
+        int(max_train_rows) if max_train_rows else None,
+    )
+
+
+def _get_cached_result(key):
+    cached = _EVAL_CACHE.get(key)
+    if not cached:
+        return None
+    if (time.time() - cached['ts']) > _EVAL_CACHE_TTL_SECONDS:
+        _EVAL_CACHE.pop(key, None)
+        return None
+    return copy.deepcopy(cached['result'])
+
+
+def _set_cached_result(key, result):
+    _EVAL_CACHE[key] = {'ts': time.time(), 'result': copy.deepcopy(result)}
 
 
 def create_fixed_features(df, lookback=30):
@@ -77,7 +109,7 @@ def create_fixed_features(df, lookback=30):
     return df, features
 
 
-def train_models(X_train, y_train):
+def train_models(X_train, y_train, fast_mode=False):
     """
     Train all 3 models: RandomForest, XGBoost, LinearRegression
     
@@ -87,7 +119,7 @@ def train_models(X_train, y_train):
     
     # Random Forest
     rf = RandomForestRegressor(
-        n_estimators=100,
+        n_estimators=60 if fast_mode else 100,
         max_depth=10,
         min_samples_split=5,
         min_samples_leaf=2,
@@ -100,8 +132,8 @@ def train_models(X_train, y_train):
     # XGBoost
     if XGBOOST_AVAILABLE:
         xgb_model = xgb.XGBRegressor(
-            n_estimators=100,
-            max_depth=5,
+            n_estimators=60 if fast_mode else 100,
+            max_depth=4 if fast_mode else 5,
             learning_rate=0.1,
             subsample=0.8,
             colsample_bytree=0.8,
@@ -119,7 +151,14 @@ def train_models(X_train, y_train):
     return models
 
 
-def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
+def rolling_window_backtest(
+    ticker,
+    test_days=60,
+    retrain_frequency=5,
+    include_selective=True,
+    fast_mode=False,
+    max_train_rows=None,
+):
     """
     Professional rolling window backtesting
     
@@ -133,6 +172,25 @@ def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
     
     Returns comprehensive evaluation results
     """
+    fast_mode = bool(fast_mode)
+    include_selective = bool(include_selective)
+    retrain_frequency = int(retrain_frequency)
+    if fast_mode:
+        retrain_frequency = max(retrain_frequency, 10)
+
+    cache_key = _cache_key(
+        ticker=ticker,
+        test_days=test_days,
+        retrain_frequency=retrain_frequency,
+        include_selective=include_selective,
+        fast_mode=fast_mode,
+        max_train_rows=max_train_rows,
+    )
+    cached = _get_cached_result(cache_key)
+    if cached is not None:
+        cached['cache'] = {'hit': True, 'ttl_seconds': _EVAL_CACHE_TTL_SECONDS}
+        return cached
+
     print(f"\n{'='*60}")
     print(f"PROFESSIONAL EVALUATION: {ticker}")
     print(f"{'='*60}\n")
@@ -181,11 +239,13 @@ def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
         # Retrain models every retrain_frequency days or first iteration
         if models is None or (i - test_start_idx) % retrain_frequency == 0:
             train_data = df.iloc[:i]
+            if max_train_rows and len(train_data) > int(max_train_rows):
+                train_data = train_data.tail(int(max_train_rows))
             X_train = train_data[feature_cols].values
             y_train = train_data['Close'].values
             
             print(f"  → Training at day {i} ({len(X_train)} samples)...")
-            models = train_models(X_train, y_train)
+            models = train_models(X_train, y_train, fast_mode=fast_mode)
             last_train_idx = i
         
         # Prepare test sample (1-day ahead prediction)
@@ -238,6 +298,14 @@ def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
         'lift_curve': [],
         'regime_distribution': {},
         'selector_diagnostics': {},
+        'cache': {'hit': False, 'ttl_seconds': _EVAL_CACHE_TTL_SECONDS},
+        'run_config': {
+            'test_days': int(test_days),
+            'retrain_frequency': int(retrain_frequency),
+            'include_selective': bool(include_selective),
+            'fast_mode': bool(fast_mode),
+            'max_train_rows': int(max_train_rows) if max_train_rows else None,
+        },
     }
     
     for model_name, preds in predictions.items():
@@ -279,25 +347,32 @@ def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
     returns_data = calculate_trading_returns(ensemble_preds, actuals_array)
     results['returns'] = returns_data
 
-    # Add leakage-safe selective prediction evaluation (non-breaking: defaults remain unchanged)
-    try:
-        selective = run_selective_evaluation(
-            ticker=ticker,
-            config=SelectiveConfig(retrain_frequency=retrain_frequency),
-        )
-        if selective:
-            results['selected_thresholds'] = selective.get('selected_thresholds', {})
-            results['selective_scenarios'] = selective.get('selective_scenarios', {})
-            results['coverage_pred'] = selective.get('coverage_pred', {})
-            results['coverage_trade'] = selective.get('coverage_trade', {})
-            results['regime_metrics'] = selective.get('regime_metrics', {})
-            results['lift_curve'] = selective.get('lift_curve', [])
-            results['regime_distribution'] = selective.get('regime_distribution', {})
-            results['selector_diagnostics'] = selective.get('diagnostics', {})
-    except Exception as selective_error:
+    # Optional selective prediction evaluation (this is the expensive part)
+    if include_selective:
+        try:
+            selective = run_selective_evaluation_from_df(
+                ticker=ticker,
+                df_raw=df_raw,
+                config=SelectiveConfig(retrain_frequency=retrain_frequency),
+            )
+            if selective:
+                results['selected_thresholds'] = selective.get('selected_thresholds', {})
+                results['selective_scenarios'] = selective.get('selective_scenarios', {})
+                results['coverage_pred'] = selective.get('coverage_pred', {})
+                results['coverage_trade'] = selective.get('coverage_trade', {})
+                results['regime_metrics'] = selective.get('regime_metrics', {})
+                results['lift_curve'] = selective.get('lift_curve', [])
+                results['regime_distribution'] = selective.get('regime_distribution', {})
+                results['selector_diagnostics'] = selective.get('diagnostics', {})
+        except Exception as selective_error:
+            results['selector_diagnostics'] = {
+                'status': 'failed',
+                'error': str(selective_error),
+            }
+    else:
         results['selector_diagnostics'] = {
-            'status': 'failed',
-            'error': str(selective_error),
+            'status': 'skipped',
+            'reason': 'include_selective=false',
         }
     
     # Best model
@@ -311,7 +386,8 @@ def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
     print(f"\n{'='*60}")
     print(f"BEST MODEL: {best_by_mape.upper()}")
     print(f"{'='*60}\n")
-    
+
+    _set_cached_result(cache_key, results)
     return results
 
 

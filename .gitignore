@@ -82,3 +82,6 @@ paper_portfolio.json
 backend/paper_portfolio.json
 backend/notifications.json
 backend/user_data/
+
+# ML artifacts (generated at runtime)
+backend/model_artifacts/

@@ -1865,8 +1865,22 @@ def evaluate_models(ticker):
     try:
         sanitized_ticker = ticker.split(':')[0]
         test_days = int(request.args.get('test_days', 60))
-        retrain_frequency = int(request.args.get('retrain_frequency', 5))
-        result = rolling_window_backtest(sanitized_ticker, test_days=test_days, retrain_frequency=retrain_frequency)
+        fast_mode_raw = str(request.args.get('fast_mode', 'true')).strip().lower()
+        fast_mode = fast_mode_raw in {'1', 'true', 'yes', 'on'}
+        include_selective_raw = str(request.args.get('include_selective', 'false')).strip().lower()
+        include_selective = include_selective_raw in {'1', 'true', 'yes', 'on'}
+        default_retrain = 10 if fast_mode else 5
+        retrain_frequency = int(request.args.get('retrain_frequency', default_retrain))
+        max_train_rows = request.args.get('max_train_rows', default=450 if fast_mode else None, type=int)
+
+        result = rolling_window_backtest(
+            sanitized_ticker,
+            test_days=test_days,
+            retrain_frequency=retrain_frequency,
+            include_selective=include_selective,
+            fast_mode=fast_mode,
+            max_train_rows=max_train_rows,
+        )
         if result is None: return jsonify({"error": "Insufficient data for evaluation"}), 404
         return jsonify(result)
     except Exception as e:

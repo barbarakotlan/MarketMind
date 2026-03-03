@@ -60,21 +60,34 @@ export const installAuthFetchInterceptor = () => {
                 ? normalizedUrl
                 : (normalizedUrl !== requestUrl ? new Request(normalizedUrl, input) : input);
 
+        const buildHeaders = (sourceHeaders, tokenValue) => {
+            const headers = new Headers(
+                sourceHeaders || (normalizedInput instanceof Request ? normalizedInput.headers : undefined)
+            );
+            if (tokenValue && !headers.has('Authorization')) {
+                headers.set('Authorization', `Bearer ${tokenValue}`);
+            }
+            return headers;
+        };
+
         if (!tokenGetter) {
             return originalFetch(normalizedInput, init);
         }
 
-        const token = await tokenGetter();
-        if (!token) {
-            return originalFetch(normalizedInput, init);
+        let token = await tokenGetter({ skipCache: false });
+        let headers = buildHeaders(init.headers, token);
+        let response = await originalFetch(normalizedInput, { ...init, headers });
+
+        // If token is stale/expired, retry once with a fresh token.
+        if (response.status === 401) {
+            const freshToken = await tokenGetter({ skipCache: true });
+            if (freshToken && freshToken !== token) {
+                headers = buildHeaders(init.headers, freshToken);
+                response = await originalFetch(normalizedInput, { ...init, headers });
+            }
         }
 
-        const headers = new Headers(init.headers || (normalizedInput instanceof Request ? normalizedInput.headers : undefined));
-        if (!headers.has('Authorization')) {
-            headers.set('Authorization', `Bearer ${token}`);
-        }
-
-        return originalFetch(normalizedInput, { ...init, headers });
+        return response;
     };
 
     interceptorInstalled = true;

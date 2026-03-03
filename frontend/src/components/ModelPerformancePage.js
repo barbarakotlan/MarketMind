@@ -9,6 +9,7 @@ const ModelPerformancePage = () => {
     const [error, setError] = useState('');
     const [selectedModel, setSelectedModel] = useState('ensemble');
     const [testDays, setTestDays] = useState(60);
+    const [deepEvaluation, setDeepEvaluation] = useState(false);
 
     const handleEvaluate = async (e) => {
         e.preventDefault();
@@ -23,7 +24,22 @@ const ModelPerformancePage = () => {
         setEvaluationData(null);
 
         try {
-            const data = await apiRequest(API_ENDPOINTS.EVALUATE(ticker.toUpperCase(), { test_days: testDays }));
+            const params = deepEvaluation
+                ? {
+                    test_days: testDays,
+                    fast_mode: false,
+                    include_selective: true,
+                    retrain_frequency: 5,
+                }
+                : {
+                    test_days: testDays,
+                    fast_mode: true,
+                    include_selective: false,
+                    retrain_frequency: 10,
+                    max_train_rows: 450,
+                };
+
+            const data = await apiRequest(API_ENDPOINTS.EVALUATE(ticker.toUpperCase(), params));
             setEvaluationData(data);
         } catch (err) {
             setError(`Error: Could not evaluate ${ticker.toUpperCase()}. Please check the ticker and try again.`);
@@ -96,8 +112,18 @@ const ModelPerformancePage = () => {
                         </button>
                     </div>
                     
+                    <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                        <input
+                            type="checkbox"
+                            checked={deepEvaluation}
+                            onChange={(e) => setDeepEvaluation(e.target.checked)}
+                            className="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700"
+                        />
+                        Run deep evaluation (slower, includes selective-mode analysis)
+                    </label>
+
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        <strong>Note:</strong> Evaluation runs rolling window backtesting with 3 ML models. Takes 10-30 seconds.
+                        <strong>Note:</strong> Fast mode is optimized for responsiveness. Deep mode can take significantly longer.
                     </p>
                 </form>
             </div>

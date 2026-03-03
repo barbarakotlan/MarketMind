@@ -17,7 +17,7 @@ class TestModeDisableBehavior(unittest.TestCase):
         frame = pd.DataFrame(
             {
                 "selector_prob": np.full(n, 0.95),
-                "raw_signal": np.full(n, 0.01),  # one entry then hold
+                "raw_signal": np.zeros(n),  # no entries possible
                 "target_return": np.full(n, 0.001),
                 "regime_bucket": ["trend"] * n,
             },

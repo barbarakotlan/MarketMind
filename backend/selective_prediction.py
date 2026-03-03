@@ -29,7 +29,7 @@ except Exception:
     xgb = None
     XGBOOST_AVAILABLE = False
 
-from data_fetcher import prepare_data_for_ml
+from data_fetcher import prepare_data_for_ml, fetch_from_yfinance, validate_and_clean_data
 
 
 SELECTIVE_SCHEMA_VERSION = "selective_v1"
@@ -267,7 +267,7 @@ def generate_purged_oof_predictions(
 ) -> pd.DataFrame:
     rows = []
     model_cache = None
-    cache_key = None
+    last_retrain_i = None
     n = len(frame)
     candidate_indices = list(range(n))
 
@@ -286,19 +286,17 @@ def generate_purged_oof_predictions(
         if len(train) < config.min_history:
             continue
 
-        key = int(train_idx[-1])
         if (
             model_cache is None
-            or cache_key is None
-            or (i - cache_key) >= max(1, config.retrain_frequency)
-            or key != cache_key
+            or last_retrain_i is None
+            or (i - last_retrain_i) >= max(1, config.retrain_frequency)
         ):
             model_cache = _train_base_models(
                 train[feature_columns].values,
                 train[target_column].values,
                 seed=config.seed,
             )
-            cache_key = key
+            last_retrain_i = i
 
         row = frame.iloc[i]
         if row[feature_columns].isna().any():
@@ -485,7 +483,6 @@ def simulate_abstention_scenario(
         }
 
     cost = one_way_cost_bps / 10000.0
-    current_pos = 0
     equity = 1.0
     records = []
 
@@ -498,15 +495,11 @@ def simulate_abstention_scenario(
         else:
             abstain = prob < tau
 
+        # Open-to-open target is one-step horizon, so each row is an independent trade decision.
+        # Non-zero signals open at t+1 open and close at t+1+H open (2 one-way legs).
         pos_target = 0 if abstain else _signal_from_raw(raw_signal, pred_deadband, eps)
-        entry_event = 1 if (current_pos == 0 and pos_target != 0) else 0
-        if current_pos != pos_target:
-            if current_pos != 0 and pos_target != 0 and current_pos != pos_target:
-                legs = 2
-            else:
-                legs = 1
-        else:
-            legs = 0
+        entry_event = 1 if pos_target != 0 else 0
+        legs = 2 if pos_target != 0 else 0
 
         net_return = (pos_target * y) - (legs * cost)
         equity *= (1.0 + net_return)
@@ -527,7 +520,6 @@ def simulate_abstention_scenario(
                 "regime_bucket": row.get("regime_bucket", "unknown"),
             }
         )
-        current_pos = pos_target
 
     scenario = pd.DataFrame(records).set_index("date")
     active = scenario["pos_target"] != 0
@@ -833,11 +825,9 @@ def run_selective_evaluation_from_df(
     split_raw = split_contiguous(selector_frame)
     emb = config.embargo
 
+    # Purge train/validation and validation/test boundaries while preserving enough validation rows.
     train = split_raw["train"].iloc[:-emb].copy() if len(split_raw["train"]) > emb else pd.DataFrame()
-    if len(split_raw["validation"]) > (2 * emb):
-        validation = split_raw["validation"].iloc[emb:-emb].copy()
-    else:
-        validation = pd.DataFrame()
+    validation = split_raw["validation"].iloc[emb:].copy() if len(split_raw["validation"]) > emb else pd.DataFrame()
     test = split_raw["test"].iloc[emb:].copy() if len(split_raw["test"]) > emb else pd.DataFrame()
 
     split = {"train": train, "validation": validation, "test": test}
@@ -1070,6 +1060,14 @@ def run_selective_evaluation(
 ) -> Optional[Dict[str, object]]:
     config = config or SelectiveConfig()
     df = prepare_data_for_ml(ticker, min_days=max(320, config.min_history + config.lookback + 40))
+    if df is not None and len(df) < 800:
+        try:
+            longer = fetch_from_yfinance(ticker, period="5y")
+            longer = validate_and_clean_data(longer) if longer is not None else None
+            if longer is not None and len(longer) > len(df):
+                df = longer
+        except Exception:
+            pass
     if df is None or df.empty:
         return None
     return run_selective_evaluation_from_df(
