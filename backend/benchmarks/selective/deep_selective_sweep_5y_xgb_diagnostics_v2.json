@@ -1,0 +1,432 @@
+{
+  "generated_at": "2026-03-03T05:31:18.345760Z",
+  "config": {
+    "period": "5y",
+    "xgboost_enabled": true,
+    "retrain_frequency": 12,
+    "min_history": 120,
+    "seed": 42,
+    "conservative_min_coverage": 0.85,
+    "aggressive_min_coverage": 0.55,
+    "min_trades": 40,
+    "risk_max_sharpe_degrade": 0.2,
+    "lift_sanity_gate_enabled": true,
+    "lift_sanity_min_spread": 0.0
+  },
+  "results": [
+    {
+      "ticker": "AAPL",
+      "status": "ok",
+      "none": {
+        "sharpe": -1.6824269878819955,
+        "max_drawdown": -0.3137540118179165
+      },
+      "modes": {
+        "conservative": {
+          "status": "disabled_conservative",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "aggressive": {
+          "status": "disabled_aggressive",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "risk_conservative": {
+          "status": "disabled_risk_conservative",
+          "objective": "maxdd",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "risk_aggressive": {
+          "status": "disabled_risk_aggressive",
+          "objective": "maxdd",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        }
+      },
+      "lift_spread": 0.003998931510553477,
+      "label_positive_rate": {
+        "train": 0.2732673267326733,
+        "validation": 0.26737967914438504,
+        "test": 0.2956989247311828
+      },
+      "summary": {
+        "best_sharpe_mode": null,
+        "best_risk_mode": null,
+        "sharpe_modes_lift_gate_disabled": false,
+        "risk_improved_within_cap": {
+          "risk_conservative": false,
+          "risk_aggressive": false
+        }
+      }
+    },
+    {
+      "ticker": "MSFT",
+      "status": "ok",
+      "none": {
+        "sharpe": -1.6912357700286051,
+        "max_drawdown": -0.3015801540405624
+      },
+      "modes": {
+        "conservative": {
+          "status": "disabled_conservative",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "aggressive": {
+          "status": "disabled_aggressive",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "risk_conservative": {
+          "status": "ok",
+          "objective": "maxdd",
+          "tau": 0.12,
+          "coverage_pred": 0.956989247311828,
+          "executed_trades": 178,
+          "sharpe": -1.6842975688281243,
+          "max_drawdown": -0.284920047439133,
+          "feasible_tau_count": 14,
+          "candidate_tau_count": 5
+        },
+        "risk_aggressive": {
+          "status": "ok",
+          "objective": "maxdd",
+          "tau": 0.19,
+          "coverage_pred": 0.8225806451612904,
+          "executed_trades": 153,
+          "sharpe": -1.3107312735366765,
+          "max_drawdown": -0.2560205354256784,
+          "feasible_tau_count": 20,
+          "candidate_tau_count": 9
+        }
+      },
+      "lift_spread": -0.0008845083368193136,
+      "label_positive_rate": {
+        "train": 0.2845849802371542,
+        "validation": 0.2872340425531915,
+        "test": 0.2903225806451613
+      },
+      "summary": {
+        "best_sharpe_mode": null,
+        "best_risk_mode": "risk_aggressive",
+        "sharpe_modes_lift_gate_disabled": true,
+        "risk_improved_within_cap": {
+          "risk_conservative": true,
+          "risk_aggressive": true
+        }
+      }
+    },
+    {
+      "ticker": "NVDA",
+      "status": "ok",
+      "none": {
+        "sharpe": -1.3233758309979033,
+        "max_drawdown": -0.3826758871000262
+      },
+      "modes": {
+        "conservative": {
+          "status": "disabled_conservative",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "aggressive": {
+          "status": "disabled_aggressive",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "risk_conservative": {
+          "status": "disabled_risk_conservative",
+          "objective": "maxdd",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "risk_aggressive": {
+          "status": "disabled_risk_aggressive",
+          "objective": "maxdd",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        }
+      },
+      "lift_spread": 0.017471405695916195,
+      "label_positive_rate": {
+        "train": 0.2618110236220472,
+        "validation": 0.34574468085106386,
+        "test": 0.29411764705882354
+      },
+      "summary": {
+        "best_sharpe_mode": null,
+        "best_risk_mode": null,
+        "sharpe_modes_lift_gate_disabled": false,
+        "risk_improved_within_cap": {
+          "risk_conservative": false,
+          "risk_aggressive": false
+        }
+      }
+    },
+    {
+      "ticker": "SPY",
+      "status": "ok",
+      "none": {
+        "sharpe": -4.592072954902636,
+        "max_drawdown": -0.32962031640226064
+      },
+      "modes": {
+        "conservative": {
+          "status": "disabled_conservative",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "aggressive": {
+          "status": "ok",
+          "objective": "sharpe",
+          "tau": 0.24,
+          "coverage_pred": 0.7419354838709677,
+          "executed_trades": 138,
+          "sharpe": -2.696590065903075,
+          "max_drawdown": -0.20679508380732636,
+          "feasible_tau_count": 25,
+          "candidate_tau_count": 1
+        },
+        "risk_conservative": {
+          "status": "disabled_risk_conservative",
+          "objective": "maxdd",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "risk_aggressive": {
+          "status": "ok",
+          "objective": "maxdd",
+          "tau": 0.24,
+          "coverage_pred": 0.7419354838709677,
+          "executed_trades": 138,
+          "sharpe": -2.696590065903075,
+          "max_drawdown": -0.20679508380732636,
+          "feasible_tau_count": 25,
+          "candidate_tau_count": 1
+        }
+      },
+      "lift_spread": 0.002279949010824363,
+      "label_positive_rate": {
+        "train": 0.2854330708661417,
+        "validation": 0.2765957446808511,
+        "test": 0.25268817204301075
+      },
+      "summary": {
+        "best_sharpe_mode": "aggressive",
+        "best_risk_mode": "risk_aggressive",
+        "sharpe_modes_lift_gate_disabled": false,
+        "risk_improved_within_cap": {
+          "risk_conservative": false,
+          "risk_aggressive": true
+        }
+      }
+    },
+    {
+      "ticker": "PLTR",
+      "status": "ok",
+      "none": {
+        "sharpe": -1.2974946708240092,
+        "max_drawdown": -0.5669104926817381
+      },
+      "modes": {
+        "conservative": {
+          "status": "disabled_conservative",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "aggressive": {
+          "status": "disabled_aggressive",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "risk_conservative": {
+          "status": "disabled_risk_conservative",
+          "objective": "maxdd",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "risk_aggressive": {
+          "status": "disabled_risk_aggressive",
+          "objective": "maxdd",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        }
+      },
+      "lift_spread": 0.015234205430827541,
+      "label_positive_rate": {
+        "train": 0.300990099009901,
+        "validation": 0.24064171122994651,
+        "test": 0.2903225806451613
+      },
+      "summary": {
+        "best_sharpe_mode": null,
+        "best_risk_mode": null,
+        "sharpe_modes_lift_gate_disabled": false,
+        "risk_improved_within_cap": {
+          "risk_conservative": false,
+          "risk_aggressive": false
+        }
+      }
+    },
+    {
+      "ticker": "META",
+      "status": "ok",
+      "none": {
+        "sharpe": -1.0010215048918532,
+        "max_drawdown": -0.3546599894886666
+      },
+      "modes": {
+        "conservative": {
+          "status": "disabled_conservative",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "aggressive": {
+          "status": "disabled_aggressive",
+          "objective": "sharpe",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "risk_conservative": {
+          "status": "disabled_risk_conservative",
+          "objective": "maxdd",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        },
+        "risk_aggressive": {
+          "status": "disabled_risk_aggressive",
+          "objective": "maxdd",
+          "tau": null,
+          "coverage_pred": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 0
+        }
+      },
+      "lift_spread": -0.0070889675854422015,
+      "label_positive_rate": {
+        "train": 0.26693227091633465,
+        "validation": 0.26881720430107525,
+        "test": 0.30434782608695654
+      },
+      "summary": {
+        "best_sharpe_mode": null,
+        "best_risk_mode": null,
+        "sharpe_modes_lift_gate_disabled": true,
+        "risk_improved_within_cap": {
+          "risk_conservative": false,
+          "risk_aggressive": false
+        }
+      }
+    }
+  ]
+}

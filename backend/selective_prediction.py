@@ -33,8 +33,14 @@ from data_fetcher import prepare_data_for_ml, fetch_from_yfinance, validate_and_
 
 
 SELECTIVE_SCHEMA_VERSION = "selective_v1"
-SELECTIVE_MODES = {"none", "conservative", "aggressive"}
-SELECTIVE_DISABLED_STATUSES = {"disabled", "disabled_conservative", "disabled_aggressive"}
+SELECTIVE_MODES = {"none", "conservative", "aggressive", "risk_conservative", "risk_aggressive"}
+SELECTIVE_DISABLED_STATUSES = {
+    "disabled",
+    "disabled_conservative",
+    "disabled_aggressive",
+    "disabled_risk_conservative",
+    "disabled_risk_aggressive",
+}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_ARTIFACT_ROOT = os.path.join(BASE_DIR, "model_artifacts", "selective")
@@ -65,11 +71,15 @@ class SelectiveConfig:
     seed: int = 42
     artifact_ttl_days: int = 7
     threshold_sharpe_tolerance: float = 0.02
+    risk_max_sharpe_degrade: float = 0.20
     validation_require_improvement: bool = True
     validation_max_sharpe_drop: float = 0.25
     validation_max_drawdown_drop: float = 0.02
     validation_guard_fraction: float = 0.30
     validation_guard_min_rows: int = 40
+    lift_sanity_gate_enabled: bool = True
+    lift_sanity_min_spread: float = 0.0
+    threshold_diagnostics_top_k: int = 5
     calibration_min_samples_for_isotonic: int = 1000
     calibration_min_positives_for_isotonic: int = 200
     calibration_fraction: float = 0.35
@@ -572,10 +582,15 @@ def optimize_threshold_for_mode(
     sharpe_tolerance: float = 0.02,
     baseline_scenario: Optional[Dict[str, object]] = None,
     require_improvement: bool = False,
+    require_maxdd_improvement: bool = False,
     max_sharpe_drop: float = 0.25,
     max_drawdown_drop: float = 0.02,
+    objective: str = "sharpe",
+    top_k: int = 5,
     eps: float = 1e-8,
 ) -> Dict[str, object]:
+    objective = "maxdd" if str(objective).lower() == "maxdd" else "sharpe"
+
     def _disabled() -> Dict[str, object]:
         return {
             "status": f"disabled_{mode}",
@@ -586,6 +601,10 @@ def optimize_threshold_for_mode(
             "sharpe": 0.0,
             "max_drawdown": 0.0,
             "win_rate": 0.0,
+            "objective": objective,
+            "feasible_tau_count": 0,
+            "candidate_tau_count": 0,
+            "top_candidates": [],
         }
 
     feasible: List[Dict[str, object]] = []
@@ -617,7 +636,9 @@ def optimize_threshold_for_mode(
             if float(s["sharpe"]) >= (baseline_sharpe - max_sharpe_drop)
             and float(s["max_drawdown"]) >= (baseline_maxdd - max_drawdown_drop)
         ]
-        if require_improvement:
+        if require_maxdd_improvement:
+            candidate_pool = [s for s in candidate_pool if float(s["max_drawdown"]) > baseline_maxdd]
+        elif require_improvement:
             candidate_pool = [
                 s
                 for s in candidate_pool
@@ -627,14 +648,24 @@ def optimize_threshold_for_mode(
     if not candidate_pool:
         return _disabled()
 
-    best_sharpe = max(float(s["sharpe"]) for s in candidate_pool)
     tolerance = max(float(sharpe_tolerance), 0.0)
-    top = [s for s in candidate_pool if float(s["sharpe"]) >= (best_sharpe - tolerance)]
+    if objective == "maxdd":
+        best_metric = max(float(s["max_drawdown"]) for s in candidate_pool)
+        top = [s for s in candidate_pool if float(s["max_drawdown"]) >= (best_metric - tolerance)]
+    else:
+        best_metric = max(float(s["sharpe"]) for s in candidate_pool)
+        top = [s for s in candidate_pool if float(s["sharpe"]) >= (best_metric - tolerance)]
     target = float(min_coverage if target_coverage is None else target_coverage)
 
     def _tie_break_key(s):
         coverage_gap = abs(float(s["coverage_pred"]) - target)
         # Higher max_drawdown is better (-0.10 better than -0.20), and higher tau means more selectivity.
+        if objective == "maxdd":
+            return (
+                coverage_gap,
+                -float(s["sharpe"]),
+                -float(s["tau"]),
+            )
         return (
             coverage_gap,
             -float(s["max_drawdown"]),
@@ -642,6 +673,22 @@ def optimize_threshold_for_mode(
         )
 
     best = sorted(top, key=_tie_break_key)[0]
+    ranking = (
+        sorted(candidate_pool, key=lambda s: (-float(s["max_drawdown"]), -float(s["sharpe"])))
+        if objective == "maxdd"
+        else sorted(candidate_pool, key=lambda s: (-float(s["sharpe"]), -float(s["max_drawdown"])))
+    )
+    k = max(1, int(top_k))
+    top_candidates = [
+        {
+            "tau": float(s["tau"]),
+            "coverage_pred": float(s["coverage_pred"]),
+            "executed_trades": int(s["executed_trades"]),
+            "sharpe": float(s["sharpe"]),
+            "max_drawdown": float(s["max_drawdown"]),
+        }
+        for s in ranking[:k]
+    ]
 
     return {
         "status": "ok",
@@ -652,6 +699,10 @@ def optimize_threshold_for_mode(
         "sharpe": float(best["sharpe"]),
         "max_drawdown": float(best["max_drawdown"]),
         "win_rate": float(best["win_rate"]),
+        "objective": objective,
+        "feasible_tau_count": int(len(feasible)),
+        "candidate_tau_count": int(len(candidate_pool)),
+        "top_candidates": top_candidates,
     }
 
 
@@ -659,6 +710,7 @@ def _passes_validation_guard(
     candidate: Dict[str, object],
     baseline: Dict[str, object],
     require_improvement: bool,
+    require_maxdd_improvement: bool,
     max_sharpe_drop: float,
     max_drawdown_drop: float,
 ) -> bool:
@@ -671,7 +723,11 @@ def _passes_validation_guard(
         return False
     if cand_maxdd < (base_maxdd - max_drawdown_drop):
         return False
-    if require_improvement and not (cand_sharpe > base_sharpe or cand_maxdd > base_maxdd):
+    if require_maxdd_improvement and cand_maxdd <= base_maxdd:
+        return False
+    if (not require_maxdd_improvement) and require_improvement and not (
+        cand_sharpe > base_sharpe or cand_maxdd > base_maxdd
+    ):
         return False
     return True
 
@@ -991,6 +1047,30 @@ def run_selective_evaluation_from_df(
         one_way_cost_bps=config.one_way_cost_bps,
         eps=config.eps,
     )
+    validation_lift_curve = compute_lift_curve(validation_none["frame"])
+    validation_lift_spread = 0.0
+    if validation_lift_curve:
+        validation_lift_sorted = sorted(validation_lift_curve, key=lambda x: x.get("decile", 0))
+        validation_lift_spread = float(
+            (validation_lift_sorted[-1].get("net_return_mean", 0.0) or 0.0)
+            - (validation_lift_sorted[0].get("net_return_mean", 0.0) or 0.0)
+        )
+
+    def _disabled_threshold(mode_name: str, objective: str) -> Dict[str, object]:
+        return {
+            "status": f"disabled_{mode_name}",
+            "tau": None,
+            "coverage_pred": 0.0,
+            "coverage_trade": 0.0,
+            "executed_trades": 0,
+            "sharpe": 0.0,
+            "max_drawdown": 0.0,
+            "win_rate": 0.0,
+            "objective": objective,
+            "feasible_tau_count": 0,
+            "candidate_tau_count": 0,
+            "top_candidates": [],
+        }
 
     threshold_conservative = optimize_threshold_for_mode(
         validation_df=validation_eval_opt,
@@ -1003,8 +1083,11 @@ def run_selective_evaluation_from_df(
         sharpe_tolerance=config.threshold_sharpe_tolerance,
         baseline_scenario=validation_none,
         require_improvement=config.validation_require_improvement,
+        require_maxdd_improvement=False,
         max_sharpe_drop=config.validation_max_sharpe_drop,
         max_drawdown_drop=config.validation_max_drawdown_drop,
+        objective="sharpe",
+        top_k=config.threshold_diagnostics_top_k,
         eps=config.eps,
     )
     threshold_aggressive = optimize_threshold_for_mode(
@@ -1018,10 +1101,53 @@ def run_selective_evaluation_from_df(
         sharpe_tolerance=config.threshold_sharpe_tolerance,
         baseline_scenario=validation_none,
         require_improvement=config.validation_require_improvement,
+        require_maxdd_improvement=False,
         max_sharpe_drop=config.validation_max_sharpe_drop,
         max_drawdown_drop=config.validation_max_drawdown_drop,
+        objective="sharpe",
+        top_k=config.threshold_diagnostics_top_k,
         eps=config.eps,
     )
+    threshold_risk_conservative = optimize_threshold_for_mode(
+        validation_df=validation_eval_opt,
+        mode="risk_conservative",
+        min_coverage=config.conservative_min_coverage,
+        min_trades=config.min_trades,
+        pred_deadband=config.pred_deadband,
+        one_way_cost_bps=config.one_way_cost_bps,
+        target_coverage=config.conservative_target_coverage,
+        sharpe_tolerance=config.threshold_sharpe_tolerance,
+        baseline_scenario=validation_none,
+        require_improvement=False,
+        require_maxdd_improvement=True,
+        max_sharpe_drop=config.risk_max_sharpe_degrade,
+        max_drawdown_drop=0.0,
+        objective="maxdd",
+        top_k=config.threshold_diagnostics_top_k,
+        eps=config.eps,
+    )
+    threshold_risk_aggressive = optimize_threshold_for_mode(
+        validation_df=validation_eval_opt,
+        mode="risk_aggressive",
+        min_coverage=config.aggressive_min_coverage,
+        min_trades=config.min_trades,
+        pred_deadband=config.pred_deadband,
+        one_way_cost_bps=config.one_way_cost_bps,
+        target_coverage=config.aggressive_target_coverage,
+        sharpe_tolerance=config.threshold_sharpe_tolerance,
+        baseline_scenario=validation_none,
+        require_improvement=False,
+        require_maxdd_improvement=True,
+        max_sharpe_drop=config.risk_max_sharpe_degrade,
+        max_drawdown_drop=0.0,
+        objective="maxdd",
+        top_k=config.threshold_diagnostics_top_k,
+        eps=config.eps,
+    )
+
+    if config.lift_sanity_gate_enabled and validation_lift_spread <= float(config.lift_sanity_min_spread):
+        threshold_conservative = _disabled_threshold("conservative", "sharpe")
+        threshold_aggressive = _disabled_threshold("aggressive", "sharpe")
 
     if not validation_eval_guard.empty:
         guard_none = simulate_abstention_scenario(
@@ -1032,58 +1158,72 @@ def run_selective_evaluation_from_df(
             one_way_cost_bps=config.one_way_cost_bps,
             eps=config.eps,
         )
-        if threshold_conservative["status"] == "ok":
-            guard_conservative = simulate_abstention_scenario(
+        def _guard_threshold(
+            threshold: Dict[str, object],
+            mode_name: str,
+            objective: str,
+            require_improvement: bool,
+            require_maxdd_improvement: bool,
+            max_sharpe_drop: float,
+            max_drawdown_drop: float,
+        ) -> Dict[str, object]:
+            if threshold.get("status") != "ok":
+                return threshold
+            guard_candidate = simulate_abstention_scenario(
                 validation_eval_guard,
-                tau=float(threshold_conservative["tau"]),
-                mode="conservative",
+                tau=float(threshold["tau"]),
+                mode=mode_name,
                 pred_deadband=config.pred_deadband,
                 one_way_cost_bps=config.one_way_cost_bps,
                 eps=config.eps,
             )
-            if not _passes_validation_guard(
-                candidate=guard_conservative,
+            if _passes_validation_guard(
+                candidate=guard_candidate,
                 baseline=guard_none,
-                require_improvement=config.validation_require_improvement,
-                max_sharpe_drop=config.validation_max_sharpe_drop,
-                max_drawdown_drop=config.validation_max_drawdown_drop,
+                require_improvement=require_improvement,
+                require_maxdd_improvement=require_maxdd_improvement,
+                max_sharpe_drop=max_sharpe_drop,
+                max_drawdown_drop=max_drawdown_drop,
             ):
-                threshold_conservative = {
-                    "status": "disabled_conservative",
-                    "tau": None,
-                    "coverage_pred": 0.0,
-                    "coverage_trade": 0.0,
-                    "executed_trades": 0,
-                    "sharpe": 0.0,
-                    "max_drawdown": 0.0,
-                    "win_rate": 0.0,
-                }
-        if threshold_aggressive["status"] == "ok":
-            guard_aggressive = simulate_abstention_scenario(
-                validation_eval_guard,
-                tau=float(threshold_aggressive["tau"]),
-                mode="aggressive",
-                pred_deadband=config.pred_deadband,
-                one_way_cost_bps=config.one_way_cost_bps,
-                eps=config.eps,
-            )
-            if not _passes_validation_guard(
-                candidate=guard_aggressive,
-                baseline=guard_none,
-                require_improvement=config.validation_require_improvement,
-                max_sharpe_drop=config.validation_max_sharpe_drop,
-                max_drawdown_drop=config.validation_max_drawdown_drop,
-            ):
-                threshold_aggressive = {
-                    "status": "disabled_aggressive",
-                    "tau": None,
-                    "coverage_pred": 0.0,
-                    "coverage_trade": 0.0,
-                    "executed_trades": 0,
-                    "sharpe": 0.0,
-                    "max_drawdown": 0.0,
-                    "win_rate": 0.0,
-                }
+                return threshold
+            return _disabled_threshold(mode_name, objective)
+
+        threshold_conservative = _guard_threshold(
+            threshold_conservative,
+            "conservative",
+            "sharpe",
+            config.validation_require_improvement,
+            False,
+            config.validation_max_sharpe_drop,
+            config.validation_max_drawdown_drop,
+        )
+        threshold_aggressive = _guard_threshold(
+            threshold_aggressive,
+            "aggressive",
+            "sharpe",
+            config.validation_require_improvement,
+            False,
+            config.validation_max_sharpe_drop,
+            config.validation_max_drawdown_drop,
+        )
+        threshold_risk_conservative = _guard_threshold(
+            threshold_risk_conservative,
+            "risk_conservative",
+            "maxdd",
+            False,
+            True,
+            config.risk_max_sharpe_degrade,
+            0.0,
+        )
+        threshold_risk_aggressive = _guard_threshold(
+            threshold_risk_aggressive,
+            "risk_aggressive",
+            "maxdd",
+            False,
+            True,
+            config.risk_max_sharpe_degrade,
+            0.0,
+        )
 
     scenario_none = simulate_abstention_scenario(
         test_eval,
@@ -1118,10 +1258,44 @@ def run_selective_evaluation_from_df(
     else:
         scenario_aggressive = {"mode": "aggressive", "status": "disabled_aggressive", "frame": pd.DataFrame()}
 
+    if threshold_risk_conservative["status"] == "ok":
+        scenario_risk_conservative = simulate_abstention_scenario(
+            test_eval,
+            tau=float(threshold_risk_conservative["tau"]),
+            mode="risk_conservative",
+            pred_deadband=config.pred_deadband,
+            one_way_cost_bps=config.one_way_cost_bps,
+            eps=config.eps,
+        )
+    else:
+        scenario_risk_conservative = {
+            "mode": "risk_conservative",
+            "status": "disabled_risk_conservative",
+            "frame": pd.DataFrame(),
+        }
+
+    if threshold_risk_aggressive["status"] == "ok":
+        scenario_risk_aggressive = simulate_abstention_scenario(
+            test_eval,
+            tau=float(threshold_risk_aggressive["tau"]),
+            mode="risk_aggressive",
+            pred_deadband=config.pred_deadband,
+            one_way_cost_bps=config.one_way_cost_bps,
+            eps=config.eps,
+        )
+    else:
+        scenario_risk_aggressive = {
+            "mode": "risk_aggressive",
+            "status": "disabled_risk_aggressive",
+            "frame": pd.DataFrame(),
+        }
+
     scenarios = {
         "none": scenario_none,
         "conservative": scenario_conservative,
         "aggressive": scenario_aggressive,
+        "risk_conservative": scenario_risk_conservative,
+        "risk_aggressive": scenario_risk_aggressive,
     }
     regime_metrics = {}
     coverage_pred = {}
@@ -1149,15 +1323,20 @@ def run_selective_evaluation_from_df(
         )
         if test_eval["ensemble_disagreement"].nunique() > 1
         else 0.0,
+        "validation_lift_decile_spread": float(validation_lift_spread),
     }
 
     selected_thresholds = {
         "conservative": threshold_conservative,
         "aggressive": threshold_aggressive,
+        "risk_conservative": threshold_risk_conservative,
+        "risk_aggressive": threshold_risk_aggressive,
     }
     mode_status = {
         "conservative": threshold_conservative["status"],
         "aggressive": threshold_aggressive["status"],
+        "risk_conservative": threshold_risk_conservative["status"],
+        "risk_aggressive": threshold_risk_aggressive["status"],
     }
 
     calibration_diagnostics = {}
@@ -1180,6 +1359,20 @@ def run_selective_evaluation_from_df(
     data_signature = _build_data_signature(base_feature_cols, config)
     latest_settled = latest_available_settled_date(frame, horizon=config.horizon)
 
+    def _split_label_stats(df_part: pd.DataFrame) -> Dict[str, float]:
+        if df_part is None or df_part.empty:
+            return {"labeled": 0, "informative": 0, "positive_rate": 0.0}
+        informative_count = int(df_part["informative"].sum())
+        return {
+            "labeled": int(len(df_part)),
+            "informative": informative_count,
+            "positive_rate": float(informative_count / max(len(df_part), 1)),
+        }
+
+    label_stats_train = _split_label_stats(train_labeled)
+    label_stats_validation = _split_label_stats(validation_labeled)
+    label_stats_test = _split_label_stats(test_labeled)
+
     payload = {
         "selector_model": selector_model,
         "calibrator": calibrator,
@@ -1195,6 +1388,8 @@ def run_selective_evaluation_from_df(
         "taus": {
             "conservative": threshold_conservative["tau"],
             "aggressive": threshold_aggressive["tau"],
+            "risk_conservative": threshold_risk_conservative["tau"],
+            "risk_aggressive": threshold_risk_aggressive["tau"],
         },
         "split_config": {
             "protocol": "contiguous_60_20_20",
@@ -1212,21 +1407,35 @@ def run_selective_evaluation_from_df(
             "train_labeled": int(len(train_labeled)),
             "validation_labeled": int(len(validation_labeled)),
             "test_labeled": int(len(test_labeled)),
+            "train_informative": int(label_stats_train["informative"]),
+            "validation_informative": int(label_stats_validation["informative"]),
+            "test_informative": int(label_stats_test["informative"]),
+        },
+        "label_positive_rate": {
+            "train": float(label_stats_train["positive_rate"]),
+            "validation": float(label_stats_validation["positive_rate"]),
+            "test": float(label_stats_test["positive_rate"]),
         },
         "training_baseline": {
             "coverage_pred_conservative": float(threshold_conservative.get("coverage_pred", 0.0)),
             "coverage_pred_aggressive": float(threshold_aggressive.get("coverage_pred", 0.0)),
+            "coverage_pred_risk_conservative": float(threshold_risk_conservative.get("coverage_pred", 0.0)),
+            "coverage_pred_risk_aggressive": float(threshold_risk_aggressive.get("coverage_pred", 0.0)),
         },
         "tuning": {
             "conservative_target_coverage": float(config.conservative_target_coverage),
             "aggressive_target_coverage": float(config.aggressive_target_coverage),
             "threshold_sharpe_tolerance": float(config.threshold_sharpe_tolerance),
+            "risk_max_sharpe_degrade": float(config.risk_max_sharpe_degrade),
             "calibration_fraction": float(config.calibration_fraction),
             "validation_require_improvement": bool(config.validation_require_improvement),
             "validation_max_sharpe_drop": float(config.validation_max_sharpe_drop),
             "validation_max_drawdown_drop": float(config.validation_max_drawdown_drop),
             "validation_guard_fraction": float(config.validation_guard_fraction),
             "validation_guard_min_rows": int(config.validation_guard_min_rows),
+            "lift_sanity_gate_enabled": bool(config.lift_sanity_gate_enabled),
+            "lift_sanity_min_spread": float(config.lift_sanity_min_spread),
+            "threshold_diagnostics_top_k": int(config.threshold_diagnostics_top_k),
         },
         "horizon": config.horizon,
         "artifact_ttl_days": config.artifact_ttl_days,
@@ -1242,6 +1451,8 @@ def run_selective_evaluation_from_df(
             "none": _strip_frame(scenario_none),
             "conservative": _strip_frame(scenario_conservative),
             "aggressive": _strip_frame(scenario_aggressive),
+            "risk_conservative": _strip_frame(scenario_risk_conservative),
+            "risk_aggressive": _strip_frame(scenario_risk_aggressive),
         },
         "coverage_pred": coverage_pred,
         "coverage_trade": coverage_trade,
@@ -1251,6 +1462,11 @@ def run_selective_evaluation_from_df(
         "mode_status": mode_status,
         "diagnostics": diagnostics,
         "data_signature": data_signature,
+        "label_positive_rate": {
+            "train": float(label_stats_train["positive_rate"]),
+            "validation": float(label_stats_validation["positive_rate"]),
+            "test": float(label_stats_test["positive_rate"]),
+        },
     }
 
 
@@ -1429,6 +1645,10 @@ def infer_selective_decision(
             baseline_cov = baseline.get("coverage_pred_conservative")
         elif mode_effective == "aggressive":
             baseline_cov = baseline.get("coverage_pred_aggressive")
+        elif mode_effective == "risk_conservative":
+            baseline_cov = baseline.get("coverage_pred_risk_conservative")
+        elif mode_effective == "risk_aggressive":
+            baseline_cov = baseline.get("coverage_pred_risk_aggressive")
         else:
             baseline_cov = None
         if baseline_cov is not None and mode_effective != "none":
