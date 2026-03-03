@@ -22,6 +22,11 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import brier_score_loss
 
 try:
+    from sklearn.frozen import FrozenEstimator
+except Exception:
+    FrozenEstimator = None
+
+try:
     import xgboost as xgb
 
     XGBOOST_AVAILABLE = True
@@ -459,8 +464,19 @@ def calibrate_selector_model(
     if len(y_cal) == 0 or len(np.unique(y_cal)) < 2:
         return None, "none"
     positives = int(np.sum(y_cal))
+    negatives = int(len(y_cal) - positives)
     method = "isotonic" if (len(y_cal) >= min_samples_for_isotonic and positives >= min_positives_for_isotonic) else "sigmoid"
-    calibrator = CalibratedClassifierCV(selector_model, method=method, cv="prefit")
+    if FrozenEstimator is not None:
+        cv_splits = int(min(5, positives, negatives))
+        if cv_splits < 2:
+            return None, "none"
+        calibrator = CalibratedClassifierCV(
+            estimator=FrozenEstimator(selector_model),
+            method=method,
+            cv=cv_splits,
+        )
+    else:
+        calibrator = CalibratedClassifierCV(selector_model, method=method, cv="prefit")
     calibrator.fit(X_cal, y_cal)
     return calibrator, method
 
@@ -1086,7 +1102,8 @@ def run_selective_evaluation_from_df(
     split_raw = split_contiguous(selector_frame)
     emb = config.embargo
 
-    # Purge train/validation and validation/test boundaries while preserving enough validation rows.
+    # Boundary embargo at train/validation and validation/test transitions.
+    # (This is not full combinatorial purged CV; full overlap checks are covered separately in tests.)
     train = split_raw["train"].iloc[:-emb].copy() if len(split_raw["train"]) > emb else pd.DataFrame()
     validation = split_raw["validation"].iloc[emb:].copy() if len(split_raw["validation"]) > emb else pd.DataFrame()
     test = split_raw["test"].iloc[emb:].copy() if len(split_raw["test"]) > emb else pd.DataFrame()
