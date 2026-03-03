@@ -1,0 +1,183 @@
+{
+  "generated_at": "2026-03-03T01:48:00.184276Z",
+  "config": {
+    "source": "run_selective_evaluation_from_df",
+    "period": "2y",
+    "xgboost_enabled": false,
+    "retrain_frequency": 12,
+    "min_history": 100,
+    "seed": 42
+  },
+  "tickers": [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "TSLA",
+    "SPY",
+    "PLTR",
+    "AMD",
+    "META"
+  ],
+  "results": [
+    {
+      "ticker": "AAPL",
+      "status": "ok",
+      "none_sharpe": 3.0975802524585765,
+      "none_maxdd": -0.06311430637164983,
+      "conservative": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 39,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      },
+      "aggressive": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 39,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      }
+    },
+    {
+      "ticker": "MSFT",
+      "status": "ok",
+      "none_sharpe": -3.4660645727953088,
+      "none_maxdd": -0.27211420472862824,
+      "conservative": {
+        "status": "ok",
+        "coverage_pred": 0.975,
+        "executed_trades": 39,
+        "delta_sharpe": -0.0415380559220746,
+        "delta_maxdd": -0.00157958929133184
+      },
+      "aggressive": {
+        "status": "ok",
+        "coverage_pred": 0.975,
+        "executed_trades": 39,
+        "delta_sharpe": -0.0415380559220746,
+        "delta_maxdd": -0.00157958929133184
+      }
+    },
+    {
+      "ticker": "NVDA",
+      "status": "ok",
+      "none_sharpe": -2.071391062747878,
+      "none_maxdd": -0.19940852120867747,
+      "conservative": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 40,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      },
+      "aggressive": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 40,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      }
+    },
+    {
+      "ticker": "TSLA",
+      "status": "ok",
+      "none_sharpe": 1.5268074159395006,
+      "none_maxdd": -0.06203153450369514,
+      "conservative": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 40,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      },
+      "aggressive": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 40,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      }
+    },
+    {
+      "ticker": "SPY",
+      "status": "ok",
+      "none_sharpe": -2.2354681750210803,
+      "none_maxdd": -0.049269271164580686,
+      "conservative": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 40,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      },
+      "aggressive": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 40,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      }
+    },
+    {
+      "ticker": "PLTR",
+      "status": "ok",
+      "none_sharpe": -2.702108023993425,
+      "none_maxdd": -0.31372542282335847,
+      "conservative": {
+        "status": "ok",
+        "coverage_pred": 0.9487179487179487,
+        "executed_trades": 37,
+        "delta_sharpe": 0.5186907569844785,
+        "delta_maxdd": 0.0
+      },
+      "aggressive": {
+        "status": "ok",
+        "coverage_pred": 0.9487179487179487,
+        "executed_trades": 37,
+        "delta_sharpe": 0.5186907569844785,
+        "delta_maxdd": 0.0
+      }
+    },
+    {
+      "ticker": "AMD",
+      "status": "ok",
+      "none_sharpe": -2.086492162715896,
+      "none_maxdd": -0.3203653411644587,
+      "conservative": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 39,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      },
+      "aggressive": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 39,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      }
+    },
+    {
+      "ticker": "META",
+      "status": "ok",
+      "none_sharpe": -4.062848719568985,
+      "none_maxdd": -0.20224167884569832,
+      "conservative": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 39,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      },
+      "aggressive": {
+        "status": "ok",
+        "coverage_pred": 1.0,
+        "executed_trades": 39,
+        "delta_sharpe": 0.0,
+        "delta_maxdd": 0.0
+      }
+    }
+  ]
+}
