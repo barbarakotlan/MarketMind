@@ -57,13 +57,22 @@ class SelectiveConfig:
     sparse_bucket_min_fraction: float = 0.10
     conservative_min_coverage: float = 0.85
     aggressive_min_coverage: float = 0.55
+    conservative_target_coverage: float = 0.90
+    aggressive_target_coverage: float = 0.65
     min_trades: int = 40
     embargo_extra: int = 1
     eps: float = 1e-8
     seed: int = 42
     artifact_ttl_days: int = 7
+    threshold_sharpe_tolerance: float = 0.02
+    validation_require_improvement: bool = True
+    validation_max_sharpe_drop: float = 0.25
+    validation_max_drawdown_drop: float = 0.02
+    validation_guard_fraction: float = 0.30
+    validation_guard_min_rows: int = 40
     calibration_min_samples_for_isotonic: int = 1000
     calibration_min_positives_for_isotonic: int = 200
+    calibration_fraction: float = 0.35
 
     @property
     def embargo(self) -> int:
@@ -385,6 +394,12 @@ def split_contiguous(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
 
 def _train_selector_classifier(X: np.ndarray, y: np.ndarray, seed: int = 42):
+    y = np.asarray(y, dtype=int)
+    positives = int(np.sum(y))
+    negatives = int(len(y) - positives)
+    scale_pos_weight = float(negatives / max(positives, 1)) if positives > 0 else 1.0
+    scale_pos_weight = float(np.clip(scale_pos_weight, 0.5, 10.0))
+
     if XGBOOST_AVAILABLE:
         clf = xgb.XGBClassifier(
             n_estimators=250,
@@ -395,6 +410,7 @@ def _train_selector_classifier(X: np.ndarray, y: np.ndarray, seed: int = 42):
             reg_lambda=1.0,
             objective="binary:logistic",
             eval_metric="logloss",
+            scale_pos_weight=scale_pos_weight,
             random_state=seed,
             n_jobs=1,
             tree_method="hist",
@@ -404,6 +420,7 @@ def _train_selector_classifier(X: np.ndarray, y: np.ndarray, seed: int = 42):
             n_estimators=300,
             max_depth=8,
             min_samples_leaf=2,
+            class_weight="balanced_subsample",
             random_state=seed,
             n_jobs=1,
         )
@@ -551,9 +568,27 @@ def optimize_threshold_for_mode(
     min_trades: int,
     pred_deadband: float,
     one_way_cost_bps: float,
+    target_coverage: Optional[float] = None,
+    sharpe_tolerance: float = 0.02,
+    baseline_scenario: Optional[Dict[str, object]] = None,
+    require_improvement: bool = False,
+    max_sharpe_drop: float = 0.25,
+    max_drawdown_drop: float = 0.02,
     eps: float = 1e-8,
 ) -> Dict[str, object]:
-    best = None
+    def _disabled() -> Dict[str, object]:
+        return {
+            "status": f"disabled_{mode}",
+            "tau": None,
+            "coverage_pred": 0.0,
+            "coverage_trade": 0.0,
+            "executed_trades": 0,
+            "sharpe": 0.0,
+            "max_drawdown": 0.0,
+            "win_rate": 0.0,
+        }
+
+    feasible: List[Dict[str, object]] = []
     for tau in DEFAULT_TAU_GRID:
         scenario = simulate_abstention_scenario(
             validation_df,
@@ -567,20 +602,46 @@ def optimize_threshold_for_mode(
             continue
         if scenario["executed_trades"] < min_trades:
             continue
-        if best is None or scenario["sharpe"] > best["sharpe"]:
-            best = scenario
+        feasible.append(scenario)
 
-    if best is None:
-        return {
-            "status": f"disabled_{mode}",
-            "tau": None,
-            "coverage_pred": 0.0,
-            "coverage_trade": 0.0,
-            "executed_trades": 0,
-            "sharpe": 0.0,
-            "max_drawdown": 0.0,
-            "win_rate": 0.0,
-        }
+    if not feasible:
+        return _disabled()
+
+    candidate_pool = feasible
+    if baseline_scenario is not None:
+        baseline_sharpe = float(baseline_scenario.get("sharpe", 0.0))
+        baseline_maxdd = float(baseline_scenario.get("max_drawdown", 0.0))
+        candidate_pool = [
+            s
+            for s in candidate_pool
+            if float(s["sharpe"]) >= (baseline_sharpe - max_sharpe_drop)
+            and float(s["max_drawdown"]) >= (baseline_maxdd - max_drawdown_drop)
+        ]
+        if require_improvement:
+            candidate_pool = [
+                s
+                for s in candidate_pool
+                if float(s["sharpe"]) > baseline_sharpe or float(s["max_drawdown"]) > baseline_maxdd
+            ]
+
+    if not candidate_pool:
+        return _disabled()
+
+    best_sharpe = max(float(s["sharpe"]) for s in candidate_pool)
+    tolerance = max(float(sharpe_tolerance), 0.0)
+    top = [s for s in candidate_pool if float(s["sharpe"]) >= (best_sharpe - tolerance)]
+    target = float(min_coverage if target_coverage is None else target_coverage)
+
+    def _tie_break_key(s):
+        coverage_gap = abs(float(s["coverage_pred"]) - target)
+        # Higher max_drawdown is better (-0.10 better than -0.20), and higher tau means more selectivity.
+        return (
+            coverage_gap,
+            -float(s["max_drawdown"]),
+            -float(s["tau"]),
+        )
+
+    best = sorted(top, key=_tie_break_key)[0]
 
     return {
         "status": "ok",
@@ -592,6 +653,27 @@ def optimize_threshold_for_mode(
         "max_drawdown": float(best["max_drawdown"]),
         "win_rate": float(best["win_rate"]),
     }
+
+
+def _passes_validation_guard(
+    candidate: Dict[str, object],
+    baseline: Dict[str, object],
+    require_improvement: bool,
+    max_sharpe_drop: float,
+    max_drawdown_drop: float,
+) -> bool:
+    cand_sharpe = float(candidate.get("sharpe", 0.0))
+    cand_maxdd = float(candidate.get("max_drawdown", 0.0))
+    base_sharpe = float(baseline.get("sharpe", 0.0))
+    base_maxdd = float(baseline.get("max_drawdown", 0.0))
+
+    if cand_sharpe < (base_sharpe - max_sharpe_drop):
+        return False
+    if cand_maxdd < (base_maxdd - max_drawdown_drop):
+        return False
+    if require_improvement and not (cand_sharpe > base_sharpe or cand_maxdd > base_maxdd):
+        return False
+    return True
 
 
 def compute_regime_metrics(scenario_frame: pd.DataFrame) -> Dict[str, Dict[str, float]]:
@@ -807,7 +889,7 @@ def run_selective_evaluation_from_df(
         min_history=config.min_history,
     )
     merged = oof.join(labels_df[["vol_y", "correct", "signal", "valid_label", "informative"]], how="left")
-    merged["valid_label"] = merged["valid_label"].fillna(False)
+    merged["valid_label"] = merged["valid_label"].where(merged["valid_label"].notna(), False).astype(bool)
     merged["informative"] = merged["informative"].fillna(0).astype(int)
     merged["vol_y"] = merged["vol_y"].fillna(0.0)
     merged["rolling_vol_y"] = merged["vol_y"]
@@ -847,11 +929,17 @@ def run_selective_evaluation_from_df(
     selector_model = _train_selector_classifier(X_train, y_train, seed=config.seed)
 
     val_for_cal = validation_labeled.copy()
+    validation_cutoff = None
     if len(val_for_cal) < 2 or val_for_cal["informative"].nunique() < 2:
         calibrator, cal_method = None, "none"
+        cal_slice = val_for_cal.iloc[:0].copy()
     else:
-        split_idx = max(1, len(val_for_cal) // 2)
+        frac = float(np.clip(config.calibration_fraction, 0.1, 0.9))
+        split_idx = int(max(2, round(len(val_for_cal) * frac)))
+        split_idx = min(split_idx, len(val_for_cal))
         cal_slice = val_for_cal.iloc[:split_idx]
+        if not cal_slice.empty:
+            validation_cutoff = cal_slice.index[-1]
         calibrator, cal_method = calibrate_selector_model(
             selector_model,
             cal_slice[selector_feature_cols].values,
@@ -871,29 +959,131 @@ def run_selective_evaluation_from_df(
             )
         split[section_name]["selector_prob"] = probs
 
-    validation_eval = split["validation"].dropna(subset=["selector_prob", "target_return"]).copy()
+    validation_eval_full = split["validation"].dropna(subset=["selector_prob", "target_return"]).copy()
+    if validation_cutoff is not None:
+        validation_eval = validation_eval_full[validation_eval_full.index > validation_cutoff].copy()
+    else:
+        validation_eval = validation_eval_full.copy()
+    if len(validation_eval) < max(20, config.min_trades):
+        validation_eval = validation_eval_full.copy()
+    validation_eval_opt = validation_eval
+    validation_eval_guard = pd.DataFrame()
+    guard_frac = float(np.clip(config.validation_guard_fraction, 0.0, 0.49))
+    guard_min_rows = max(10, int(config.validation_guard_min_rows))
+    if guard_frac > 0 and len(validation_eval) >= (2 * guard_min_rows):
+        guard_rows = max(guard_min_rows, int(round(len(validation_eval) * guard_frac)))
+        guard_rows = min(guard_rows, len(validation_eval) - guard_min_rows)
+        if guard_rows > 0:
+            validation_eval_opt = validation_eval.iloc[:-guard_rows].copy()
+            validation_eval_guard = validation_eval.iloc[-guard_rows:].copy()
+            if len(validation_eval_opt) < max(20, config.min_trades):
+                validation_eval_opt = validation_eval
+                validation_eval_guard = pd.DataFrame()
     test_eval = split["test"].dropna(subset=["selector_prob", "target_return"]).copy()
-    if validation_eval.empty or test_eval.empty:
+    if validation_eval_opt.empty or test_eval.empty:
         return None
 
+    validation_none = simulate_abstention_scenario(
+        validation_eval_opt,
+        tau=0.0,
+        mode="none",
+        pred_deadband=config.pred_deadband,
+        one_way_cost_bps=config.one_way_cost_bps,
+        eps=config.eps,
+    )
+
     threshold_conservative = optimize_threshold_for_mode(
-        validation_df=validation_eval,
+        validation_df=validation_eval_opt,
         mode="conservative",
         min_coverage=config.conservative_min_coverage,
         min_trades=config.min_trades,
         pred_deadband=config.pred_deadband,
         one_way_cost_bps=config.one_way_cost_bps,
+        target_coverage=config.conservative_target_coverage,
+        sharpe_tolerance=config.threshold_sharpe_tolerance,
+        baseline_scenario=validation_none,
+        require_improvement=config.validation_require_improvement,
+        max_sharpe_drop=config.validation_max_sharpe_drop,
+        max_drawdown_drop=config.validation_max_drawdown_drop,
         eps=config.eps,
     )
     threshold_aggressive = optimize_threshold_for_mode(
-        validation_df=validation_eval,
+        validation_df=validation_eval_opt,
         mode="aggressive",
         min_coverage=config.aggressive_min_coverage,
         min_trades=config.min_trades,
         pred_deadband=config.pred_deadband,
         one_way_cost_bps=config.one_way_cost_bps,
+        target_coverage=config.aggressive_target_coverage,
+        sharpe_tolerance=config.threshold_sharpe_tolerance,
+        baseline_scenario=validation_none,
+        require_improvement=config.validation_require_improvement,
+        max_sharpe_drop=config.validation_max_sharpe_drop,
+        max_drawdown_drop=config.validation_max_drawdown_drop,
         eps=config.eps,
     )
+
+    if not validation_eval_guard.empty:
+        guard_none = simulate_abstention_scenario(
+            validation_eval_guard,
+            tau=0.0,
+            mode="none",
+            pred_deadband=config.pred_deadband,
+            one_way_cost_bps=config.one_way_cost_bps,
+            eps=config.eps,
+        )
+        if threshold_conservative["status"] == "ok":
+            guard_conservative = simulate_abstention_scenario(
+                validation_eval_guard,
+                tau=float(threshold_conservative["tau"]),
+                mode="conservative",
+                pred_deadband=config.pred_deadband,
+                one_way_cost_bps=config.one_way_cost_bps,
+                eps=config.eps,
+            )
+            if not _passes_validation_guard(
+                candidate=guard_conservative,
+                baseline=guard_none,
+                require_improvement=config.validation_require_improvement,
+                max_sharpe_drop=config.validation_max_sharpe_drop,
+                max_drawdown_drop=config.validation_max_drawdown_drop,
+            ):
+                threshold_conservative = {
+                    "status": "disabled_conservative",
+                    "tau": None,
+                    "coverage_pred": 0.0,
+                    "coverage_trade": 0.0,
+                    "executed_trades": 0,
+                    "sharpe": 0.0,
+                    "max_drawdown": 0.0,
+                    "win_rate": 0.0,
+                }
+        if threshold_aggressive["status"] == "ok":
+            guard_aggressive = simulate_abstention_scenario(
+                validation_eval_guard,
+                tau=float(threshold_aggressive["tau"]),
+                mode="aggressive",
+                pred_deadband=config.pred_deadband,
+                one_way_cost_bps=config.one_way_cost_bps,
+                eps=config.eps,
+            )
+            if not _passes_validation_guard(
+                candidate=guard_aggressive,
+                baseline=guard_none,
+                require_improvement=config.validation_require_improvement,
+                max_sharpe_drop=config.validation_max_sharpe_drop,
+                max_drawdown_drop=config.validation_max_drawdown_drop,
+            ):
+                threshold_aggressive = {
+                    "status": "disabled_aggressive",
+                    "tau": None,
+                    "coverage_pred": 0.0,
+                    "coverage_trade": 0.0,
+                    "executed_trades": 0,
+                    "sharpe": 0.0,
+                    "max_drawdown": 0.0,
+                    "win_rate": 0.0,
+                }
 
     scenario_none = simulate_abstention_scenario(
         test_eval,
@@ -1026,6 +1216,17 @@ def run_selective_evaluation_from_df(
         "training_baseline": {
             "coverage_pred_conservative": float(threshold_conservative.get("coverage_pred", 0.0)),
             "coverage_pred_aggressive": float(threshold_aggressive.get("coverage_pred", 0.0)),
+        },
+        "tuning": {
+            "conservative_target_coverage": float(config.conservative_target_coverage),
+            "aggressive_target_coverage": float(config.aggressive_target_coverage),
+            "threshold_sharpe_tolerance": float(config.threshold_sharpe_tolerance),
+            "calibration_fraction": float(config.calibration_fraction),
+            "validation_require_improvement": bool(config.validation_require_improvement),
+            "validation_max_sharpe_drop": float(config.validation_max_sharpe_drop),
+            "validation_max_drawdown_drop": float(config.validation_max_drawdown_drop),
+            "validation_guard_fraction": float(config.validation_guard_fraction),
+            "validation_guard_min_rows": int(config.validation_guard_min_rows),
         },
         "horizon": config.horizon,
         "artifact_ttl_days": config.artifact_ttl_days,
