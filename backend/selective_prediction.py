@@ -146,7 +146,6 @@ def build_fixed_features(df: pd.DataFrame, lookback: int = 30) -> Tuple[pd.DataF
         frame[features]
         .replace([np.inf, -np.inf], np.nan)
         .ffill()
-        .bfill()
         .fillna(0.0)
     )
     return frame, features
@@ -162,6 +161,17 @@ def compute_open_to_open_target(df: pd.DataFrame, horizon: int = 1) -> pd.Series
     return target
 
 
+def compute_causal_rolling_volatility(returns: pd.Series, window: int = 20) -> pd.Series:
+    series = pd.Series(returns, index=returns.index, dtype=float)
+    vol = (
+        series.replace([np.inf, -np.inf], np.nan)
+        .rolling(window=window, min_periods=window)
+        .std()
+        .shift(1)
+    )
+    return vol.ffill().fillna(0.0)
+
+
 def latest_available_settled_date(df: pd.DataFrame, horizon: int = 1):
     target = compute_open_to_open_target(df, horizon=horizon)
     valid = target.dropna()
@@ -173,7 +183,7 @@ def latest_available_settled_date(df: pd.DataFrame, horizon: int = 1):
 def sample_windows(i: int, lookback: int, horizon: int) -> Dict[str, Tuple[int, int]]:
     return {
         "feature": (i - lookback + 1, i),
-        "label": (i + 1, i + horizon),
+        "label": (i + 1, i + 1 + horizon),
     }
 
 
@@ -952,14 +962,8 @@ def _build_selector_feature_frame(
 ) -> Tuple[pd.DataFrame, List[str]]:
     out = frame.copy()
     out["raw_signal_abs"] = out["raw_signal"].abs()
-    out["rolling_vol_y"] = (
-        out["target_return"]
-        .rolling(window=config.vol_window, min_periods=config.vol_window)
-        .std()
-        .shift(1)
-        .ffill()
-        .fillna(0.0)
-    )
+    returns_source = out["ret_1"] if "ret_1" in out.columns else out["Close"].pct_change()
+    out["rolling_vol_y"] = compute_causal_rolling_volatility(returns_source, window=config.vol_window)
     out["regime_is_chop"] = (out["regime_bucket"] == "chop").astype(int)
     out["regime_is_neutral"] = (out["regime_bucket"] == "neutral").astype(int)
     out["regime_is_trend"] = (out["regime_bucket"] == "trend").astype(int)
@@ -1021,8 +1025,8 @@ def _validate_artifact(
         return False, "stale_artifact"
 
     trained_on = pd.Timestamp(trained_on_str)
-    latest_allowed = pd.Timestamp(latest_settled_date) - pd.Timedelta(days=config.horizon)
-    if trained_on > latest_allowed:
+    latest_settled = pd.Timestamp(latest_settled_date)
+    if trained_on > latest_settled:
         return False, "stale_artifact"
 
     return True, "ok"
@@ -1068,7 +1072,6 @@ def run_selective_evaluation_from_df(
     merged["valid_label"] = merged["valid_label"].where(merged["valid_label"].notna(), False).astype(bool)
     merged["informative"] = merged["informative"].fillna(0).astype(int)
     merged["vol_y"] = merged["vol_y"].fillna(0.0)
-    merged["rolling_vol_y"] = merged["vol_y"]
     merged["regime_bucket"], regime_distribution = apply_regime_sparsity(
         merged["regime_bucket"],
         sparse_min_fraction=config.sparse_bucket_min_fraction,
@@ -1180,12 +1183,12 @@ def run_selective_evaluation_from_df(
         return {
             "status": f"disabled_{mode_name}",
             "tau": None,
-            "coverage_pred": 0.0,
-            "coverage_trade": 0.0,
-            "executed_trades": 0,
-            "sharpe": 0.0,
-            "max_drawdown": 0.0,
-            "win_rate": 0.0,
+            "coverage_pred": None,
+            "coverage_trade": None,
+            "executed_trades": None,
+            "sharpe": None,
+            "max_drawdown": None,
+            "win_rate": None,
             "objective": objective,
             "count_tau_pass_constraints": 0,
             "count_tau_pass_objective_gate": 0,
@@ -1615,19 +1618,25 @@ def run_selective_evaluation_from_df(
 
     calibration_diagnostics = {}
     try:
-        if len(val_for_cal) > 0:
+        brier_slice = validation_labeled.copy()
+        if validation_cutoff is not None:
+            brier_slice = brier_slice[brier_slice.index > validation_cutoff]
+        if len(brier_slice) > 0 and brier_slice["informative"].nunique() > 1:
             val_probs = _predict_selector_prob(
                 selector_model,
                 calibrator,
-                val_for_cal[selector_feature_cols].values,
+                brier_slice[selector_feature_cols].values,
             )
             calibration_diagnostics["brier_score"] = float(
-                brier_score_loss(val_for_cal["informative"].astype(int).values, val_probs)
+                brier_score_loss(brier_slice["informative"].astype(int).values, val_probs)
             )
+            calibration_diagnostics["brier_eval_rows"] = int(len(brier_slice))
         else:
             calibration_diagnostics["brier_score"] = 0.0
+            calibration_diagnostics["brier_eval_rows"] = 0
     except Exception:
         calibration_diagnostics["brier_score"] = 0.0
+        calibration_diagnostics["brier_eval_rows"] = 0
     calibration_diagnostics["method"] = cal_method
 
     data_signature = _build_data_signature(base_feature_cols, config)
@@ -1867,10 +1876,8 @@ def infer_selective_decision(
 
     selector_feature_cols = payload["selector_feature_columns"]
     feature_values = {col: float(latest_row.get(col, 0.0)) for col in payload["base_feature_columns"]}
-    y_hist = compute_open_to_open_target(feature_frame, horizon=config.horizon)
-    rolling_vol = (
-        y_hist.rolling(window=config.vol_window, min_periods=config.vol_window).std().shift(1).iloc[-1]
-    )
+    returns_hist = feature_frame["ret_1"] if "ret_1" in feature_frame.columns else feature_frame["Close"].pct_change()
+    rolling_vol = compute_causal_rolling_volatility(returns_hist, window=config.vol_window).iloc[-1]
     rolling_vol = float(rolling_vol) if pd.notna(rolling_vol) else 0.0
 
     selector_row = {
