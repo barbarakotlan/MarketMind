@@ -17,3 +17,8 @@
 ## Highlight
 
 - At least one selective mode improved held-out metrics: `PLTR` `conservative` with delta Sharpe `0.5187` and delta MaxDD `0.0000`.
+
+## MSML Framing
+
+- Selector abstention is enabled only when ranking quality is positive on validation (lift gate) and remains stable on a guard slice.
+- When those conditions are not met, the system fails safe to non-abstaining behavior.

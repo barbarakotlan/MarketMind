@@ -10,6 +10,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from selective_prediction import (
     SelectiveConfig,
     _build_selector_feature_frame,
+    build_fixed_features,
+    bucketize_regime,
+    compute_efficiency_ratio,
+    compute_open_to_open_target,
     compute_causal_rolling_volatility,
 )
 
@@ -53,6 +57,39 @@ class TestRollingVolIsCausal(unittest.TestCase):
             rtol=0.0,
             atol=1e-12,
         )
+
+    def test_training_vs_live_rolling_vol_parity_for_latest_row(self):
+        idx = pd.date_range("2025-01-01", periods=80, freq="D")
+        raw = pd.DataFrame(
+            {
+                "Open": np.linspace(100, 140, len(idx)),
+                "High": np.linspace(101, 141, len(idx)),
+                "Low": np.linspace(99, 139, len(idx)),
+                "Close": np.linspace(100, 140, len(idx)) + np.sin(np.linspace(0, 8, len(idx))),
+                "Volume": np.linspace(1_000_000, 1_500_000, len(idx)),
+            },
+            index=idx,
+        )
+        cfg = SelectiveConfig(lookback=10, vol_window=10)
+        feature_frame, base_features = build_fixed_features(raw, lookback=cfg.lookback)
+        feature_frame["raw_signal"] = np.linspace(-0.05, 0.05, len(feature_frame))
+        feature_frame["target_return"] = compute_open_to_open_target(feature_frame, horizon=cfg.horizon)
+        feature_frame["regime_er"] = compute_efficiency_ratio(feature_frame["Close"], window=cfg.er_window)
+        feature_frame["regime_bucket"] = bucketize_regime(
+            feature_frame["regime_er"],
+            chop_threshold=cfg.er_chop_threshold,
+            trend_threshold=cfg.er_trend_threshold,
+        )
+
+        selector_frame, _ = _build_selector_feature_frame(feature_frame, base_features=base_features, config=cfg)
+        train_path_latest = float(selector_frame["rolling_vol_y"].iloc[-1])
+
+        live_returns = (
+            feature_frame["ret_1"] if "ret_1" in feature_frame.columns else feature_frame["Close"].pct_change()
+        )
+        live_path_latest = float(compute_causal_rolling_volatility(live_returns, window=cfg.vol_window).iloc[-1])
+
+        self.assertAlmostEqual(train_path_latest, live_path_latest, places=12)
 
 
 if __name__ == "__main__":
