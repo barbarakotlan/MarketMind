@@ -1,0 +1,379 @@
+{
+  "config": {
+    "lookback": 30,
+    "horizon": 1,
+    "min_history": 120,
+    "retrain_frequency": 12,
+    "vol_window": 20,
+    "magnitude_k": 0.5,
+    "pred_deadband": 0.0,
+    "one_way_cost_bps": 10.0,
+    "er_window": 20,
+    "er_chop_threshold": 0.3,
+    "er_trend_threshold": 0.5,
+    "sparse_bucket_min_fraction": 0.1,
+    "conservative_min_coverage": 0.85,
+    "aggressive_min_coverage": 0.55,
+    "conservative_target_coverage": 0.9,
+    "aggressive_target_coverage": 0.65,
+    "min_trades": 40,
+    "embargo_extra": 1,
+    "eps": 1e-08,
+    "seed": 42,
+    "artifact_ttl_days": 7,
+    "threshold_sharpe_tolerance": 0.02,
+    "risk_max_sharpe_degrade": 0.2,
+    "validation_require_improvement": true,
+    "validation_max_sharpe_drop": 0.25,
+    "validation_max_drawdown_drop": 0.02,
+    "validation_guard_fraction": 0.3,
+    "validation_guard_min_rows": 40,
+    "guard_stability_lambda": 1.0,
+    "lift_sanity_gate_enabled": true,
+    "lift_sanity_min_spread": 0.0,
+    "threshold_diagnostics_top_k": 5,
+    "calibration_min_samples_for_isotonic": 1000,
+    "calibration_min_positives_for_isotonic": 200,
+    "calibration_fraction": 0.35
+  },
+  "results": [
+    {
+      "ticker": "AAPL",
+      "status": "ok",
+      "lift_spread": -0.016849527564001328,
+      "thresholds": {
+        "conservative": {
+          "status": "disabled_conservative",
+          "tau": null,
+          "coverage_pred": null,
+          "coverage_trade": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "win_rate": null,
+          "objective": "sharpe",
+          "count_tau_pass_constraints": 18,
+          "count_tau_pass_objective_gate": 1,
+          "count_tau_pass_guard_split": 0,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 1,
+          "disabled_reason": "lift_gate",
+          "best_candidate_under_constraints": {
+            "tau": 0.15,
+            "coverage_pred": 1.0,
+            "executed_trades": 82,
+            "sharpe_validation": -0.2033718947072987,
+            "max_drawdown_validation": -0.20936720987258006,
+            "sharpe_guard": 0.23218859519179152,
+            "max_drawdown_guard": -0.2607550820713853,
+            "failed": "lift_gate"
+          },
+          "top_candidates": [
+            {
+              "tau": 0.16,
+              "coverage_pred": 0.9634146341463414,
+              "executed_trades": 79,
+              "sharpe": -0.30722197483315744,
+              "max_drawdown": -0.1925439244118865
+            }
+          ],
+          "max_coverage_pred_seen": 1.0,
+          "min_coverage_pred_seen": 0.0,
+          "coverage_monotonic_nonincreasing": true
+        },
+        "aggressive": {
+          "status": "disabled_aggressive",
+          "tau": null,
+          "coverage_pred": null,
+          "coverage_trade": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "win_rate": null,
+          "objective": "sharpe",
+          "count_tau_pass_constraints": 20,
+          "count_tau_pass_objective_gate": 1,
+          "count_tau_pass_guard_split": 0,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 1,
+          "disabled_reason": "lift_gate",
+          "best_candidate_under_constraints": {
+            "tau": 0.15,
+            "coverage_pred": 1.0,
+            "executed_trades": 82,
+            "sharpe_validation": -0.2033718947072987,
+            "max_drawdown_validation": -0.20936720987258006,
+            "sharpe_guard": 0.23218859519179152,
+            "max_drawdown_guard": -0.2607550820713853,
+            "failed": "lift_gate"
+          },
+          "top_candidates": [
+            {
+              "tau": 0.16,
+              "coverage_pred": 0.9634146341463414,
+              "executed_trades": 79,
+              "sharpe": -0.30722197483315744,
+              "max_drawdown": -0.1925439244118865
+            }
+          ],
+          "max_coverage_pred_seen": 1.0,
+          "min_coverage_pred_seen": 0.0,
+          "coverage_monotonic_nonincreasing": true
+        },
+        "risk_conservative": {
+          "status": "disabled_risk_conservative",
+          "tau": null,
+          "coverage_pred": null,
+          "coverage_trade": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "win_rate": null,
+          "objective": "maxdd",
+          "count_tau_pass_constraints": 18,
+          "count_tau_pass_objective_gate": 1,
+          "count_tau_pass_guard_split": 0,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 1,
+          "disabled_reason": "guard_split",
+          "best_candidate_under_constraints": {
+            "tau": 0.16,
+            "coverage_pred": 0.9634146341463414,
+            "executed_trades": 79,
+            "sharpe_validation": -0.30722197483315744,
+            "max_drawdown_validation": -0.1925439244118865,
+            "sharpe_guard": 0.3591087703121106,
+            "max_drawdown_guard": -0.25074829153748224,
+            "failed": "guard_split"
+          },
+          "top_candidates": [
+            {
+              "tau": 0.16,
+              "coverage_pred": 0.9634146341463414,
+              "executed_trades": 79,
+              "sharpe": -0.30722197483315744,
+              "max_drawdown": -0.1925439244118865
+            }
+          ],
+          "max_coverage_pred_seen": 1.0,
+          "min_coverage_pred_seen": 0.0,
+          "coverage_monotonic_nonincreasing": true
+        },
+        "risk_aggressive": {
+          "status": "disabled_risk_aggressive",
+          "tau": null,
+          "coverage_pred": null,
+          "coverage_trade": null,
+          "executed_trades": null,
+          "sharpe": null,
+          "max_drawdown": null,
+          "win_rate": null,
+          "objective": "maxdd",
+          "count_tau_pass_constraints": 20,
+          "count_tau_pass_objective_gate": 1,
+          "count_tau_pass_guard_split": 0,
+          "feasible_tau_count": 0,
+          "candidate_tau_count": 1,
+          "disabled_reason": "guard_split",
+          "best_candidate_under_constraints": {
+            "tau": 0.19,
+            "coverage_pred": 0.5853658536585366,
+            "executed_trades": 48,
+            "sharpe_validation": -3.424991774430135,
+            "max_drawdown_validation": -0.18932798023690223,
+            "sharpe_guard": -0.455853206458743,
+            "max_drawdown_guard": -0.2765624916337962,
+            "failed": "guard_split"
+          },
+          "top_candidates": [
+            {
+              "tau": 0.16,
+              "coverage_pred": 0.9634146341463414,
+              "executed_trades": 79,
+              "sharpe": -0.30722197483315744,
+              "max_drawdown": -0.1925439244118865
+            }
+          ],
+          "max_coverage_pred_seen": 1.0,
+          "min_coverage_pred_seen": 0.0,
+          "coverage_monotonic_nonincreasing": true
+        }
+      }
+    },
+    {
+      "ticker": "NVDA",
+      "status": "ok",
+      "lift_spread": 0.028320592345400332,
+      "thresholds": {
+        "conservative": {
+          "status": "ok",
+          "tau": 0.36,
+          "coverage_pred": 0.9146341463414634,
+          "coverage_trade": 0.9146341463414634,
+          "executed_trades": 75,
+          "sharpe": 0.7269064722639951,
+          "max_drawdown": -0.22114411263571443,
+          "win_rate": 0.5733333333333334,
+          "objective": "sharpe",
+          "count_tau_pass_constraints": 37,
+          "count_tau_pass_objective_gate": 1,
+          "count_tau_pass_guard_split": 1,
+          "feasible_tau_count": 1,
+          "candidate_tau_count": 1,
+          "disabled_reason": null,
+          "best_candidate_under_constraints": {
+            "tau": 0.36,
+            "coverage_pred": 0.9146341463414634,
+            "executed_trades": 75,
+            "sharpe_validation": 0.7269064722639951,
+            "max_drawdown_validation": -0.22114411263571443,
+            "sharpe_guard": 0.4673077261231584,
+            "max_drawdown_guard": -0.2622877711603733,
+            "failed": null
+          },
+          "top_candidates": [
+            {
+              "tau": 0.36,
+              "coverage_pred": 0.9146341463414634,
+              "executed_trades": 75,
+              "sharpe": 0.7269064722639951,
+              "max_drawdown": -0.22114411263571443
+            }
+          ],
+          "max_coverage_pred_seen": 1.0,
+          "min_coverage_pred_seen": 0.0,
+          "coverage_monotonic_nonincreasing": true,
+          "guard_sharpe": 0.4673077261231584,
+          "guard_max_drawdown": -0.2622877711603733,
+          "guard_selection_score": 0.4673077261231584
+        },
+        "aggressive": {
+          "status": "ok",
+          "tau": 0.36,
+          "coverage_pred": 0.9146341463414634,
+          "coverage_trade": 0.9146341463414634,
+          "executed_trades": 75,
+          "sharpe": 0.7269064722639951,
+          "max_drawdown": -0.22114411263571443,
+          "win_rate": 0.5733333333333334,
+          "objective": "sharpe",
+          "count_tau_pass_constraints": 37,
+          "count_tau_pass_objective_gate": 1,
+          "count_tau_pass_guard_split": 1,
+          "feasible_tau_count": 1,
+          "candidate_tau_count": 1,
+          "disabled_reason": null,
+          "best_candidate_under_constraints": {
+            "tau": 0.36,
+            "coverage_pred": 0.9146341463414634,
+            "executed_trades": 75,
+            "sharpe_validation": 0.7269064722639951,
+            "max_drawdown_validation": -0.22114411263571443,
+            "sharpe_guard": 0.4673077261231584,
+            "max_drawdown_guard": -0.2622877711603733,
+            "failed": null
+          },
+          "top_candidates": [
+            {
+              "tau": 0.36,
+              "coverage_pred": 0.9146341463414634,
+              "executed_trades": 75,
+              "sharpe": 0.7269064722639951,
+              "max_drawdown": -0.22114411263571443
+            }
+          ],
+          "max_coverage_pred_seen": 1.0,
+          "min_coverage_pred_seen": 0.0,
+          "coverage_monotonic_nonincreasing": true,
+          "guard_sharpe": 0.4673077261231584,
+          "guard_max_drawdown": -0.2622877711603733,
+          "guard_selection_score": 0.4673077261231584
+        },
+        "risk_conservative": {
+          "status": "ok",
+          "tau": 0.36,
+          "coverage_pred": 0.9146341463414634,
+          "coverage_trade": 0.9146341463414634,
+          "executed_trades": 75,
+          "sharpe": 0.7269064722639951,
+          "max_drawdown": -0.22114411263571443,
+          "win_rate": 0.5733333333333334,
+          "objective": "maxdd",
+          "count_tau_pass_constraints": 37,
+          "count_tau_pass_objective_gate": 1,
+          "count_tau_pass_guard_split": 1,
+          "feasible_tau_count": 1,
+          "candidate_tau_count": 1,
+          "disabled_reason": null,
+          "best_candidate_under_constraints": {
+            "tau": 0.36,
+            "coverage_pred": 0.9146341463414634,
+            "executed_trades": 75,
+            "sharpe_validation": 0.7269064722639951,
+            "max_drawdown_validation": -0.22114411263571443,
+            "sharpe_guard": 0.4673077261231584,
+            "max_drawdown_guard": -0.2622877711603733,
+            "failed": null
+          },
+          "top_candidates": [
+            {
+              "tau": 0.36,
+              "coverage_pred": 0.9146341463414634,
+              "executed_trades": 75,
+              "sharpe": 0.7269064722639951,
+              "max_drawdown": -0.22114411263571443
+            }
+          ],
+          "max_coverage_pred_seen": 1.0,
+          "min_coverage_pred_seen": 0.0,
+          "coverage_monotonic_nonincreasing": true,
+          "guard_sharpe": 0.4673077261231584,
+          "guard_max_drawdown": -0.2622877711603733,
+          "guard_selection_score": -0.2622877711603733
+        },
+        "risk_aggressive": {
+          "status": "ok",
+          "tau": 0.36,
+          "coverage_pred": 0.9146341463414634,
+          "coverage_trade": 0.9146341463414634,
+          "executed_trades": 75,
+          "sharpe": 0.7269064722639951,
+          "max_drawdown": -0.22114411263571443,
+          "win_rate": 0.5733333333333334,
+          "objective": "maxdd",
+          "count_tau_pass_constraints": 37,
+          "count_tau_pass_objective_gate": 1,
+          "count_tau_pass_guard_split": 1,
+          "feasible_tau_count": 1,
+          "candidate_tau_count": 1,
+          "disabled_reason": null,
+          "best_candidate_under_constraints": {
+            "tau": 0.36,
+            "coverage_pred": 0.9146341463414634,
+            "executed_trades": 75,
+            "sharpe_validation": 0.7269064722639951,
+            "max_drawdown_validation": -0.22114411263571443,
+            "sharpe_guard": 0.4673077261231584,
+            "max_drawdown_guard": -0.2622877711603733,
+            "failed": null
+          },
+          "top_candidates": [
+            {
+              "tau": 0.36,
+              "coverage_pred": 0.9146341463414634,
+              "executed_trades": 75,
+              "sharpe": 0.7269064722639951,
+              "max_drawdown": -0.22114411263571443
+            }
+          ],
+          "max_coverage_pred_seen": 1.0,
+          "min_coverage_pred_seen": 0.0,
+          "coverage_monotonic_nonincreasing": true,
+          "guard_sharpe": 0.4673077261231584,
+          "guard_max_drawdown": -0.2622877711603733,
+          "guard_selection_score": -0.2622877711603733
+        }
+      }
+    }
+  ]
+}

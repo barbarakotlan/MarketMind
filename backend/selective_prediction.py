@@ -77,6 +77,7 @@ class SelectiveConfig:
     validation_max_drawdown_drop: float = 0.02
     validation_guard_fraction: float = 0.30
     validation_guard_min_rows: int = 40
+    guard_stability_lambda: float = 1.0
     lift_sanity_gate_enabled: bool = True
     lift_sanity_min_spread: float = 0.0
     threshold_diagnostics_top_k: int = 5
@@ -591,6 +592,36 @@ def optimize_threshold_for_mode(
 ) -> Dict[str, object]:
     objective = "maxdd" if str(objective).lower() == "maxdd" else "sharpe"
 
+    def _best_by_objective(candidates: List[Dict[str, object]]) -> Optional[Dict[str, object]]:
+        if not candidates:
+            return None
+        if objective == "maxdd":
+            return sorted(
+                candidates,
+                key=lambda s: (-float(s["max_drawdown"]), -float(s["sharpe"]), -float(s["tau"])),
+            )[0]
+        return sorted(
+            candidates,
+            key=lambda s: (-float(s["sharpe"]), -float(s["max_drawdown"]), -float(s["tau"])),
+        )[0]
+
+    def _candidate_blob(
+        candidate: Optional[Dict[str, object]],
+        failed_reason: Optional[str] = None,
+    ) -> Optional[Dict[str, object]]:
+        if candidate is None:
+            return None
+        return {
+            "tau": float(candidate["tau"]),
+            "coverage_pred": float(candidate["coverage_pred"]),
+            "executed_trades": int(candidate["executed_trades"]),
+            "sharpe_validation": float(candidate["sharpe"]),
+            "max_drawdown_validation": float(candidate["max_drawdown"]),
+            "sharpe_guard": None,
+            "max_drawdown_guard": None,
+            "failed": failed_reason,
+        }
+
     def _disabled() -> Dict[str, object]:
         return {
             "status": f"disabled_{mode}",
@@ -602,12 +633,27 @@ def optimize_threshold_for_mode(
             "max_drawdown": 0.0,
             "win_rate": 0.0,
             "objective": objective,
+            "count_tau_pass_constraints": 0,
+            "count_tau_pass_objective_gate": 0,
+            "count_tau_pass_guard_split": 0,
             "feasible_tau_count": 0,
             "candidate_tau_count": 0,
+            "disabled_reason": "constraints",
+            "best_candidate_under_constraints": None,
+            "guard_sharpe": None,
+            "guard_max_drawdown": None,
+            "guard_selection_score": None,
             "top_candidates": [],
+            "max_coverage_pred_seen": 0.0,
+            "min_coverage_pred_seen": 0.0,
+            "coverage_monotonic_nonincreasing": True,
+            "_objective_taus": [],
+            "_objective_candidates": [],
+            "_constraint_candidates": [],
         }
 
-    feasible: List[Dict[str, object]] = []
+    sweep: List[Dict[str, object]] = []
+    coverage_values: List[float] = []
     for tau in DEFAULT_TAU_GRID:
         scenario = simulate_abstention_scenario(
             validation_df,
@@ -617,44 +663,85 @@ def optimize_threshold_for_mode(
             one_way_cost_bps=one_way_cost_bps,
             eps=eps,
         )
-        if scenario["coverage_pred"] < min_coverage:
-            continue
-        if scenario["executed_trades"] < min_trades:
-            continue
-        feasible.append(scenario)
+        sweep.append(scenario)
+        coverage_values.append(float(scenario["coverage_pred"]))
 
-    if not feasible:
-        return _disabled()
+    max_coverage_seen = float(max(coverage_values)) if coverage_values else 0.0
+    min_coverage_seen = float(min(coverage_values)) if coverage_values else 0.0
+    coverage_monotonic = True
+    for i in range(len(coverage_values) - 1):
+        if coverage_values[i + 1] > (coverage_values[i] + 1e-12):
+            coverage_monotonic = False
+            break
 
-    candidate_pool = feasible
+    constraint_candidates = [
+        s
+        for s in sweep
+        if float(s["coverage_pred"]) >= float(min_coverage) and int(s["executed_trades"]) >= int(min_trades)
+    ]
+    count_constraints = int(len(constraint_candidates))
+    best_constraint_candidate = _best_by_objective(constraint_candidates)
+
+    if not constraint_candidates:
+        out = _disabled()
+        out["max_coverage_pred_seen"] = max_coverage_seen
+        out["min_coverage_pred_seen"] = min_coverage_seen
+        out["coverage_monotonic_nonincreasing"] = coverage_monotonic
+        return out
+
+    objective_candidates = constraint_candidates
     if baseline_scenario is not None:
         baseline_sharpe = float(baseline_scenario.get("sharpe", 0.0))
         baseline_maxdd = float(baseline_scenario.get("max_drawdown", 0.0))
-        candidate_pool = [
+        objective_candidates = [
             s
-            for s in candidate_pool
+            for s in objective_candidates
             if float(s["sharpe"]) >= (baseline_sharpe - max_sharpe_drop)
             and float(s["max_drawdown"]) >= (baseline_maxdd - max_drawdown_drop)
         ]
         if require_maxdd_improvement:
-            candidate_pool = [s for s in candidate_pool if float(s["max_drawdown"]) > baseline_maxdd]
+            objective_candidates = [s for s in objective_candidates if float(s["max_drawdown"]) > baseline_maxdd]
         elif require_improvement:
-            candidate_pool = [
+            objective_candidates = [
                 s
-                for s in candidate_pool
+                for s in objective_candidates
                 if float(s["sharpe"]) > baseline_sharpe or float(s["max_drawdown"]) > baseline_maxdd
             ]
 
-    if not candidate_pool:
-        return _disabled()
+    count_objective = int(len(objective_candidates))
+    if not objective_candidates:
+        out = _disabled()
+        out["disabled_reason"] = "objective_gate"
+        out["count_tau_pass_constraints"] = count_constraints
+        out["count_tau_pass_objective_gate"] = count_objective
+        out["count_tau_pass_guard_split"] = 0
+        out["candidate_tau_count"] = count_objective
+        out["best_candidate_under_constraints"] = _candidate_blob(
+            best_constraint_candidate,
+            failed_reason="objective_gate",
+        )
+        out["max_coverage_pred_seen"] = max_coverage_seen
+        out["min_coverage_pred_seen"] = min_coverage_seen
+        out["coverage_monotonic_nonincreasing"] = coverage_monotonic
+        out["_constraint_candidates"] = [
+            {
+                "tau": float(s["tau"]),
+                "coverage_pred": float(s["coverage_pred"]),
+                "executed_trades": int(s["executed_trades"]),
+                "sharpe": float(s["sharpe"]),
+                "max_drawdown": float(s["max_drawdown"]),
+            }
+            for s in constraint_candidates
+        ]
+        return out
 
     tolerance = max(float(sharpe_tolerance), 0.0)
     if objective == "maxdd":
-        best_metric = max(float(s["max_drawdown"]) for s in candidate_pool)
-        top = [s for s in candidate_pool if float(s["max_drawdown"]) >= (best_metric - tolerance)]
+        best_metric = max(float(s["max_drawdown"]) for s in objective_candidates)
+        top = [s for s in objective_candidates if float(s["max_drawdown"]) >= (best_metric - tolerance)]
     else:
-        best_metric = max(float(s["sharpe"]) for s in candidate_pool)
-        top = [s for s in candidate_pool if float(s["sharpe"]) >= (best_metric - tolerance)]
+        best_metric = max(float(s["sharpe"]) for s in objective_candidates)
+        top = [s for s in objective_candidates if float(s["sharpe"]) >= (best_metric - tolerance)]
     target = float(min_coverage if target_coverage is None else target_coverage)
 
     def _tie_break_key(s):
@@ -674,9 +761,9 @@ def optimize_threshold_for_mode(
 
     best = sorted(top, key=_tie_break_key)[0]
     ranking = (
-        sorted(candidate_pool, key=lambda s: (-float(s["max_drawdown"]), -float(s["sharpe"])))
+        sorted(objective_candidates, key=lambda s: (-float(s["max_drawdown"]), -float(s["sharpe"])))
         if objective == "maxdd"
-        else sorted(candidate_pool, key=lambda s: (-float(s["sharpe"]), -float(s["max_drawdown"])))
+        else sorted(objective_candidates, key=lambda s: (-float(s["sharpe"]), -float(s["max_drawdown"])))
     )
     k = max(1, int(top_k))
     top_candidates = [
@@ -689,6 +776,19 @@ def optimize_threshold_for_mode(
         }
         for s in ranking[:k]
     ]
+    objective_taus = [float(s["tau"]) for s in objective_candidates]
+    objective_candidate_rows = [
+        {
+            "tau": float(s["tau"]),
+            "coverage_pred": float(s["coverage_pred"]),
+            "coverage_trade": float(s["coverage_trade"]),
+            "executed_trades": int(s["executed_trades"]),
+            "sharpe": float(s["sharpe"]),
+            "max_drawdown": float(s["max_drawdown"]),
+            "win_rate": float(s["win_rate"]),
+        }
+        for s in objective_candidates
+    ]
 
     return {
         "status": "ok",
@@ -700,9 +800,29 @@ def optimize_threshold_for_mode(
         "max_drawdown": float(best["max_drawdown"]),
         "win_rate": float(best["win_rate"]),
         "objective": objective,
-        "feasible_tau_count": int(len(feasible)),
-        "candidate_tau_count": int(len(candidate_pool)),
+        "count_tau_pass_constraints": count_constraints,
+        "count_tau_pass_objective_gate": count_objective,
+        "count_tau_pass_guard_split": count_objective,
+        "feasible_tau_count": count_objective,
+        "candidate_tau_count": count_objective,
+        "disabled_reason": None,
+        "best_candidate_under_constraints": _candidate_blob(best_constraint_candidate),
         "top_candidates": top_candidates,
+        "max_coverage_pred_seen": max_coverage_seen,
+        "min_coverage_pred_seen": min_coverage_seen,
+        "coverage_monotonic_nonincreasing": coverage_monotonic,
+        "_objective_taus": objective_taus,
+        "_objective_candidates": objective_candidate_rows,
+        "_constraint_candidates": [
+            {
+                "tau": float(s["tau"]),
+                "coverage_pred": float(s["coverage_pred"]),
+                "executed_trades": int(s["executed_trades"]),
+                "sharpe": float(s["sharpe"]),
+                "max_drawdown": float(s["max_drawdown"]),
+            }
+            for s in constraint_candidates
+        ],
     }
 
 
@@ -1067,10 +1187,49 @@ def run_selective_evaluation_from_df(
             "max_drawdown": 0.0,
             "win_rate": 0.0,
             "objective": objective,
+            "count_tau_pass_constraints": 0,
+            "count_tau_pass_objective_gate": 0,
+            "count_tau_pass_guard_split": 0,
             "feasible_tau_count": 0,
             "candidate_tau_count": 0,
+            "disabled_reason": "constraints",
+            "best_candidate_under_constraints": None,
+            "guard_sharpe": None,
+            "guard_max_drawdown": None,
+            "guard_selection_score": None,
             "top_candidates": [],
+            "max_coverage_pred_seen": 0.0,
+            "min_coverage_pred_seen": 0.0,
+            "coverage_monotonic_nonincreasing": True,
+            "_objective_taus": [],
+            "_objective_candidates": [],
+            "_constraint_candidates": [],
         }
+
+    def _force_disable_threshold(
+        threshold: Dict[str, object],
+        mode_name: str,
+        objective: str,
+        reason: str,
+    ) -> Dict[str, object]:
+        out = dict(threshold) if threshold else _disabled_threshold(mode_name, objective)
+        out["status"] = f"disabled_{mode_name}"
+        out["tau"] = None
+        out["coverage_pred"] = None
+        out["coverage_trade"] = None
+        out["executed_trades"] = None
+        out["sharpe"] = None
+        out["max_drawdown"] = None
+        out["win_rate"] = None
+        out["objective"] = objective
+        out["count_tau_pass_guard_split"] = 0
+        out["feasible_tau_count"] = 0
+        out["candidate_tau_count"] = int(out.get("count_tau_pass_objective_gate", 0))
+        out["disabled_reason"] = reason
+        blob = out.get("best_candidate_under_constraints")
+        if isinstance(blob, dict) and blob.get("failed") is None:
+            blob["failed"] = reason
+        return out
 
     threshold_conservative = optimize_threshold_for_mode(
         validation_df=validation_eval_opt,
@@ -1146,8 +1305,18 @@ def run_selective_evaluation_from_df(
     )
 
     if config.lift_sanity_gate_enabled and validation_lift_spread <= float(config.lift_sanity_min_spread):
-        threshold_conservative = _disabled_threshold("conservative", "sharpe")
-        threshold_aggressive = _disabled_threshold("aggressive", "sharpe")
+        threshold_conservative = _force_disable_threshold(
+            threshold_conservative,
+            "conservative",
+            "sharpe",
+            "lift_gate",
+        )
+        threshold_aggressive = _force_disable_threshold(
+            threshold_aggressive,
+            "aggressive",
+            "sharpe",
+            "lift_gate",
+        )
 
     if not validation_eval_guard.empty:
         guard_none = simulate_abstention_scenario(
@@ -1158,6 +1327,8 @@ def run_selective_evaluation_from_df(
             one_way_cost_bps=config.one_way_cost_bps,
             eps=config.eps,
         )
+        stability_lambda = max(float(config.guard_stability_lambda), 0.0)
+
         def _guard_threshold(
             threshold: Dict[str, object],
             mode_name: str,
@@ -1167,26 +1338,126 @@ def run_selective_evaluation_from_df(
             max_sharpe_drop: float,
             max_drawdown_drop: float,
         ) -> Dict[str, object]:
+            # Even when disabled, attach guard metrics to the best constraint candidate for debugging.
+            blob = threshold.get("best_candidate_under_constraints")
+            blob_tau = None
+            if isinstance(blob, dict) and blob.get("tau") is not None:
+                blob_tau = float(blob["tau"])
+                blob_guard = simulate_abstention_scenario(
+                    validation_eval_guard,
+                    tau=blob_tau,
+                    mode=mode_name,
+                    pred_deadband=config.pred_deadband,
+                    one_way_cost_bps=config.one_way_cost_bps,
+                    eps=config.eps,
+                )
+                blob["sharpe_guard"] = float(blob_guard.get("sharpe", 0.0))
+                blob["max_drawdown_guard"] = float(blob_guard.get("max_drawdown", 0.0))
+
             if threshold.get("status") != "ok":
+                threshold["count_tau_pass_guard_split"] = 0
+                threshold["feasible_tau_count"] = 0
                 return threshold
-            guard_candidate = simulate_abstention_scenario(
-                validation_eval_guard,
-                tau=float(threshold["tau"]),
-                mode=mode_name,
-                pred_deadband=config.pred_deadband,
-                one_way_cost_bps=config.one_way_cost_bps,
-                eps=config.eps,
-            )
-            if _passes_validation_guard(
-                candidate=guard_candidate,
-                baseline=guard_none,
-                require_improvement=require_improvement,
-                require_maxdd_improvement=require_maxdd_improvement,
-                max_sharpe_drop=max_sharpe_drop,
-                max_drawdown_drop=max_drawdown_drop,
-            ):
-                return threshold
-            return _disabled_threshold(mode_name, objective)
+
+            objective_rows = {
+                round(float(row["tau"]), 6): row
+                for row in threshold.get("_objective_candidates", [])
+            }
+            objective_taus = [float(t) for t in threshold.get("_objective_taus", [])]
+            guard_pass = []
+            for tau in objective_taus:
+                guard_candidate = simulate_abstention_scenario(
+                    validation_eval_guard,
+                    tau=float(tau),
+                    mode=mode_name,
+                    pred_deadband=config.pred_deadband,
+                    one_way_cost_bps=config.one_way_cost_bps,
+                    eps=config.eps,
+                )
+                if _passes_validation_guard(
+                    candidate=guard_candidate,
+                    baseline=guard_none,
+                    require_improvement=require_improvement,
+                    require_maxdd_improvement=require_maxdd_improvement,
+                    max_sharpe_drop=max_sharpe_drop,
+                    max_drawdown_drop=max_drawdown_drop,
+                ):
+                    guard_pass.append((float(tau), guard_candidate))
+
+            threshold["count_tau_pass_guard_split"] = int(len(guard_pass))
+            threshold["feasible_tau_count"] = int(len(guard_pass))
+
+            if not guard_pass:
+                if isinstance(blob, dict):
+                    blob["failed"] = "guard_split"
+                return _force_disable_threshold(threshold, mode_name, objective, "guard_split")
+
+            pass_rows = []
+            for tau, guard_candidate in guard_pass:
+                key = round(float(tau), 6)
+                if key in objective_rows:
+                    val_row = objective_rows[key]
+                    val_sharpe = float(val_row.get("sharpe", 0.0))
+                    val_maxdd = float(val_row.get("max_drawdown", 0.0))
+                    guard_sharpe = float(guard_candidate.get("sharpe", 0.0))
+                    guard_maxdd = float(guard_candidate.get("max_drawdown", 0.0))
+                    if objective == "maxdd":
+                        degradation = max(0.0, val_maxdd - guard_maxdd)
+                        stability_score = val_maxdd - (stability_lambda * degradation)
+                    else:
+                        degradation = max(0.0, val_sharpe - guard_sharpe)
+                        stability_score = val_sharpe - (stability_lambda * degradation)
+                    pass_rows.append(
+                        {
+                            "tau": float(tau),
+                            "val_row": val_row,
+                            "guard_sharpe": guard_sharpe,
+                            "guard_max_drawdown": guard_maxdd,
+                            "stability_score": float(stability_score),
+                            "degradation_penalty": float(degradation),
+                        }
+                    )
+            if not pass_rows:
+                if isinstance(blob, dict):
+                    blob["failed"] = "guard_split"
+                return _force_disable_threshold(threshold, mode_name, objective, "guard_split")
+
+            if objective == "maxdd":
+                chosen = sorted(
+                    pass_rows,
+                    key=lambda s: (
+                        -float(s["stability_score"]),
+                        -float(s["guard_max_drawdown"]),
+                        -float(s["guard_sharpe"]),
+                        -float(s["tau"]),
+                    ),
+                )[0]
+            else:
+                chosen = sorted(
+                    pass_rows,
+                    key=lambda s: (
+                        -float(s["stability_score"]),
+                        -float(s["guard_sharpe"]),
+                        -float(s["guard_max_drawdown"]),
+                        -float(s["tau"]),
+                    ),
+                )[0]
+
+            chosen_val = chosen["val_row"]
+
+            threshold["status"] = "ok"
+            threshold["disabled_reason"] = None
+            threshold["tau"] = float(chosen["tau"])
+            threshold["coverage_pred"] = float(chosen_val.get("coverage_pred", 0.0))
+            threshold["coverage_trade"] = float(chosen_val.get("coverage_trade", 0.0))
+            threshold["executed_trades"] = int(chosen_val.get("executed_trades", 0))
+            threshold["sharpe"] = float(chosen_val.get("sharpe", 0.0))
+            threshold["max_drawdown"] = float(chosen_val.get("max_drawdown", 0.0))
+            threshold["win_rate"] = float(chosen_val.get("win_rate", 0.0))
+            threshold["guard_sharpe"] = float(chosen["guard_sharpe"])
+            threshold["guard_max_drawdown"] = float(chosen["guard_max_drawdown"])
+            threshold["guard_selection_score"] = float(chosen["stability_score"])
+            return threshold
 
         threshold_conservative = _guard_threshold(
             threshold_conservative,
@@ -1326,11 +1597,14 @@ def run_selective_evaluation_from_df(
         "validation_lift_decile_spread": float(validation_lift_spread),
     }
 
+    def _public_threshold(th: Dict[str, object]) -> Dict[str, object]:
+        return {k: v for k, v in th.items() if not str(k).startswith("_")}
+
     selected_thresholds = {
-        "conservative": threshold_conservative,
-        "aggressive": threshold_aggressive,
-        "risk_conservative": threshold_risk_conservative,
-        "risk_aggressive": threshold_risk_aggressive,
+        "conservative": _public_threshold(threshold_conservative),
+        "aggressive": _public_threshold(threshold_aggressive),
+        "risk_conservative": _public_threshold(threshold_risk_conservative),
+        "risk_aggressive": _public_threshold(threshold_risk_aggressive),
     }
     mode_status = {
         "conservative": threshold_conservative["status"],
@@ -1372,6 +1646,14 @@ def run_selective_evaluation_from_df(
     label_stats_train = _split_label_stats(train_labeled)
     label_stats_validation = _split_label_stats(validation_labeled)
     label_stats_test = _split_label_stats(test_labeled)
+
+    def _safe_float(value, default: float = 0.0) -> float:
+        try:
+            if value is None:
+                return float(default)
+            return float(value)
+        except Exception:
+            return float(default)
 
     payload = {
         "selector_model": selector_model,
@@ -1417,16 +1699,30 @@ def run_selective_evaluation_from_df(
             "test": float(label_stats_test["positive_rate"]),
         },
         "training_baseline": {
-            "coverage_pred_conservative": float(threshold_conservative.get("coverage_pred", 0.0)),
-            "coverage_pred_aggressive": float(threshold_aggressive.get("coverage_pred", 0.0)),
-            "coverage_pred_risk_conservative": float(threshold_risk_conservative.get("coverage_pred", 0.0)),
-            "coverage_pred_risk_aggressive": float(threshold_risk_aggressive.get("coverage_pred", 0.0)),
+            "coverage_pred_conservative": _safe_float(threshold_conservative.get("coverage_pred", 0.0)),
+            "coverage_pred_aggressive": _safe_float(threshold_aggressive.get("coverage_pred", 0.0)),
+            "coverage_pred_risk_conservative": _safe_float(threshold_risk_conservative.get("coverage_pred", 0.0)),
+            "coverage_pred_risk_aggressive": _safe_float(threshold_risk_aggressive.get("coverage_pred", 0.0)),
+        },
+        "threshold_waterfall": {
+            mode: {
+                "count_tau_pass_constraints": int(info.get("count_tau_pass_constraints", 0)),
+                "count_tau_pass_objective_gate": int(info.get("count_tau_pass_objective_gate", 0)),
+                "count_tau_pass_guard_split": int(info.get("count_tau_pass_guard_split", 0)),
+                "feasible_tau_count": int(info.get("feasible_tau_count", 0)),
+                "disabled_reason": info.get("disabled_reason"),
+                "max_coverage_pred_seen": _safe_float(info.get("max_coverage_pred_seen", 0.0)),
+                "min_coverage_pred_seen": _safe_float(info.get("min_coverage_pred_seen", 0.0)),
+                "coverage_monotonic_nonincreasing": bool(info.get("coverage_monotonic_nonincreasing", True)),
+            }
+            for mode, info in selected_thresholds.items()
         },
         "tuning": {
             "conservative_target_coverage": float(config.conservative_target_coverage),
             "aggressive_target_coverage": float(config.aggressive_target_coverage),
             "threshold_sharpe_tolerance": float(config.threshold_sharpe_tolerance),
             "risk_max_sharpe_degrade": float(config.risk_max_sharpe_degrade),
+            "guard_stability_lambda": float(config.guard_stability_lambda),
             "calibration_fraction": float(config.calibration_fraction),
             "validation_require_improvement": bool(config.validation_require_improvement),
             "validation_max_sharpe_drop": float(config.validation_max_sharpe_drop),
