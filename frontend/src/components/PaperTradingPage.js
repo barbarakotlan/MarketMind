@@ -52,49 +52,27 @@ const PortfolioGrowthChart = ({ totalValue }) => {
     const [activePeriod, setActivePeriod] = useState('1m');
     const [isSimulated, setIsSimulated] = useState(false);
 
-    // --- MOCK DATA GENERATOR ---
-    const generateMockHistory = useCallback((period) => {
+    // --- FLAT LINE GENERATOR FOR NO-TRADE PORTFOLIOS ---
+    const generateFlatHistory = useCallback((period) => {
         const pointsMap = { '1d': 24, '1w': 7, '1m': 30, '3m': 90, 'ytd': 120, '1y': 365 };
         const points = pointsMap[period] || 30;
         const now = new Date();
         const dates = [];
         const values = [];
 
-        // ANCHOR LOGIC:
-        const endPrice = totalValue || 100000;
-        let startPrice = 100000;
+        // Show flat line at starting value (100,000) since no trades have been made
+        const flatValue = 100000;
 
-        // For short term, start near current. For long term, start at 100k factory reset.
-        if (period === '1d') {
-            startPrice = endPrice * (1 + (Math.random() * 0.01 - 0.005));
-        } else if (period === '1w') {
-            startPrice = endPrice * (1 + (Math.random() * 0.04 - 0.02));
-        } else {
-            startPrice = 100000;
-        }
-
-        // Generate Bridge
         for (let i = 0; i <= points; i++) {
             const date = new Date(now);
             if (period === '1d') date.setHours(date.getHours() - (points - i));
             else date.setDate(date.getDate() - (points - i));
             dates.push(date.toISOString());
-
-            // Brownian Bridge Interpolation
-            const progress = i / points;
-            const linearTrend = startPrice + (endPrice - startPrice) * progress;
-            const noiseMagnitude = (endPrice * 0.02);
-            const noise = (Math.random() - 0.5) * noiseMagnitude * Math.sin(progress * Math.PI);
-
-            values.push(linearTrend + noise);
+            values.push(flatValue); // Flat line - no fluctuation
         }
 
-        // Force precise endpoints
-        values[0] = startPrice;
-        values[values.length - 1] = endPrice;
-
         return { dates, values };
-    }, [totalValue]);
+    }, []);
 
     // Effect to fetch data whenever activePeriod or totalValue changes
     useEffect(() => {
@@ -109,13 +87,15 @@ const PortfolioGrowthChart = ({ totalValue }) => {
                         setHistory({ dates: data.dates, values: data.values });
                         setIsSimulated(false);
                     } else {
-                        setHistory(generateMockHistory(activePeriod));
+                        // No real trading history - show flat line at starting value
+                        setHistory(generateFlatHistory(activePeriod));
                         setIsSimulated(true);
                     }
                 }
             } catch (error) {
                 if (isMounted) {
-                    setHistory(generateMockHistory(activePeriod));
+                    // Error fetching data - show flat line at starting value
+                    setHistory(generateFlatHistory(activePeriod));
                     setIsSimulated(true);
                 }
             }
@@ -126,7 +106,7 @@ const PortfolioGrowthChart = ({ totalValue }) => {
         return () => {
             isMounted = false;
         };
-    }, [activePeriod, totalValue, generateMockHistory]);
+    }, [activePeriod, totalValue, generateFlatHistory]);
 
     const chartConfig = useMemo(() => {
         if (!history) return null;
