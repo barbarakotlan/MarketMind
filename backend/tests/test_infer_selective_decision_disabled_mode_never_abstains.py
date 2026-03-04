@@ -41,7 +41,7 @@ class InferSelectiveDecisionDisabledModeTests(unittest.TestCase):
             "base_feature_columns": [],
         }
         metadata = {
-            "mode_status": {"conservative": "disabled_conservative"},
+            "mode_status": {"conservative": "disabled_mode"},
             "taus": {"conservative": 0.7},
             "training_baseline": {},
         }
@@ -56,7 +56,8 @@ class InferSelectiveDecisionDisabledModeTests(unittest.TestCase):
                 ensemble_disagreement=0.1,
             )
 
-        self.assertEqual(out["selector_status"], "disabled_conservative")
+        self.assertEqual(out["selector_status"], "disabled_mode")
+        self.assertEqual(out["selector_source"], "none")
         self.assertEqual(out["selector_mode_effective"], "none")
         self.assertFalse(out["abstain"])
         self.assertIsNone(out["selector_prob"])
@@ -86,7 +87,8 @@ class InferSelectiveDecisionDisabledModeTests(unittest.TestCase):
                 ensemble_disagreement=0.1,
             )
 
-        self.assertEqual(out["selector_status"], "disabled_conservative")
+        self.assertEqual(out["selector_status"], "disabled_mode")
+        self.assertEqual(out["selector_source"], "none")
         self.assertEqual(out["selector_mode_effective"], "none")
         self.assertFalse(out["abstain"])
         self.assertIsNone(out["selector_prob"])

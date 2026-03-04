@@ -9,9 +9,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Iterable, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 import joblib
 import numpy as np
@@ -35,20 +35,37 @@ except Exception:
     XGBOOST_AVAILABLE = False
 
 from data_fetcher import prepare_data_for_ml, fetch_from_yfinance, validate_and_clean_data
+from selective_prediction_core import (
+    build_global_data_signature as build_global_data_signature_core,
+    build_ticker_data_signature as build_ticker_data_signature_core,
+    ticker_hash_bucket as ticker_hash_bucket_core,
+    validate_global_model_artifact as validate_global_model_artifact_core,
+    validate_global_tau_metadata as validate_global_tau_metadata_core,
+    validate_ticker_artifact as validate_ticker_artifact_core,
+)
+from selective_resolver import (
+    AttemptResult,
+    SELECTIVE_DISABLED_STATUSES,
+    SELECTOR_SOURCE,
+    SELECTOR_SOURCE_REQUESTABLE,
+    SELECTOR_STATUS,
+    STATUS_PRECEDENCE_AUTO,
+    collapse_attempt_failures as collapse_attempt_failures_resolver,
+    non_ok_selector_response as non_ok_selector_response_resolver,
+    normalize_selector_source_requested as normalize_selector_source_requested_resolver,
+    resolve_attempt_sources as resolve_attempt_sources_resolver,
+    resolve_selector_attempts as resolve_selector_attempts_resolver,
+)
 
 
 SELECTIVE_SCHEMA_VERSION = "selective_v1"
 SELECTIVE_MODES = {"none", "conservative", "aggressive", "risk_conservative", "risk_aggressive"}
-SELECTIVE_DISABLED_STATUSES = {
-    "disabled",
-    "disabled_conservative",
-    "disabled_aggressive",
-    "disabled_risk_conservative",
-    "disabled_risk_aggressive",
-}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_ARTIFACT_ROOT = os.path.join(BASE_DIR, "model_artifacts", "selective")
+DEFAULT_GLOBAL_ARTIFACT_ROOT = os.path.join(BASE_DIR, "model_artifacts", "selective_global", "v2")
+GLOBAL_SELECTOR_SCHEMA_VERSION = "selective_global_v2"
+GLOBAL_TAU_SCHEMA_VERSION = "selective_global_tau_v2"
 DEFAULT_TAU_GRID = np.round(np.arange(0.00, 0.951, 0.01), 2)
 
 
@@ -89,6 +106,12 @@ class SelectiveConfig:
     calibration_min_samples_for_isotonic: int = 1000
     calibration_min_positives_for_isotonic: int = 200
     calibration_fraction: float = 0.35
+    global_selector_enabled: bool = False
+    global_selector_policy: str = "prefer_ticker"
+    global_artifact_root: str = DEFAULT_GLOBAL_ARTIFACT_ROOT
+    artifact_ttl_days_global_model: int = 7
+    artifact_ttl_days_global_tau: int = 7
+    global_hash_buckets: int = 128
 
     @property
     def embargo(self) -> int:
@@ -952,19 +975,17 @@ def _selector_feature_columns(base_features: List[str]) -> List[str]:
 
 
 def _build_data_signature(feature_columns: List[str], config: SelectiveConfig) -> str:
-    signature_payload = {
-        "schema_version": SELECTIVE_SCHEMA_VERSION,
-        "feature_columns": feature_columns,
-        "lookback": config.lookback,
-        "horizon": config.horizon,
-        "embargo": config.embargo,
-        "vol_window": config.vol_window,
-        "magnitude_k": config.magnitude_k,
-        "retrain_frequency": config.retrain_frequency,
-        "pred_deadband": config.pred_deadband,
-    }
-    encoded = json.dumps(signature_payload, sort_keys=True).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return build_ticker_data_signature_core(
+        feature_columns=feature_columns,
+        schema_version=SELECTIVE_SCHEMA_VERSION,
+        lookback=config.lookback,
+        horizon=config.horizon,
+        embargo=config.embargo,
+        vol_window=config.vol_window,
+        magnitude_k=config.magnitude_k,
+        retrain_frequency=config.retrain_frequency,
+        pred_deadband=config.pred_deadband,
+    )
 
 
 def _get_backend_version() -> str:
@@ -1024,28 +1045,85 @@ def _validate_artifact(
     latest_settled_date,
     config: SelectiveConfig,
 ) -> Tuple[bool, str]:
-    if metadata.get("schema_version") != SELECTIVE_SCHEMA_VERSION:
-        return False, "stale_artifact"
-    if metadata.get("data_signature") != expected_signature:
-        return False, "stale_artifact"
+    return validate_ticker_artifact_core(
+        metadata=metadata,
+        expected_signature=expected_signature,
+        latest_settled_date=latest_settled_date,
+        schema_version=SELECTIVE_SCHEMA_VERSION,
+        artifact_ttl_days=config.artifact_ttl_days,
+    )
 
-    created_at_str = metadata.get("created_at")
-    if not created_at_str:
-        return False, "stale_artifact"
-    created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
-    if datetime.now(timezone.utc) - created_at > timedelta(days=config.artifact_ttl_days):
-        return False, "stale_artifact"
 
-    trained_on_str = metadata.get("trained_on_end_date")
-    if not trained_on_str or latest_settled_date is None:
-        return False, "stale_artifact"
+def ticker_hash_bucket(ticker: str, buckets: int) -> int:
+    return ticker_hash_bucket_core(ticker=ticker, buckets=buckets)
 
-    trained_on = pd.Timestamp(trained_on_str)
-    latest_settled = pd.Timestamp(latest_settled_date)
-    if trained_on > latest_settled:
-        return False, "stale_artifact"
 
-    return True, "ok"
+def _build_global_data_signature(feature_columns: List[str], config: SelectiveConfig) -> str:
+    return build_global_data_signature_core(
+        feature_columns=feature_columns,
+        schema_version=GLOBAL_SELECTOR_SCHEMA_VERSION,
+        lookback=config.lookback,
+        horizon=config.horizon,
+        embargo=config.embargo,
+        vol_window=config.vol_window,
+        magnitude_k=config.magnitude_k,
+        pred_deadband=config.pred_deadband,
+        global_hash_buckets=config.global_hash_buckets,
+    )
+
+
+def _global_model_paths(root: str) -> Tuple[str, str]:
+    return os.path.join(root, "model.joblib"), os.path.join(root, "metadata.json")
+
+
+def _global_tau_path(root: str, ticker: str) -> str:
+    return os.path.join(root, "taus", f"{str(ticker or '').upper()}.json")
+
+
+def _load_global_model_artifact(root: str) -> Tuple[Optional[Dict[str, object]], Optional[Dict[str, object]]]:
+    model_path, meta_path = _global_model_paths(root)
+    if not os.path.exists(model_path) or not os.path.exists(meta_path):
+        return None, None
+    with open(meta_path, "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+    payload = joblib.load(model_path)
+    return payload, metadata
+
+
+def _load_global_tau_metadata(root: str, ticker: str) -> Optional[Dict[str, object]]:
+    tau_path = _global_tau_path(root, ticker)
+    if not os.path.exists(tau_path):
+        return None
+    with open(tau_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _validate_global_model_artifact(
+    metadata: Dict[str, object],
+    expected_signature: str,
+    latest_settled_date,
+    config: SelectiveConfig,
+) -> Tuple[bool, str]:
+    return validate_global_model_artifact_core(
+        metadata=metadata,
+        expected_signature=expected_signature,
+        latest_settled_date=latest_settled_date,
+        global_schema_version=GLOBAL_SELECTOR_SCHEMA_VERSION,
+        artifact_ttl_days_global_model=config.artifact_ttl_days_global_model,
+    )
+
+
+def _validate_global_tau_metadata(
+    tau_metadata: Dict[str, object],
+    global_model_metadata: Dict[str, object],
+    config: SelectiveConfig,
+) -> Tuple[bool, str]:
+    return validate_global_tau_metadata_core(
+        tau_metadata=tau_metadata,
+        global_model_metadata=global_model_metadata,
+        global_tau_schema_version=GLOBAL_TAU_SCHEMA_VERSION,
+        artifact_ttl_days_global_tau=config.artifact_ttl_days_global_tau,
+    )
 
 
 def run_selective_evaluation_from_df(
@@ -1820,59 +1898,81 @@ def run_selective_evaluation(
 _LIVE_MONITOR: Dict[str, List[Dict[str, float]]] = {}
 
 
-def infer_selective_decision(
-    ticker: str,
-    requested_mode: str = "none",
-    raw_signal: float = 0.0,
-    ensemble_disagreement: float = 0.0,
-    config: Optional[SelectiveConfig] = None,
-    artifact_root: str = DEFAULT_ARTIFACT_ROOT,
+def _normalize_requested_mode(requested_mode: str) -> str:
+    mode = str(requested_mode or "none").lower()
+    return mode if mode in SELECTIVE_MODES else "none"
+
+
+def _normalize_selector_source_requested(selector_source_requested: str) -> str:
+    return normalize_selector_source_requested_resolver(selector_source_requested)
+
+
+def _resolve_attempt_sources(
+    selector_source_requested: str,
+    global_selector_enabled: bool,
+    global_selector_policy: str,
+) -> List[str]:
+    return resolve_attempt_sources_resolver(
+        selector_source_requested=selector_source_requested,
+        global_selector_enabled=global_selector_enabled,
+        global_selector_policy=global_selector_policy,
+    )
+
+
+def _collapse_attempt_failures(attempts: List[AttemptResult]) -> str:
+    return collapse_attempt_failures_resolver(attempts)
+
+
+def _non_ok_selector_response(
+    mode_requested: str,
+    status: str,
+    regime_bucket: str,
+) -> Dict[str, object]:
+    return non_ok_selector_response_resolver(
+        mode_requested=mode_requested,
+        status=status,
+        regime_bucket=regime_bucket,
+    )
+
+
+def _resolve_selector_attempts(
+    mode_requested: str,
+    selector_source_requested: str,
+    global_selector_enabled: bool,
+    global_selector_policy: str,
+    attempt_runner: Callable[[str], AttemptResult],
+    regime_bucket: str = "unknown",
     logger=None,
 ) -> Dict[str, object]:
-    config = config or SelectiveConfig()
-    mode_requested = str(requested_mode or "none").lower()
-    if mode_requested not in SELECTIVE_MODES:
-        mode_requested = "none"
+    return resolve_selector_attempts_resolver(
+        mode_requested=mode_requested,
+        selector_source_requested=selector_source_requested,
+        global_selector_enabled=global_selector_enabled,
+        global_selector_policy=global_selector_policy,
+        attempt_runner=attempt_runner,
+        regime_bucket=regime_bucket,
+        logger=logger,
+    )
 
-    df = prepare_data_for_ml(ticker, min_days=max(320, config.min_history + config.lookback + 20))
-    if df is None or len(df) < config.min_history:
-        return {
-            "abstain": False,
-            "selector_prob": None,
-            "selector_threshold": None,
-            "selector_mode_requested": mode_requested,
-            "selector_mode_effective": "none",
-            "selector_status": "insufficient_history",
-            "abstain_reason": None,
-            "regime_bucket": "unknown",
-        }
 
-    feature_frame, base_feature_cols = build_fixed_features(df, lookback=config.lookback)
-    latest_idx = feature_frame.index[-1]
-    latest_row = feature_frame.loc[latest_idx]
-    latest_settled = latest_available_settled_date(feature_frame, horizon=config.horizon)
-    regime_er_series = compute_efficiency_ratio(feature_frame["Close"], window=config.er_window)
-    regime_bucket = bucketize_regime(
-        regime_er_series,
-        chop_threshold=config.er_chop_threshold,
-        trend_threshold=config.er_trend_threshold,
-    ).iloc[-1]
-    regime_er = float(regime_er_series.iloc[-1]) if pd.notna(regime_er_series.iloc[-1]) else 0.0
-
+def _attempt_ticker_selector(
+    ticker: str,
+    mode_requested: str,
+    base_feature_cols: List[str],
+    feature_frame: pd.DataFrame,
+    latest_row: pd.Series,
+    regime_er: float,
+    regime_bucket: str,
+    raw_signal: float,
+    ensemble_disagreement: float,
+    config: SelectiveConfig,
+    artifact_root: str,
+) -> AttemptResult:
     expected_signature = _build_data_signature(base_feature_cols, config)
+    latest_settled = latest_available_settled_date(feature_frame, horizon=config.horizon)
     payload, metadata = _load_artifact(ticker=ticker, root=artifact_root)
     if payload is None or metadata is None:
-        return {
-            "abstain": False,
-            "selector_prob": None,
-            "selector_threshold": None,
-            "selector_mode_requested": mode_requested,
-            "selector_mode_effective": "none",
-            "selector_status": "model_unavailable",
-            "abstain_reason": None,
-            "regime_bucket": str(regime_bucket),
-        }
-
+        return AttemptResult(source="ticker", status="model_unavailable", reason="artifact_missing")
     is_valid, status = _validate_artifact(
         metadata=metadata,
         expected_signature=expected_signature,
@@ -1880,30 +1980,21 @@ def infer_selective_decision(
         config=config,
     )
     if not is_valid:
-        return {
-            "abstain": False,
-            "selector_prob": None,
-            "selector_threshold": None,
-            "selector_mode_requested": mode_requested,
-            "selector_mode_effective": "none",
-            "selector_status": status,
-            "abstain_reason": None,
-            "regime_bucket": str(regime_bucket),
-        }
+        mapped = "stale_artifact" if status == "stale_artifact" else "model_unavailable"
+        return AttemptResult(source="ticker", status=mapped, reason=status)
 
     selector_feature_cols = payload["selector_feature_columns"]
     feature_values = {col: float(latest_row.get(col, 0.0)) for col in payload["base_feature_columns"]}
     returns_hist = feature_frame["ret_1"] if "ret_1" in feature_frame.columns else feature_frame["Close"].pct_change()
     rolling_vol = compute_causal_rolling_volatility(returns_hist, window=config.vol_window).iloc[-1]
     rolling_vol = float(rolling_vol) if pd.notna(rolling_vol) else 0.0
-
     selector_row = {
         **feature_values,
         "raw_signal": float(raw_signal),
         "raw_signal_abs": float(abs(raw_signal)),
         "ensemble_disagreement": float(abs(ensemble_disagreement)),
         "rolling_vol_y": rolling_vol,
-        "regime_er": regime_er,
+        "regime_er": float(regime_er),
         "regime_is_chop": 1 if regime_bucket == "chop" else 0,
         "regime_is_neutral": 1 if regime_bucket == "neutral" else 0,
         "regime_is_trend": 1 if regime_bucket == "trend" else 0,
@@ -1918,49 +2009,213 @@ def infer_selective_decision(
     calibrator = payload.get("calibrator")
     selector_prob = float(_predict_selector_prob(selector_model, calibrator, selector_input.values)[0])
 
-    mode_effective = mode_requested
-    status_out = "ok"
-    taus = metadata.get("taus", {})
     mode_status = metadata.get("mode_status", {})
-    if mode_effective != "none":
-        this_mode_status = mode_status.get(mode_effective)
-        if this_mode_status != "ok":
-            status_out = f"disabled_{mode_effective}"
-            mode_effective = "none"
+    if mode_status.get(mode_requested) != "ok":
+        return AttemptResult(source="ticker", status="disabled_mode", reason="mode_disabled")
 
-    threshold = None
-    abstain = False
-    reason = None
-    if status_out == "ok" and mode_effective != "none":
-        threshold = taus.get(mode_effective)
-        if threshold is None:
-            status_out = f"disabled_{mode_effective}"
-            mode_effective = "none"
-        else:
-            threshold = float(threshold)
-            abstain = selector_prob < threshold
-            if abstain:
-                reason = "selector_prob_below_threshold"
+    tau = metadata.get("taus", {}).get(mode_requested)
+    if tau is None:
+        return AttemptResult(source="ticker", status="disabled_mode", reason="tau_missing")
+    return AttemptResult(source="ticker", status="ok", prob=selector_prob, tau=float(tau))
 
-    if status_out != "ok":
-        selector_prob_out = None
-        threshold_out = None
-        abstain = False
-    else:
-        selector_prob_out = selector_prob
-        threshold_out = threshold
 
-    key = ticker.upper()
+def _attempt_global_selector(
+    ticker: str,
+    mode_requested: str,
+    base_feature_cols: List[str],
+    feature_frame: pd.DataFrame,
+    latest_row: pd.Series,
+    regime_er: float,
+    regime_bucket: str,
+    raw_signal: float,
+    ensemble_disagreement: float,
+    config: SelectiveConfig,
+) -> AttemptResult:
+    global_root = str(config.global_artifact_root or DEFAULT_GLOBAL_ARTIFACT_ROOT)
+    expected_signature = _build_global_data_signature(base_feature_cols, config)
+    latest_settled = latest_available_settled_date(feature_frame, horizon=config.horizon)
+
+    payload, metadata = _load_global_model_artifact(root=global_root)
+    if payload is None or metadata is None:
+        return AttemptResult(source="global", status="model_unavailable", reason="global_artifact_missing")
+
+    is_valid, status = _validate_global_model_artifact(
+        metadata=metadata,
+        expected_signature=expected_signature,
+        latest_settled_date=latest_settled,
+        config=config,
+    )
+    if not is_valid:
+        mapped = "stale_artifact" if status == "stale_artifact" else "model_unavailable"
+        return AttemptResult(source="global", status=mapped, reason=status)
+
+    tau_metadata = _load_global_tau_metadata(root=global_root, ticker=ticker)
+    if tau_metadata is None:
+        return AttemptResult(source="global", status="disabled_mode", reason="tau_file_missing")
+
+    tau_valid, tau_status = _validate_global_tau_metadata(
+        tau_metadata=tau_metadata,
+        global_model_metadata=metadata,
+        config=config,
+    )
+    if not tau_valid:
+        mapped = "stale_artifact" if tau_status == "stale_artifact" else "model_unavailable"
+        return AttemptResult(source="global", status=mapped, reason=tau_status)
+
+    if "selector_model" not in payload or "selector_feature_columns" not in payload:
+        return AttemptResult(source="global", status="model_unavailable", reason="payload_incomplete")
+
+    selector_feature_cols = list(payload.get("selector_feature_columns", []))
+    if not selector_feature_cols:
+        return AttemptResult(source="global", status="model_unavailable", reason="missing_feature_columns")
+
+    base_cols = list(payload.get("base_feature_columns", []))
+    feature_values = {col: float(latest_row.get(col, 0.0)) for col in base_cols}
+    returns_hist = feature_frame["ret_1"] if "ret_1" in feature_frame.columns else feature_frame["Close"].pct_change()
+    rolling_vol = compute_causal_rolling_volatility(returns_hist, window=config.vol_window).iloc[-1]
+    rolling_vol = float(rolling_vol) if pd.notna(rolling_vol) else 0.0
+
+    selector_row = {
+        **feature_values,
+        "raw_signal": float(raw_signal),
+        "raw_signal_abs": float(abs(raw_signal)),
+        "ensemble_disagreement": float(abs(ensemble_disagreement)),
+        "rolling_vol_y": rolling_vol,
+        "regime_er": float(regime_er),
+        "regime_is_chop": 1 if regime_bucket == "chop" else 0,
+        "regime_is_neutral": 1 if regime_bucket == "neutral" else 0,
+        "regime_is_trend": 1 if regime_bucket == "trend" else 0,
+        "ticker_hash_bucket": float(ticker_hash_bucket(ticker, config.global_hash_buckets)),
+    }
+    selector_input = pd.DataFrame([selector_row])
+    for col in selector_feature_cols:
+        if col not in selector_input.columns:
+            selector_input[col] = 0.0
+    selector_input = selector_input[selector_feature_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+    selector_model = payload["selector_model"]
+    calibrator = payload.get("calibrator")
+    selector_prob = float(_predict_selector_prob(selector_model, calibrator, selector_input.values)[0])
+
+    mode_status = tau_metadata.get("mode_status", {})
+    if mode_status.get(mode_requested) != "ok":
+        return AttemptResult(source="global", status="disabled_mode", reason="mode_disabled")
+
+    tau = tau_metadata.get("taus", {}).get(mode_requested)
+    if tau is None:
+        return AttemptResult(source="global", status="disabled_mode", reason="tau_missing")
+    return AttemptResult(source="global", status="ok", prob=selector_prob, tau=float(tau))
+
+
+def infer_selective_decision(
+    ticker: str,
+    requested_mode: str = "none",
+    selector_source_requested: str = "auto",
+    raw_signal: float = 0.0,
+    ensemble_disagreement: float = 0.0,
+    config: Optional[SelectiveConfig] = None,
+    artifact_root: str = DEFAULT_ARTIFACT_ROOT,
+    logger=None,
+) -> Dict[str, object]:
+    config = config or SelectiveConfig()
+    normalized_ticker = str(ticker or "").upper()
+    mode_requested = _normalize_requested_mode(requested_mode)
+    source_requested = _normalize_selector_source_requested(selector_source_requested)
+
+    if mode_requested == "none":
+        out = _non_ok_selector_response(
+            mode_requested=mode_requested,
+            status="disabled",
+            regime_bucket="unknown",
+        )
+        out["selector_source_requested"] = source_requested
+        return out
+
+    df = prepare_data_for_ml(normalized_ticker, min_days=max(320, config.min_history + config.lookback + 20))
+    if df is None or len(df) < config.min_history:
+        out = _non_ok_selector_response(
+            mode_requested=mode_requested,
+            status="insufficient_history",
+            regime_bucket="unknown",
+        )
+        out["selector_source_requested"] = source_requested
+        return out
+
+    feature_frame, base_feature_cols = build_fixed_features(df, lookback=config.lookback)
+    latest_idx = feature_frame.index[-1]
+    latest_row = feature_frame.loc[latest_idx]
+    regime_er_series = compute_efficiency_ratio(feature_frame["Close"], window=config.er_window)
+    regime_bucket = bucketize_regime(
+        regime_er_series,
+        chop_threshold=config.er_chop_threshold,
+        trend_threshold=config.er_trend_threshold,
+    ).iloc[-1]
+    regime_er = float(regime_er_series.iloc[-1]) if pd.notna(regime_er_series.iloc[-1]) else 0.0
+
+    def _attempt_runner(source: str) -> AttemptResult:
+        if source == "ticker":
+            return _attempt_ticker_selector(
+                ticker=normalized_ticker,
+                mode_requested=mode_requested,
+                base_feature_cols=base_feature_cols,
+                feature_frame=feature_frame,
+                latest_row=latest_row,
+                regime_er=regime_er,
+                regime_bucket=str(regime_bucket),
+                raw_signal=float(raw_signal),
+                ensemble_disagreement=float(ensemble_disagreement),
+                config=config,
+                artifact_root=artifact_root,
+            )
+        return _attempt_global_selector(
+            ticker=normalized_ticker,
+            mode_requested=mode_requested,
+            base_feature_cols=base_feature_cols,
+            feature_frame=feature_frame,
+            latest_row=latest_row,
+            regime_er=regime_er,
+            regime_bucket=str(regime_bucket),
+            raw_signal=float(raw_signal),
+            ensemble_disagreement=float(ensemble_disagreement),
+            config=config,
+        )
+
+    resolved = _resolve_selector_attempts(
+        mode_requested=mode_requested,
+        selector_source_requested=source_requested,
+        global_selector_enabled=bool(config.global_selector_enabled),
+        global_selector_policy=str(config.global_selector_policy),
+        attempt_runner=_attempt_runner,
+        regime_bucket=str(regime_bucket),
+        logger=logger,
+    )
+    resolved["selector_source_requested"] = source_requested
+
+    key = normalized_ticker
     _LIVE_MONITOR.setdefault(key, [])
     _LIVE_MONITOR[key].append(
         {
-            "abstain": 1.0 if abstain else 0.0,
-            "mode_non_none": 0.0 if mode_effective == "none" else 1.0,
+            "abstain": 1.0 if resolved.get("abstain") else 0.0,
+            "mode_non_none": 0.0 if resolved.get("selector_mode_effective") == "none" else 1.0,
         }
     )
     _LIVE_MONITOR[key] = _LIVE_MONITOR[key][-20:]
-    if logger and status_out == "ok" and len(_LIVE_MONITOR[key]) >= 20:
-        baseline = metadata.get("training_baseline", {})
+
+    if logger and resolved.get("selector_status") == "ok" and len(_LIVE_MONITOR[key]) >= 20:
+        mode_effective = str(resolved.get("selector_mode_effective") or "none")
+        source_effective = str(resolved.get("selector_source") or "none")
+        baseline_cov = None
+        baseline = {}
+        if source_effective == "ticker":
+            _, metadata = _load_artifact(ticker=normalized_ticker, root=artifact_root)
+            baseline = (metadata or {}).get("training_baseline", {}) if isinstance(metadata, dict) else {}
+        elif source_effective == "global":
+            tau_metadata = _load_global_tau_metadata(
+                root=str(config.global_artifact_root or DEFAULT_GLOBAL_ARTIFACT_ROOT),
+                ticker=normalized_ticker,
+            )
+            baseline = (tau_metadata or {}).get("training_baseline", {}) if isinstance(tau_metadata, dict) else {}
+
         if mode_effective == "conservative":
             baseline_cov = baseline.get("coverage_pred_conservative")
         elif mode_effective == "aggressive":
@@ -1969,26 +2224,16 @@ def infer_selective_decision(
             baseline_cov = baseline.get("coverage_pred_risk_conservative")
         elif mode_effective == "risk_aggressive":
             baseline_cov = baseline.get("coverage_pred_risk_aggressive")
-        else:
-            baseline_cov = None
+
         if baseline_cov is not None and mode_effective != "none":
             rolling_coverage = float(np.mean([1.0 - x["abstain"] for x in _LIVE_MONITOR[key]]))
             if abs(rolling_coverage - float(baseline_cov)) > 0.10:
                 logger.warning(
-                    "Selector drift guardrail: ticker=%s mode=%s rolling_coverage=%.3f baseline=%.3f",
+                    "Selector drift guardrail: ticker=%s source=%s mode=%s rolling_coverage=%.3f baseline=%.3f",
                     key,
+                    source_effective,
                     mode_effective,
                     rolling_coverage,
                     float(baseline_cov),
                 )
-
-    return {
-        "abstain": bool(abstain),
-        "selector_prob": selector_prob_out,
-        "selector_threshold": threshold_out,
-        "selector_mode_requested": mode_requested,
-        "selector_mode_effective": mode_effective,
-        "selector_status": status_out,
-        "abstain_reason": reason,
-        "regime_bucket": str(regime_bucket),
-    }
+    return resolved

@@ -38,7 +38,12 @@ from model import create_dataset, estimate_week, try_today, estimate_new, good_m
 from news_fetcher import get_general_news
 from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict
 from professional_evaluation import rolling_window_backtest
-from selective_prediction import infer_selective_decision, SELECTIVE_MODES, SELECTIVE_DISABLED_STATUSES
+from selective_prediction import (
+    infer_selective_decision,
+    SELECTIVE_MODES,
+    SELECTIVE_DISABLED_STATUSES,
+    SELECTOR_SOURCE_REQUESTABLE,
+)
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
 from commodities_fetcher import get_commodity_price, get_commodity_list, get_commodities_by_category
@@ -900,13 +905,14 @@ def _live_ensemble_signal_components(sanitized_ticker):
     }
 
 
-def _resolve_selector_gate_for_ticker(sanitized_ticker, requested_mode):
+def _resolve_selector_gate_for_ticker(sanitized_ticker, requested_mode, selector_source_requested="auto"):
     signal_parts = _live_ensemble_signal_components(sanitized_ticker)
     raw_signal = signal_parts["raw_signal"] if signal_parts else 0.0
     disagreement = signal_parts["disagreement"] if signal_parts else 0.0
     return infer_selective_decision(
         ticker=sanitized_ticker,
         requested_mode=requested_mode,
+        selector_source_requested=selector_source_requested,
         raw_signal=raw_signal,
         ensemble_disagreement=disagreement,
         logger=logger,
@@ -921,6 +927,9 @@ def predict_ensemble(ticker):
         requested_mode = str(request.args.get('abstain_mode', 'none')).strip().lower()
         if requested_mode not in SELECTIVE_MODES:
             requested_mode = 'none'
+        selector_source_requested = str(request.args.get('selector_source', 'auto')).strip().lower()
+        if selector_source_requested not in SELECTOR_SOURCE_REQUESTABLE:
+            selector_source_requested = 'auto'
 
         stock = yf.Ticker(sanitized_ticker)
         info = stock.info
@@ -941,6 +950,7 @@ def predict_ensemble(ticker):
         selector = infer_selective_decision(
             ticker=sanitized_ticker,
             requested_mode=requested_mode,
+            selector_source_requested=selector_source_requested,
             raw_signal=raw_signal,
             ensemble_disagreement=disagreement,
             logger=logger,
@@ -971,13 +981,16 @@ def predict_ensemble(ticker):
             "selector_mode_requested": selector.get("selector_mode_requested", requested_mode),
             "selector_mode_effective": selector.get("selector_mode_effective", "none"),
             "selector_status": selector.get("selector_status", "model_unavailable"),
+            "selector_source_requested": selector.get("selector_source_requested", selector_source_requested),
+            "selector_source": selector.get("selector_source", "none"),
             "abstain_reason": selector.get("abstain_reason"),
             "regime_bucket": selector.get("regime_bucket", "unknown"),
         }
 
         logger.info(
-            "selector gate ticker=%s mode_req=%s mode_eff=%s status=%s prob=%s threshold=%s abstain=%s reason=%s regime=%s",
+            "selector gate ticker=%s source=%s mode_req=%s mode_eff=%s status=%s prob=%s threshold=%s abstain=%s reason=%s regime=%s",
             sanitized_ticker,
+            response["selector_source"],
             response["selector_mode_requested"],
             response["selector_mode_effective"],
             response["selector_status"],
@@ -1185,8 +1198,11 @@ def buy_stock():
         requested_mode = str(data.get('abstain_mode', 'conservative')).strip().lower() if enforce_selector else 'none'
         if requested_mode not in SELECTIVE_MODES:
             requested_mode = 'conservative' if enforce_selector else 'none'
+        selector_source_requested = str(data.get('selector_source', 'auto')).strip().lower() if enforce_selector else 'auto'
+        if selector_source_requested not in SELECTOR_SOURCE_REQUESTABLE:
+            selector_source_requested = 'auto'
         if enforce_selector:
-            selector_gate = _resolve_selector_gate_for_ticker(ticker, requested_mode)
+            selector_gate = _resolve_selector_gate_for_ticker(ticker, requested_mode, selector_source_requested)
             mode_disabled = selector_gate.get('selector_status') in SELECTIVE_DISABLED_STATUSES
             if selector_gate.get('abstain') or mode_disabled:
                 return jsonify({
@@ -1237,8 +1253,11 @@ def sell_stock():
         requested_mode = str(data.get('abstain_mode', 'conservative')).strip().lower() if enforce_selector else 'none'
         if requested_mode not in SELECTIVE_MODES:
             requested_mode = 'conservative' if enforce_selector else 'none'
+        selector_source_requested = str(data.get('selector_source', 'auto')).strip().lower() if enforce_selector else 'auto'
+        if selector_source_requested not in SELECTOR_SOURCE_REQUESTABLE:
+            selector_source_requested = 'auto'
         if enforce_selector:
-            selector_gate = _resolve_selector_gate_for_ticker(ticker, requested_mode)
+            selector_gate = _resolve_selector_gate_for_ticker(ticker, requested_mode, selector_source_requested)
             mode_disabled = selector_gate.get('selector_status') in SELECTIVE_DISABLED_STATUSES
             if selector_gate.get('abstain') or mode_disabled:
                 return jsonify({

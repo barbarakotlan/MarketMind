@@ -363,7 +363,16 @@ def rolling_window_backtest(
                 results['regime_metrics'] = selective.get('regime_metrics', {})
                 results['lift_curve'] = selective.get('lift_curve', [])
                 results['regime_distribution'] = selective.get('regime_distribution', {})
-                results['selector_diagnostics'] = selective.get('diagnostics', {})
+                diagnostics = dict(selective.get('diagnostics', {}) or {})
+                selector_status_reason = {}
+                for mode, info in results['selected_thresholds'].items():
+                    if isinstance(info, dict):
+                        reason = info.get('disabled_reason')
+                        if reason:
+                            selector_status_reason[mode] = reason
+                if selector_status_reason:
+                    diagnostics['selector_status_reason'] = selector_status_reason
+                results['selector_diagnostics'] = diagnostics
         except Exception as selective_error:
             results['selector_diagnostics'] = {
                 'status': 'failed',

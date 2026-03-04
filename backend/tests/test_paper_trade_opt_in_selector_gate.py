@@ -46,7 +46,7 @@ class PaperTradeOptInSelectorGateTests(unittest.TestCase):
         backend_api.init_db()
 
         backend_api.verify_clerk_token = lambda token: {"sub": token}
-        backend_api._resolve_selector_gate_for_ticker = lambda ticker, mode: {
+        backend_api._resolve_selector_gate_for_ticker = lambda ticker, mode, source="auto": {
             "abstain": False,
             "selector_status": "ok",
             "abstain_reason": None,
@@ -81,7 +81,7 @@ class PaperTradeOptInSelectorGateTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
 
     def test_selector_gate_blocks_when_enforced_and_abstaining(self):
-        backend_api._resolve_selector_gate_for_ticker = lambda ticker, mode: {
+        backend_api._resolve_selector_gate_for_ticker = lambda ticker, mode, source="auto": {
             "abstain": True,
             "selector_status": "ok",
             "abstain_reason": "selector_prob_below_threshold",

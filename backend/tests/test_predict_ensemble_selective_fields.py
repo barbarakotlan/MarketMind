@@ -46,6 +46,8 @@ class PredictEnsembleSelectiveFieldsTests(unittest.TestCase):
             "selector_mode_requested": kwargs.get("requested_mode", "none"),
             "selector_mode_effective": kwargs.get("requested_mode", "none"),
             "selector_status": "ok",
+            "selector_source_requested": kwargs.get("selector_source_requested", "auto"),
+            "selector_source": "ticker",
             "abstain_reason": None,
             "regime_bucket": "trend",
         }
@@ -69,12 +71,21 @@ class PredictEnsembleSelectiveFieldsTests(unittest.TestCase):
             "selector_mode_requested",
             "selector_mode_effective",
             "selector_status",
+            "selector_source_requested",
+            "selector_source",
             "abstain_reason",
             "regime_bucket",
         ]
         for field in expected_fields:
             self.assertIn(field, payload)
         self.assertEqual(payload["selector_status"], "ok")
+        self.assertEqual(payload["selector_source_requested"], "auto")
+
+    def test_predict_ensemble_echoes_selector_source_requested(self):
+        resp = self.client.get("/predict/ensemble/AAPL?abstain_mode=conservative&selector_source=global")
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertEqual(payload["selector_source_requested"], "global")
 
 
 if __name__ == "__main__":
