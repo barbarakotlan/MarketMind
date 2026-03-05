@@ -33,10 +33,9 @@ try:
 except ImportError:
     OPENBB_AVAILABLE = False
 
-# --- Tazeem's Imports ---
-from model import create_dataset, estimate_week, try_today, estimate_new, good_model
+# --- Imports ---
 from news_fetcher import get_general_news
-from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict
+from models import create_dataset, ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies

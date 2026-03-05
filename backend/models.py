@@ -1,6 +1,5 @@
 import warnings
 warnings.filterwarnings('ignore')
-import model
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -21,6 +20,19 @@ try:
 except ImportError:
     XGBOOST_AVAILABLE = False
     print("XGBoost not available. Install with: pip install xgboost")
+
+# Creating a dataset based on ticker and period
+def create_dataset(ticker, period):
+    try:
+        data = yf.download(ticker, period=period, auto_adjust=False)
+    except yf.shared.YFPricesMissingError as e:
+        print(f"[Warning] Could not download data for {ticker}: {e}")
+        return pd.DataFrame()
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = [col[0] for col in data.columns]
+    df = data[['Close']].copy()
+    df.index = pd.to_datetime(df.index)
+    return df
 
 
 def create_features(df, lookback=14):
