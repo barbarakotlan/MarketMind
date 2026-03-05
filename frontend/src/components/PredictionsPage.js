@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import StockPredictionCard from './ui/StockPredictionCard';
 import PredictionChart from './charts/PredictionChart';
 import ModelComparisonCard from './ui/ModelComparisonCard';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const PredictionsPage = ({ initialTicker }) => {
     const [ticker, setTicker] = useState('');
@@ -16,6 +17,8 @@ const PredictionsPage = ({ initialTicker }) => {
             setTicker(initialTicker);
             fetchPredictions(initialTicker);
         }
+        // Keep behavior tied to prop/mode changes without re-running on every render.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialTicker, useEnsemble]);
 
     const fetchPredictions = async (searchTicker) => {
@@ -25,16 +28,10 @@ const PredictionsPage = ({ initialTicker }) => {
 
         try {
             const endpoint = useEnsemble 
-                ? `http://localhost:5001/predict/ensemble/${searchTicker.toUpperCase()}`
-                : `http://localhost:5001/predict/${useModel}/${searchTicker.toUpperCase()}`;
-            
-            const response = await fetch(endpoint);
-            
-            if (!response.ok) {
-                throw new Error('Failed to fetch prediction data');
-            }
+                ? API_ENDPOINTS.PREDICT_ENSEMBLE(searchTicker.toUpperCase())
+                : API_ENDPOINTS.PREDICT(useModel, searchTicker.toUpperCase());
 
-            const data = await response.json();
+            const data = await apiRequest(endpoint);
             setPredictionData(data);
         } catch (err) {
             setError(`Error: Could not fetch predictions for ${searchTicker.toUpperCase()}. Please check the ticker and try again.`);
@@ -167,42 +164,51 @@ const PredictionsPage = ({ initialTicker }) => {
   {/* 👇 CONDITIONAL BUTTONS */}
   {!useEnsemble && (
     <div className="flex gap-3">
-      <button
+        <button
         onClick={() => setUseModel("LinReg")}
-className={`px-3 py-2 rounded-md transition-all ${
-  useModel === "LinReg"
-    ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
-    : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-}`}
-      >
+        className={`px-3 py-2 rounded-md transition-all ${
+        useModel === "LinReg"
+            ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
+            : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+        }`}
+        >
         Linear Regression
-      </button>
+        </button>
 
-      <button
-        onClick={() => setUseModel("RandomForest")}
-className={`px-3 py-2 rounded-md transition-all ${
-  useModel === "RandomForest"
-    ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
-    : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-}`}
-      >
+        <button
+            onClick={() => setUseModel("RandomForest")}
+            className={`px-3 py-2 rounded-md transition-all ${
+            useModel === "RandomForest"
+                ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
+                : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+            }`}
+        >
         Random Forest
-      </button>
+        </button>
 
-      <button
+        <button
         onClick={() => setUseModel("XGBoost")}
-className={`px-3 py-2 rounded-md transition-all ${
-  useModel === "XGBoost"
-    ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
-    : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-}`}
-      >
+        className={`px-3 py-2 rounded-md transition-all ${
+        useModel === "XGBoost"
+            ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
+            : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+        }`}
+        >
         XGBoost
-      </button>
+        </button>
+        <button
+            onClick={() => setUseModel("LSTM")}
+            className={`px-3 py-2 rounded-md transition-all ${
+            useModel === "LSTM"
+                ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
+                : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+            }`}
+        >
+            LSTM
+        </button>
     </div>
   )}
 </div>
-
             </div>
 
             {/* Error Message */}
@@ -240,15 +246,19 @@ className={`px-3 py-2 rounded-md transition-all ${
                         </div>
                     </div>
 
-                    <PredictionChart predictionData={predictionData} />
+                    <PredictionChart predictionData={{...predictionData, predictions: predictionData.predictions.filter(pred => {
+                        const day = new Date(pred.date).getDay();
+                        return day !== 0 && day !== 6; // skip Sundays (0) and Saturdays (6)
+                        })
+                    }}  />
 
                     {useEnsemble && predictionData.modelBreakdown && (
-  <ModelComparisonCard 
-    modelBreakdown={predictionData.modelBreakdown}
-    modelsUsed={predictionData.modelsUsed}
-    confidence={predictionData.confidence}
-  />
-)}
+                    <ModelComparisonCard 
+                        modelBreakdown={predictionData.modelBreakdown}
+                        modelsUsed={predictionData.modelsUsed}
+                        confidence={predictionData.confidence}
+                    />
+                    )}
 
 
                     <StockPredictionCard data={predictionData} />

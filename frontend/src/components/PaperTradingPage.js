@@ -17,6 +17,7 @@ import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title,
   Tooltip, Legend, Filler,
 } from 'chart.js';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 // --- REGISTER CHARTJS COMPONENTS ---
 ChartJS.register(
@@ -101,8 +102,7 @@ const PortfolioGrowthChart = ({ totalValue }) => {
 
         const fetchData = async () => {
             try {
-                const response = await fetch(`http://127.0.0.1:5001/paper/history?period=${activePeriod}`);
-                const data = await response.json();
+                const data = await apiRequest(API_ENDPOINTS.PORTFOLIO_HISTORY(activePeriod));
 
                 if (isMounted) {
                     if (!data.error && data.dates && data.dates.length > 2) {
@@ -369,10 +369,7 @@ export default function App() {
     const fetchPortfolio = async (isManualRefresh = false) => {
         if (isManualRefresh) setRefreshing(true);
         try {
-            const baseUrl = 'http://127.0.0.1:5001';
-            const response = await fetch(`${baseUrl}/paper/portfolio`);
-            if (!response.ok) throw new Error("Portfolio fetch failed");
-            const data = await response.json();
+            const data = await apiRequest(API_ENDPOINTS.PORTFOLIO);
 
             // Log to console so you can see the raw data coming from the backend
             console.log("Latest Portfolio Data:", data);
@@ -402,23 +399,18 @@ export default function App() {
         e.preventDefault();
         setTradeMessage({ type: '', text: '' });
         try {
-            const response = await fetch('http://127.0.0.1:5001/paper/buy', {
+            const data = await apiRequest(API_ENDPOINTS.PAPER_BUY, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ticker: buyTicker.toUpperCase(), shares: parseFloat(buyShares) })
             });
-            const data = await response.json();
-            if (response.ok) {
-                setTradeMessage({ type: 'success', text: data.message });
-                setBuyTicker('');
-                setBuyShares('');
-                setShowBuyModal(false);
-                fetchPortfolio();
-            } else {
-                setTradeMessage({ type: 'error', text: data.error });
-            }
+            setTradeMessage({ type: 'success', text: data.message });
+            setBuyTicker('');
+            setBuyShares('');
+            setShowBuyModal(false);
+            fetchPortfolio();
         } catch (err) {
-            setTradeMessage({ type: 'error', text: 'Failed to execute trade' });
+            setTradeMessage({ type: 'error', text: err.message || 'Failed to execute trade' });
         }
     };
 
@@ -426,23 +418,18 @@ export default function App() {
         e.preventDefault();
         setTradeMessage({ type: '', text: '' });
         try {
-            const response = await fetch('http://127.0.0.1:5001/paper/sell', {
+            const data = await apiRequest(API_ENDPOINTS.PAPER_SELL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ticker: selectedStock.ticker, shares: parseFloat(sellShares) })
             });
-            const data = await response.json();
-            if (response.ok) {
-                setTradeMessage({ type: 'success', text: data.message });
-                setSellShares('');
-                setShowSellModal(false);
-                setSelectedStock(null);
-                fetchPortfolio();
-            } else {
-                setTradeMessage({ type: 'error', text: data.error });
-            }
+            setTradeMessage({ type: 'success', text: data.message });
+            setSellShares('');
+            setShowSellModal(false);
+            setSelectedStock(null);
+            fetchPortfolio();
         } catch (err) {
-            setTradeMessage({ type: 'error', text: 'Failed to execute trade' });
+            setTradeMessage({ type: 'error', text: err.message || 'Failed to execute trade' });
         }
     };
 
@@ -454,13 +441,11 @@ export default function App() {
             price: price
         });
         try {
-            const response = await fetch(`http://127.0.0.1:5001/paper/options/sell`, {
+            const data = await apiRequest(API_ENDPOINTS.PAPER_OPTIONS_SELL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: body
             });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Trade failed');
             setTradeMessage({ type: 'success', text: data.message });
             fetchPortfolio();
             return true;
@@ -484,12 +469,11 @@ export default function App() {
     const handleReset = async () => {
         if (!window.confirm('Are you sure you want to reset your portfolio?')) return;
         try {
-            const response = await fetch('http://127.0.0.1:5001/paper/reset', { method: 'POST' });
-            const data = await response.json();
+            const data = await apiRequest(API_ENDPOINTS.PORTFOLIO_RESET, { method: 'POST' });
             setTradeMessage({ type: 'success', text: data.message });
             fetchPortfolio();
         } catch (err) {
-            setTradeMessage({ type: 'error', text: 'Failed to reset portfolio' });
+            setTradeMessage({ type: 'error', text: err.message || 'Failed to reset portfolio' });
         }
     };
 
@@ -514,6 +498,120 @@ export default function App() {
                     onClose={() => setIsOptionModalOpen(false)}
                     onConfirmTrade={handleConfirmOptionSell}
                 />
+            )}
+
+            {showBuyModal && (
+                <div
+                    className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                    onClick={() => setShowBuyModal(false)}
+                >
+                    <div
+                        className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-2xl border border-gray-200 dark:border-gray-700"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 className="text-xl font-black mb-1">Buy Stock</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">Enter ticker and quantity to place a paper buy order.</p>
+                        <form onSubmit={handleBuy} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-black text-gray-500 uppercase mb-2">Ticker</label>
+                                <input
+                                    type="text"
+                                    value={buyTicker}
+                                    onChange={(e) => setBuyTicker(e.target.value)}
+                                    placeholder="e.g. AAPL"
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 focus:ring-green-500"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-gray-500 uppercase mb-2">Shares</label>
+                                <input
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    value={buyShares}
+                                    onChange={(e) => setBuyShares(e.target.value)}
+                                    placeholder="10"
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 focus:ring-green-500"
+                                    required
+                                />
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowBuyModal(false)}
+                                    className="flex-1 py-3 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-black hover:opacity-90 transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-black transition"
+                                >
+                                    Submit Buy
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {showSellModal && selectedStock && (
+                <div
+                    className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                    onClick={() => {
+                        setShowSellModal(false);
+                        setSelectedStock(null);
+                    }}
+                >
+                    <div
+                        className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-2xl border border-gray-200 dark:border-gray-700"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 className="text-xl font-black mb-1">Sell Stock</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                            Sell shares from <span className="font-black text-gray-700 dark:text-gray-200">{selectedStock.ticker}</span>.
+                        </p>
+                        <form onSubmit={handleSell} className="space-y-4">
+                            <div className="rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 p-3">
+                                <p className="text-xs font-black uppercase text-gray-400 mb-1">Available Shares</p>
+                                <p className="text-lg font-black">{formatNum(selectedStock.shares, 2)}</p>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-gray-500 uppercase mb-2">Shares to Sell</label>
+                                <input
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    max={selectedStock.shares}
+                                    value={sellShares}
+                                    onChange={(e) => setSellShares(e.target.value)}
+                                    placeholder="1"
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 focus:ring-red-500"
+                                    required
+                                />
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowSellModal(false);
+                                        setSelectedStock(null);
+                                    }}
+                                    className="flex-1 py-3 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-black hover:opacity-90 transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black transition"
+                                >
+                                    Submit Sell
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
 
             <div className="container mx-auto px-4 py-8 max-w-7xl">

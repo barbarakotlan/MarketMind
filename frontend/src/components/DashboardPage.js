@@ -3,6 +3,7 @@ import {
     Search, Star, Briefcase, Building2, TrendingUp, Target,
     DollarSign, Newspaper, Bell, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const MARKET_TICKERS = [
     { ticker: 'SPY', label: 'S&P 500' },
@@ -34,7 +35,7 @@ function MarketPulseStrip() {
     useEffect(() => {
         Promise.allSettled(
             MARKET_TICKERS.map(({ ticker }) =>
-                fetch(`http://127.0.0.1:5001/stock/${ticker}`).then(r => r.json())
+                apiRequest(API_ENDPOINTS.STOCK(ticker))
             )
         ).then(results => {
             const map = {};
@@ -93,8 +94,7 @@ function PortfolioSummaryCard({ setActivePage }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://127.0.0.1:5001/paper/portfolio')
-            .then(r => r.json())
+        apiRequest(API_ENDPOINTS.PORTFOLIO)
             .then(d => { setPortfolio(d); setLoading(false); })
             .catch(() => setLoading(false));
     }, []);
@@ -153,8 +153,7 @@ function AlertsBadgeCard({ setActivePage }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://127.0.0.1:5001/notifications/triggered')
-            .then(r => r.json())
+        apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED)
             .then(d => { setCount(d.length); setLoading(false); })
             .catch(() => setLoading(false));
     }, []);
@@ -213,8 +212,7 @@ function TopNewsSection({ setActivePage }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://127.0.0.1:5001/api/news?category=general&limit=4')
-            .then(r => r.json())
+        apiRequest(`${API_ENDPOINTS.NEWS()}?category=general&limit=4`)
             .then(d => {
                 const items = Array.isArray(d) ? d : (d.articles ?? d.news ?? []);
                 setArticles(items.slice(0, 4)); // Bumped to 4 articles

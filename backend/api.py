@@ -6,7 +6,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, g
 from flask_cors import CORS
 from datetime import datetime, timedelta, date
 import json
@@ -16,7 +16,9 @@ import time
 import threading
 import uuid  # For unique notification IDs
 import re  # Added for Smart Alert parsing
-import time
+import math
+import jwt
+from functools import wraps
 
 # --- DOTENV MUST BE FIRST ---
 from dotenv import load_dotenv
@@ -39,7 +41,7 @@ from finvizfinance.screener.financial import Financial
 # --- Tazeem's Imports ---
 from model import create_dataset, estimate_week, try_today, estimate_new, good_model
 from news_fetcher import get_general_news
-from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict
+from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
@@ -78,7 +80,57 @@ logger.info("🚀 MarketMind API Starting...")
 
 # Initialize the Flask application
 app = Flask(__name__)
-CORS(app)
+
+# --- Security Configuration ---
+# Set Flask secret key for session management
+app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
+
+FLASK_ENV = os.getenv('FLASK_ENV', 'development').strip().lower()
+IS_PRODUCTION = FLASK_ENV == 'production'
+
+DEFAULT_DEV_CORS_ORIGINS = 'http://localhost:3000,http://127.0.0.1:3000'
+CORS_ORIGINS_RAW = os.getenv('CORS_ORIGINS', DEFAULT_DEV_CORS_ORIGINS if not IS_PRODUCTION else '')
+allowed_origins = [origin.strip().rstrip('/') for origin in CORS_ORIGINS_RAW.split(',') if origin.strip()]
+
+if IS_PRODUCTION and not allowed_origins:
+    raise ValueError("CORS_ORIGINS must be set in production (comma-separated origins).")
+
+if not allowed_origins:
+    allowed_origins = [origin.strip() for origin in DEFAULT_DEV_CORS_ORIGINS.split(',')]
+
+CORS(
+    app,
+    resources={r"/*": {"origins": allowed_origins}},
+    supports_credentials=False,
+    allow_headers=["Content-Type", "Authorization", "Accept"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
+
+# --- Security Headers Middleware ---
+@app.after_request
+def add_security_headers(response):
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    # Prevent clickjacking
+    response.headers['X-Frame-Options'] = 'DENY'
+    # XSS Protection (legacy fallback for older browsers)
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    # Force HTTPS in production
+    if IS_PRODUCTION:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # API-focused CSP (JSON API does not serve active web content)
+    response.headers['Content-Security-Policy'] = os.getenv(
+        'API_CONTENT_SECURITY_POLICY',
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';"
+    )
+    # Referrer Policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # Permissions Policy
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    # Cross-origin hardening for API responses
+    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+    response.headers['Cross-Origin-Resource-Policy'] = 'same-site'
+    return response
 
 # --- Rate Limiting Setup ---
 from flask_limiter import Limiter
@@ -92,17 +144,39 @@ limiter = Limiter(
 
 # Define rate limits
 class RateLimits:
-    LIGHT = "10/minute"
-    STANDARD = "20/minute"
-    HEAVY = "2/minute" 
-    WRITE = "5/minute"
+    LIGHT = os.getenv('RATE_LIMIT_LIGHT', '10/minute')
+    STANDARD = os.getenv('RATE_LIMIT_STANDARD', '20/minute')
+    HEAVY = os.getenv('RATE_LIMIT_HEAVY', '2/minute')
+    WRITE = os.getenv('RATE_LIMIT_WRITE', '5/minute')
 
 # --- CONFIGURATION ---
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
 
-# --- Database Setup (for history snapshots) ---
-DATABASE = 'marketmind.db'
+# Validate required environment variables in production
+if IS_PRODUCTION:
+    if not NEWS_API_KEY:
+        logger.warning("⚠️ NEWS_API_KEY not set in production environment")
+    if not ALPHA_VANTAGE_API_KEY:
+        logger.warning("⚠️ ALPHA_VANTAGE_API_KEY not set in production environment")
+    if not os.getenv('FLASK_SECRET_KEY'):
+        logger.error("❌ FLASK_SECRET_KEY must be set in production environment")
+        raise ValueError("FLASK_SECRET_KEY environment variable is required in production")
+
+# --- Paths & Auth Configuration ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE = os.path.join(BASE_DIR, 'marketmind.db')
+
+PORTFOLIO_FILE = os.path.join(BASE_DIR, 'paper_portfolio.json')
+NOTIFICATIONS_FILE = os.path.join(BASE_DIR, 'notifications.json')
+PREDICTION_PORTFOLIO_FILE = os.path.join(BASE_DIR, 'prediction_portfolio.json')
+USER_DATA_DIR = os.path.join(BASE_DIR, 'user_data')
+ALLOW_LEGACY_USER_DATA_SEED = os.getenv('ALLOW_LEGACY_USER_DATA_SEED', 'false').strip().lower() == 'true'
+
+CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '').strip()
+CLERK_AUDIENCE = os.getenv('CLERK_AUDIENCE', '').strip()
+CLERK_JWKS_CACHE_TTL_SECONDS = int(os.getenv('CLERK_JWKS_CACHE_TTL_SECONDS', '3600'))
+_JWKS_CACHE = {}
 
 
 def get_db():
@@ -118,9 +192,15 @@ def init_db():
             CREATE TABLE IF NOT EXISTS portfolio_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME NOT NULL,
-                portfolio_value REAL NOT NULL
+                portfolio_value REAL NOT NULL,
+                user_id TEXT
             );
         ''')
+        # Backward-compatible schema evolution for existing DBs.
+        cursor.execute("PRAGMA table_info(portfolio_history)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'user_id' not in columns:
+            cursor.execute("ALTER TABLE portfolio_history ADD COLUMN user_id TEXT")
         conn.commit()
         logger.info("Database initialized.")
     except Exception as e:
@@ -129,7 +209,125 @@ def init_db():
         if conn:
             conn.close()
 
-from functools import wraps
+
+def _safe_user_id(user_id):
+    return re.sub(r'[^a-zA-Z0-9_-]', '_', str(user_id))
+
+
+def _get_user_file_path(user_id, filename):
+    safe_user_id = _safe_user_id(user_id)
+    user_dir = os.path.join(USER_DATA_DIR, safe_user_id)
+    os.makedirs(user_dir, exist_ok=True)
+    return os.path.join(user_dir, filename)
+
+
+def _iter_user_ids():
+    if not os.path.isdir(USER_DATA_DIR):
+        return []
+    return [
+        entry
+        for entry in os.listdir(USER_DATA_DIR)
+        if os.path.isdir(os.path.join(USER_DATA_DIR, entry))
+    ]
+
+
+def _get_bearer_token():
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return None
+    return auth_header.split(' ', 1)[1].strip()
+
+
+def _resolve_clerk_jwks_url(issuer):
+    if CLERK_JWKS_URL:
+        return CLERK_JWKS_URL
+    if not issuer:
+        return None
+    return issuer.rstrip('/') + '/.well-known/jwks.json'
+
+
+def _fetch_jwks(jwks_url):
+    now = time.time()
+    cached = _JWKS_CACHE.get(jwks_url)
+    if cached and (now - cached['fetched_at']) < CLERK_JWKS_CACHE_TTL_SECONDS:
+        return cached['jwks']
+
+    response = requests.get(jwks_url, timeout=5)
+    response.raise_for_status()
+    jwks = response.json()
+    _JWKS_CACHE[jwks_url] = {'jwks': jwks, 'fetched_at': now}
+    return jwks
+
+
+def _get_signing_key(token, jwks_url):
+    header = jwt.get_unverified_header(token)
+    kid = header.get('kid')
+    if not kid:
+        raise ValueError("Missing token header 'kid'")
+
+    jwks = _fetch_jwks(jwks_url)
+    for jwk_key in jwks.get('keys', []):
+        if jwk_key.get('kid') == kid:
+            return jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(jwk_key))
+
+    raise ValueError("Matching signing key not found in JWKS")
+
+
+def verify_clerk_token(token):
+    unverified_payload = jwt.decode(
+        token,
+        options={
+            "verify_signature": False,
+            "verify_aud": False,
+            "verify_iss": False,
+            "verify_exp": False,
+        },
+    )
+    issuer = unverified_payload.get('iss')
+    jwks_url = _resolve_clerk_jwks_url(issuer)
+    if not jwks_url:
+        raise ValueError("Unable to resolve Clerk JWKS URL")
+
+    signing_key = _get_signing_key(token, jwks_url)
+
+    decode_kwargs = {
+        "key": signing_key,
+        "algorithms": ["RS256"],
+        "options": {"verify_aud": bool(CLERK_AUDIENCE)},
+    }
+    if issuer:
+        decode_kwargs["issuer"] = issuer
+    if CLERK_AUDIENCE:
+        decode_kwargs["audience"] = CLERK_AUDIENCE
+
+    payload = jwt.decode(token, **decode_kwargs)
+    if not payload.get('sub'):
+        raise ValueError("Token is missing 'sub' claim")
+    return payload
+
+
+def get_current_user_id():
+    return getattr(g, 'current_user_id', None)
+
+
+def require_auth(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        token = _get_bearer_token()
+        if not token:
+            return jsonify({"error": "Missing Authorization Bearer token"}), 401
+
+        try:
+            payload = verify_clerk_token(token)
+        except Exception as e:
+            logger.warning(f"Auth verification failed: {e}")
+            return jsonify({"error": "Invalid or expired token"}), 401
+
+        g.current_user_id = payload['sub']
+        g.auth_payload = payload
+        return f(*args, **kwargs)
+
+    return wrapper
 
 def validate_request_json(required_fields):
     """
@@ -161,64 +359,27 @@ def validate_request_json(required_fields):
         return wrapper
     return decorator
 
-
-
-# --- Persistent Storage Setup ---
-PORTFOLIO_FILE = 'paper_portfolio.json'
-NOTIFICATIONS_FILE = 'notifications.json'  # <-- NEW FILE FOR ALERTS
-PREDICTION_PORTFOLIO_FILE = 'prediction_portfolio.json'
-
-
-def load_prediction_portfolio():
-    """Loads the prediction markets portfolio from its own JSON file."""
-    if os.path.exists(PREDICTION_PORTFOLIO_FILE):
+def _load_json(path, default):
+    if os.path.exists(path):
         try:
-            with open(PREDICTION_PORTFOLIO_FILE, 'r') as f:
-                data = json.load(f)
-                data.setdefault('cash', 10000.0)
-                data.setdefault('starting_cash', 10000.0)
-                data.setdefault('positions', {})
-                data.setdefault('trade_history', [])
-                return data
+            with open(path, 'r') as f:
+                return json.load(f)
         except json.JSONDecodeError:
             pass
-    return {
-        "cash": 10000.0, "starting_cash": 10000.0,
-        "positions": {}, "trade_history": []
-    }
+    return default
 
 
-def save_prediction_portfolio(portfolio):
-    """Saves the prediction markets portfolio to its own JSON file."""
-    with open(PREDICTION_PORTFOLIO_FILE, 'w') as f:
-        json.dump(portfolio, f, indent=4)
+def _save_json(path, payload):
+    with open(path, 'w') as f:
+        json.dump(payload, f, indent=4)
 
 
-def load_portfolio():
-    """Loads the portfolio from a JSON file."""
-    if os.path.exists(PORTFOLIO_FILE):
-        try:
-            with open(PORTFOLIO_FILE, 'r') as f:
-                data = json.load(f)
-                data.setdefault('cash', 100000.0)
-                data.setdefault('starting_cash', 100000.0)
-                data.setdefault('positions', {})
-                data.setdefault('options_positions', {})
-                data.setdefault('transactions', [])
-                data.setdefault('trade_history', [])
-                return data
-        except json.JSONDecodeError:
-            pass
-    return {
-        "cash": 100000.0, "starting_cash": 100000.0, "positions": {},
-        "options_positions": {}, "transactions": [], "trade_history": []
-    }
+def _portfolio_file(user_id=None):
+    return _get_user_file_path(user_id, 'paper_portfolio.json') if user_id else PORTFOLIO_FILE
 
 
-def save_portfolio(portfolio):
-    """Saves the portfolio to a JSON file."""
-    with open(PORTFOLIO_FILE, 'w') as f:
-        json.dump(portfolio, f, indent=4)
+def _prediction_portfolio_file(user_id=None):
+    return _get_user_file_path(user_id, 'prediction_portfolio.json') if user_id else PREDICTION_PORTFOLIO_FILE
 
 # --- Screener Cache Setup ---
 SCREENER_CACHE = {
@@ -280,28 +441,108 @@ def filter_cached_data(data, filters):
             filtered = filtered_temp
     return filtered
 
-# --- NEW: Notification Storage ---
-def load_notifications():
-    """Loads notifications from a JSON file."""
-    if os.path.exists(NOTIFICATIONS_FILE):
-        try:
-            with open(NOTIFICATIONS_FILE, 'r') as f:
-                data = json.load(f)
-                data.setdefault('active', [])
-                data.setdefault('triggered', [])
-                return data
-        except json.JSONDecodeError:
-            pass
-    return {"active": [], "triggered": []}
+def _notifications_file(user_id=None):
+    return _get_user_file_path(user_id, 'notifications.json') if user_id else NOTIFICATIONS_FILE
 
 
-def save_notifications(notifications):
-    """Saves notifications to a JSON file."""
-    with open(NOTIFICATIONS_FILE, 'w') as f:
-        json.dump(notifications, f, indent=4)
+def _watchlist_file(user_id=None):
+    return _get_user_file_path(user_id, 'watchlist.json') if user_id else os.path.join(BASE_DIR, 'watchlist.json')
 
 
-# --- END NEW ---
+def _should_seed_from_legacy(user_path, legacy_path):
+    return (
+        ALLOW_LEGACY_USER_DATA_SEED
+        and not os.path.exists(user_path)
+        and os.path.exists(legacy_path)
+    )
+
+
+def load_prediction_portfolio(user_id=None):
+    """Load prediction market paper portfolio for a specific user."""
+    user_path = _prediction_portfolio_file(user_id) if user_id else PREDICTION_PORTFOLIO_FILE
+    source_path = user_path
+    if user_id and _should_seed_from_legacy(user_path, PREDICTION_PORTFOLIO_FILE):
+        source_path = PREDICTION_PORTFOLIO_FILE
+    data = _load_json(source_path, {})
+    data.setdefault('cash', 10000.0)
+    data.setdefault('starting_cash', 10000.0)
+    data.setdefault('positions', {})
+    data.setdefault('trade_history', [])
+    return data
+
+
+def save_prediction_portfolio(portfolio, user_id=None):
+    """Save prediction market paper portfolio for a specific user."""
+    _save_json(_prediction_portfolio_file(user_id), portfolio)
+
+
+def load_portfolio(user_id=None):
+    """Load stock/options paper portfolio for a specific user."""
+    user_path = _portfolio_file(user_id) if user_id else PORTFOLIO_FILE
+    source_path = user_path
+    if user_id and _should_seed_from_legacy(user_path, PORTFOLIO_FILE):
+        source_path = PORTFOLIO_FILE
+    data = _load_json(source_path, {})
+    data.setdefault('cash', 100000.0)
+    data.setdefault('starting_cash', 100000.0)
+    data.setdefault('positions', {})
+    data.setdefault('options_positions', {})
+    data.setdefault('transactions', [])
+    data.setdefault('trade_history', [])
+    return data
+
+
+def save_portfolio(portfolio, user_id=None):
+    """Save stock/options paper portfolio for a specific user."""
+    _save_json(_portfolio_file(user_id), portfolio)
+
+
+def load_notifications(user_id=None):
+    """Load active/triggered notifications for a specific user."""
+    user_path = _notifications_file(user_id) if user_id else NOTIFICATIONS_FILE
+    source_path = user_path
+    if user_id and _should_seed_from_legacy(user_path, NOTIFICATIONS_FILE):
+        source_path = NOTIFICATIONS_FILE
+    data = _load_json(source_path, {})
+    data.setdefault('active', [])
+    data.setdefault('triggered', [])
+    return data
+
+
+def save_notifications(notifications, user_id=None):
+    """Save active/triggered notifications for a specific user."""
+    _save_json(_notifications_file(user_id), notifications)
+
+
+def load_watchlist(user_id=None):
+    """Load watchlist tickers for a specific user."""
+    legacy_watchlist_file = os.path.join(BASE_DIR, 'watchlist.json')
+    user_path = _watchlist_file(user_id) if user_id else legacy_watchlist_file
+    source_path = user_path
+    if user_id and _should_seed_from_legacy(user_path, legacy_watchlist_file):
+        source_path = legacy_watchlist_file
+    data = _load_json(source_path, [])
+    if not isinstance(data, list):
+        return []
+    return sorted(list({str(t).upper() for t in data if str(t).strip()}))
+
+
+def save_watchlist(tickers, user_id=None):
+    """Save watchlist tickers for a specific user."""
+    normalized = sorted(list({str(t).upper() for t in tickers if str(t).strip()}))
+    _save_json(_watchlist_file(user_id), normalized)
+
+
+@app.route('/auth/me', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def auth_me():
+    payload = getattr(g, 'auth_payload', {})
+    return jsonify({
+        "user_id": get_current_user_id(),
+        "email": payload.get('email'),
+        "username": payload.get('username'),
+    })
 
 # --- Helper function ---
 def clean_value(val):
@@ -331,31 +572,36 @@ def get_symbol_suggestions(query):
         return []
 
 
-# --- In-memory storage for Watchlist ---
-watchlist = set()
-
-
 # --- Watchlist Endpoints ---
 @app.route('/watchlist', methods=['GET'])
+@require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_watchlist():
-    return jsonify(list(watchlist))
+    return jsonify(load_watchlist(get_current_user_id()))
 
 
 @app.route('/watchlist/<string:ticker>', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 def add_to_watchlist(ticker):
-    ticker = ticker.upper()
-    watchlist.add(ticker)
-    return jsonify({"message": f"{ticker} added to watchlist.", "watchlist": list(watchlist)}), 201
+    user_id = get_current_user_id()
+    current_watchlist = load_watchlist(user_id)
+    normalized_ticker = ticker.upper()
+    if normalized_ticker not in current_watchlist:
+        current_watchlist.append(normalized_ticker)
+    save_watchlist(current_watchlist, user_id)
+    return jsonify({"message": f"{normalized_ticker} added to watchlist.", "watchlist": current_watchlist}), 201
 
 
 @app.route('/watchlist/<string:ticker>', methods=['DELETE'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 def remove_from_watchlist(ticker):
-    ticker = ticker.upper()
-    watchlist.discard(ticker)
-    return jsonify({"message": f"{ticker} removed from watchlist.", "watchlist": list(watchlist)})
+    user_id = get_current_user_id()
+    normalized_ticker = ticker.upper()
+    current_watchlist = [t for t in load_watchlist(user_id) if t != normalized_ticker]
+    save_watchlist(current_watchlist, user_id)
+    return jsonify({"message": f"{normalized_ticker} removed from watchlist.", "watchlist": current_watchlist})
 
 
 # --- Stock Data Endpoint ---
@@ -535,36 +781,64 @@ def get_option_expirations(ticker):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/options/chain/<string:ticker>', methods=['GET'])
+@app.route('/options/chain/<ticker>', methods=['GET'])
 def get_option_chain(ticker):
-    date = request.args.get('date')
-    if not date: return jsonify({"error": "A date query parameter is required."}), 400
     try:
-        sanitized_ticker = ticker.split(':')[0]
-        stock = yf.Ticker(sanitized_ticker)
-        chain = stock.option_chain(date)
+        date = request.args.get('date')
+        stock = yf.Ticker(ticker)
+        
+        # Get the current stock price for moneyness calculations
         info = stock.info
-        price = info.get('regularMarketPrice', 0)
-        if price == 0: price = info.get('previousClose', 0)
+        stock_price = info.get('regularMarketPrice', info.get('previousClose', 0))
 
-        def format_chain(df):
-            cols_to_keep = ['contractSymbol', 'strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest',
-                            'impliedVolatility']
-            existing_cols = [col for col in cols_to_keep if col in df.columns]
-            df_filtered = df[existing_cols]
-            df_cleaned = df_filtered.replace({np.nan: None})
-            records = df_cleaned.to_dict('records')
-            for record in records:
-                for col in existing_cols:
-                    record[col] = clean_value(record.get(col))
-            return records
+        if date:
+            chain = stock.option_chain(date)
+        else:
+            # Default to the first available expiration if no date is provided
+            chain = stock.option_chain(stock.options[0])
 
-        return jsonify(
-            {"calls": format_chain(chain.calls), "puts": format_chain(chain.puts), "stock_price": clean_value(price)})
+        # --- UPDATED MAPPING LOGIC ---
+        # We must explicitly cast NaNs to 0 or None so JSON serialization doesn't crash,
+        # and ensure the new frontend fields are included.
+        def safe_float(val):
+            return 0 if math.isnan(float(val)) else float(val)
+
+        def safe_int(val):
+            return 0 if math.isnan(float(val)) else int(val)
+
+        calls = chain.calls.to_dict('records')
+        formatted_calls = [{
+            "contractSymbol": c["contractSymbol"],
+            "strike": safe_float(c["strike"]),
+            "bid": safe_float(c["bid"]),
+            "ask": safe_float(c["ask"]),
+            "lastPrice": safe_float(c["lastPrice"]),
+            "volume": safe_int(c.get("volume", 0)),
+            "openInterest": safe_int(c.get("openInterest", 0)),
+            "impliedVolatility": safe_float(c.get("impliedVolatility", 0))
+        } for c in calls]
+
+        puts = chain.puts.to_dict('records')
+        formatted_puts = [{
+            "contractSymbol": p["contractSymbol"],
+            "strike": safe_float(p["strike"]),
+            "bid": safe_float(p["bid"]),
+            "ask": safe_float(p["ask"]),
+            "lastPrice": safe_float(p["lastPrice"]),
+            "volume": safe_int(p.get("volume", 0)),
+            "openInterest": safe_int(p.get("openInterest", 0)),
+            "impliedVolatility": safe_float(p.get("impliedVolatility", 0))
+        } for p in puts]
+
+        return jsonify({
+            "stock_price": stock_price,
+            "calls": formatted_calls,
+            "puts": formatted_puts
+        })
+        
     except Exception as e:
-        logger.error(f"Error getting option chain: {e}")
-        return jsonify({"error": "Could not retrieve option chain for this date."}), 404
-
+        print(f"Error fetching option chain: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # --- Options Suggestion Endpoint ---
 @app.route('/options/suggest/<string:ticker>', methods=['GET'])
@@ -595,6 +869,9 @@ def predict_stock(model, ticker):
         elif model in ("RandomForest", "XGBoost"):
             period = "6mo"
             min_rows = 40
+        elif model == "LSTM":
+            period = "1y"
+            min_rows = 120
         else:
             return jsonify({"error": "Unknown model"}), 400
 
@@ -608,9 +885,14 @@ def predict_stock(model, ticker):
             preds = linear_regression_predict(df, days_ahead=7)
         elif model == "RandomForest":
             preds = random_forest_predict(df, days_ahead=7)
-        else:  # XGBoost
+        elif model == "XGBoost":
             preds = xgboost_predict(df, days_ahead=7)
-
+        elif model == "LSTM":
+            lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=100, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+            preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device, days_ahead=7)
+        else:
+            return jsonify({"error": "Unknown model"}), 400
+        
         if preds is None or len(preds) == 0:
             return jsonify({
                 "error": f"{model} prediction failed."
@@ -619,10 +901,7 @@ def predict_stock(model, ticker):
         recent_close = float(df["Close"].iloc[-1])
         recent_date = df.index[-1]
 
-        future_dates = [
-            recent_date + pd.Timedelta(days=i + 1)
-            for i in range(len(preds))
-        ]
+        future_dates = pd.bdate_range(start=recent_date + pd.Timedelta(days=1), periods=len(preds))
 
         response = {
             "symbol": info.get('symbol', sanitized_ticker.upper()),
@@ -660,7 +939,7 @@ def predict_ensemble(ticker):
         if ensemble_preds is None: return jsonify({"error": "Ensemble prediction failed."}), 500
         recent_close = float(df["Close"].iloc[-1])
         recent_date = df.index[-1]
-        future_dates = [recent_date + pd.Timedelta(days=i + 1) for i in range(6)]
+        future_dates = pd.bdate_range(start=recent_date + pd.Timedelta(days=1), periods=len(ensemble_preds))
         response = {
             "symbol": info.get('symbol', ticker.upper()), "companyName": info.get('longName', 'N/A'),
             "recentDate": recent_date.strftime('%Y-%m-%d'), "recentClose": round(recent_close, 2),
@@ -681,7 +960,7 @@ def predict_ensemble(ticker):
 
 # --- Paper Trading Endpoints (Using JSON persistence) ---
 
-def record_portfolio_snapshot(portfolio_data):
+def record_portfolio_snapshot(portfolio_data, user_id):
     total_value = portfolio_data['cash']
     for ticker, pos in portfolio_data.get("positions", {}).items():
         total_value += pos['shares'] * pos['avg_cost']
@@ -690,8 +969,10 @@ def record_portfolio_snapshot(portfolio_data):
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO portfolio_history (timestamp, portfolio_value) VALUES (?, ?)",
-                       (datetime.now(), total_value))
+        cursor.execute(
+            "INSERT INTO portfolio_history (timestamp, portfolio_value, user_id) VALUES (?, ?, ?)",
+            (datetime.now(), total_value, user_id),
+        )
         conn.commit()
     except Exception as e:
         logger.error(f"Failed to record portfolio snapshot: {e}")
@@ -700,8 +981,10 @@ def record_portfolio_snapshot(portfolio_data):
 
 
 @app.route('/paper/portfolio', methods=['GET'])
+@require_auth
 def get_paper_portfolio():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     positions = portfolio.get("positions", {})
     options_positions = portfolio.get("options_positions", {})
 
@@ -851,10 +1134,12 @@ def get_paper_portfolio():
 
 
 @app.route('/paper/buy', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
 def buy_stock():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     try:
         data = request.get_json();
         ticker = data.get('ticker', '').upper();
@@ -879,8 +1164,8 @@ def buy_stock():
         portfolio["transactions"].append(
             {"date": datetime.now().strftime('%Y-%m-%d'), "type": "BUY", "ticker": ticker, "shares": shares,
              "price": price, "total": total_cost})
-        save_portfolio(portfolio)
-        record_portfolio_snapshot(portfolio)
+        save_portfolio(portfolio, user_id)
+        record_portfolio_snapshot(portfolio, user_id)
         return jsonify({"success": True, "message": f"Bought {shares} shares of {ticker} at ${price:.2f}"}), 200
     except Exception as e:
         log_api_error(logger, '/paper/buy', e)
@@ -888,10 +1173,12 @@ def buy_stock():
 
 
 @app.route('/paper/sell', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
 def sell_stock():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     try:
         data = request.get_json();
         ticker = data.get('ticker', '').upper();
@@ -917,8 +1204,8 @@ def sell_stock():
         portfolio["transactions"].append(
             {"date": datetime.now().strftime('%Y-%m-%d'), "type": "SELL", "ticker": ticker, "shares": shares,
              "price": price, "total": proceeds})
-        save_portfolio(portfolio)
-        record_portfolio_snapshot(portfolio)
+        save_portfolio(portfolio, user_id)
+        record_portfolio_snapshot(portfolio, user_id)
         return jsonify({"success": True, "message": f"Sold {shares} shares of {ticker} at ${price:.2f}",
                         "profit": round(profit, 2)}), 200
     except Exception as e:
@@ -927,8 +1214,10 @@ def sell_stock():
 
 
 @app.route('/paper/options/buy', methods=['POST'])
+@require_auth
 def buy_option():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     try:
         data = request.get_json();
         contract_symbol = data.get('contractSymbol');
@@ -947,8 +1236,8 @@ def buy_option():
         trade = {"type": "BUY_OPTION", "ticker": contract_symbol, "shares": quantity, "price": price,
                  "total": total_cost, "timestamp": datetime.now().isoformat()}
         portfolio["trade_history"].append(trade)
-        save_portfolio(portfolio)
-        record_portfolio_snapshot(portfolio)
+        save_portfolio(portfolio, user_id)
+        record_portfolio_snapshot(portfolio, user_id)
         return jsonify(
             {"success": True, "message": f"Bought {quantity} {contract_symbol} contract(s) at ${price:.2f}"}), 200
     except Exception as e:
@@ -956,8 +1245,10 @@ def buy_option():
 
 
 @app.route('/paper/options/sell', methods=['POST'])
+@require_auth
 def sell_option():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     try:
         data = request.get_json();
         contract_symbol = data.get('contractSymbol');
@@ -977,8 +1268,8 @@ def sell_option():
         trade = {"type": "SELL_OPTION", "ticker": contract_symbol, "shares": quantity, "price": price,
                  "total": proceeds, "profit": profit, "timestamp": datetime.now().isoformat()}
         portfolio["trade_history"].append(trade)
-        save_portfolio(portfolio)
-        record_portfolio_snapshot(portfolio)
+        save_portfolio(portfolio, user_id)
+        record_portfolio_snapshot(portfolio, user_id)
         return jsonify({"success": True, "message": f"Sold {quantity} {contract_symbol} contract(s) at ${price:.2f}",
                         "profit": round(profit, 2)}), 200
     except Exception as e:
@@ -987,8 +1278,10 @@ def sell_option():
 
 # --- This is YOUR corrected portfolio history endpoint ---
 @app.route('/paper/history', methods=['GET'])
+@require_auth
 def get_paper_history():
-    portfolio = load_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_portfolio(user_id)
     transactions = portfolio.get("transactions", [])
     if not transactions:
         return jsonify({"dates": [], "values": [], "summary": {}})
@@ -1124,24 +1417,29 @@ def get_paper_history():
 
 
 @app.route('/paper/transactions', methods=['GET'])
+@require_auth
 def get_trade_history():
-    portfolio = load_portfolio()
+    portfolio = load_portfolio(get_current_user_id())
     return jsonify(portfolio.get("trade_history", [])[-50:])
 
 
 @app.route('/paper/reset', methods=['POST'])
+@require_auth
 def reset_portfolio():
+    user_id = get_current_user_id()
     new_portfolio = {
         "cash": 100000.0, "starting_cash": 100000.0, "positions": {},
         "options_positions": {}, "transactions": [], "trade_history": []
     }
-    save_portfolio(new_portfolio)
+    save_portfolio(new_portfolio, user_id)
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM portfolio_history")
-        cursor.execute("INSERT INTO portfolio_history (timestamp, portfolio_value) VALUES (?, ?)",
-                       (datetime.now(), 100000.0))
+        cursor.execute("DELETE FROM portfolio_history WHERE user_id = ?", (user_id,))
+        cursor.execute(
+            "INSERT INTO portfolio_history (timestamp, portfolio_value, user_id) VALUES (?, ?, ?)",
+            (datetime.now(), 100000.0, user_id),
+        )
         conn.commit()
     except Exception as e:
         logger.error(f"Failed to reset portfolio_history table: {e}")
@@ -1153,8 +1451,10 @@ def reset_portfolio():
 
 # --- NEW: Notification Endpoints ---
 @app.route('/notifications', methods=['GET', 'POST'])
+@require_auth
 def handle_notifications():
-    notifications = load_notifications()
+    user_id = get_current_user_id()
+    notifications = load_notifications(user_id)
 
     if request.method == 'POST':
         try:
@@ -1178,7 +1478,7 @@ def handle_notifications():
                 "created_at": datetime.now().isoformat()
             }
             notifications['active'].append(new_alert)
-            save_notifications(notifications)
+            save_notifications(notifications, user_id)
             return jsonify(new_alert), 201
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -1188,8 +1488,10 @@ def handle_notifications():
 
 
 @app.route('/notifications/smart', methods=['POST'])
+@require_auth
 def create_smart_alert():
     try:
+        user_id = get_current_user_id()
         data = request.json
         prompt = data.get('prompt', '').strip()  # Keep case for now
 
@@ -1296,7 +1598,7 @@ def create_smart_alert():
                     target_price = current_price * 1.01
 
         # --- 2. CREATE AND SAVE ALERT ---
-        notifications = load_notifications()  # returns {'active': [], 'triggered': []}
+        notifications = load_notifications(user_id)  # returns {'active': [], 'triggered': []}
 
         new_alert = {
             "id": str(uuid.uuid4()),
@@ -1310,7 +1612,7 @@ def create_smart_alert():
         }
 
         notifications['active'].append(new_alert)
-        save_notifications(notifications)
+        save_notifications(notifications, user_id)
 
         return jsonify({
             'message': 'Smart alert created successfully',
@@ -1324,16 +1626,20 @@ def create_smart_alert():
 
 
 @app.route('/notifications/<string:alert_id>', methods=['DELETE'])
+@require_auth
 def delete_notification(alert_id):
-    notifications = load_notifications()
+    user_id = get_current_user_id()
+    notifications = load_notifications(user_id)
     notifications['active'] = [a for a in notifications['active'] if a['id'] != alert_id]
-    save_notifications(notifications)
+    save_notifications(notifications, user_id)
     return jsonify({"message": "Alert deleted"}), 200
 
 
 @app.route('/notifications/triggered', methods=['GET', 'DELETE'])
+@require_auth
 def get_triggered_notifications():
-    notifications = load_notifications()
+    user_id = get_current_user_id()
+    notifications = load_notifications(user_id)
 
     if request.method == 'GET':
         # Check for 'all' query param
@@ -1345,7 +1651,7 @@ def get_triggered_notifications():
         # Mark them as 'seen'
         for alert in notifications['triggered']:
             alert['seen'] = True
-        save_notifications(notifications)
+        save_notifications(notifications, user_id)
         return jsonify(unseen_alerts)
 
     # DELETE request
@@ -1355,15 +1661,17 @@ def get_triggered_notifications():
     else:
         # Clear all
         notifications['triggered'] = []
-    save_notifications(notifications)
+    save_notifications(notifications, user_id)
     return jsonify({"message": "Triggered alerts cleared"}), 200
 
 
 @app.route('/notifications/triggered/<string:alert_id>', methods=['DELETE'])
+@require_auth
 def delete_triggered_notification(alert_id):
-    notifications = load_notifications()
+    user_id = get_current_user_id()
+    notifications = load_notifications(user_id)
     notifications['triggered'] = [a for a in notifications['triggered'] if a['id'] != alert_id]
-    save_notifications(notifications)
+    save_notifications(notifications, user_id)
     return jsonify({"message": "Alert dismissed"}), 200
 
 
@@ -1428,11 +1736,10 @@ def update_screener_cache():
     finally:
         SCREENER_CACHE["is_updating"] = False
 # --- NEW: Background Price Checker ---
-def check_alerts():
-    logger.info(f"Running price alert check...")
-    notifications_data = load_notifications()
+def _check_alerts_for_user(user_id):
+    notifications_data = load_notifications(user_id)
     if not notifications_data['active']:
-        return  # No active alerts, do nothing
+        return
 
     active_alerts_copy = notifications_data['active'].copy()
     tickers_to_check = list(set([a['ticker'] for a in active_alerts_copy]))
@@ -1511,11 +1818,20 @@ def check_alerts():
         # Remove triggered alerts from active list
         if triggered_ids:
             notifications_data['active'] = [a for a in notifications_data['active'] if a['id'] not in triggered_ids]
-            save_notifications(notifications_data)
+            save_notifications(notifications_data, user_id)
             logger.info(f"Triggered and moved {len(triggered_ids)} alerts.")
 
     except Exception as e:
         logger.error(f"Failed to check all alert prices: {e}")
+
+
+def check_alerts():
+    logger.info("Running price alert check...")
+    for user_id in _iter_user_ids():
+        try:
+            _check_alerts_for_user(user_id)
+        except Exception as e:
+            logger.error(f"Alert check failed for user {user_id}: {e}")
 
 
 def run_scheduler():
@@ -1699,11 +2015,13 @@ def get_prediction_market(market_id):
 
 
 @app.route('/prediction-markets/portfolio', methods=['GET'])
+@require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_prediction_portfolio():
     """Get the prediction markets paper trading portfolio with live P&L."""
     try:
-        portfolio = load_prediction_portfolio()
+        user_id = get_current_user_id()
+        portfolio = load_prediction_portfolio(user_id)
         positions = portfolio.get("positions", {})
         positions_list = []
         total_positions_value = 0
@@ -1762,11 +2080,13 @@ def get_prediction_portfolio():
 
 
 @app.route('/prediction-markets/buy', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['market_id', 'outcome', 'contracts'])
 def buy_prediction_contract():
     """Buy Yes/No contracts on a prediction market at current market price."""
-    portfolio = load_prediction_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_prediction_portfolio(user_id)
     try:
         data = request.get_json()
         market_id = data['market_id']
@@ -1824,7 +2144,7 @@ def buy_prediction_contract():
             "timestamp": datetime.now().isoformat()
         }
         portfolio["trade_history"].append(trade)
-        save_prediction_portfolio(portfolio)
+        save_prediction_portfolio(portfolio, user_id)
 
         return jsonify({
             "success": True,
@@ -1837,11 +2157,13 @@ def buy_prediction_contract():
 
 
 @app.route('/prediction-markets/sell', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['market_id', 'outcome', 'contracts'])
 def sell_prediction_contract():
     """Sell prediction market contracts at current market price."""
-    portfolio = load_prediction_portfolio()
+    user_id = get_current_user_id()
+    portfolio = load_prediction_portfolio(user_id)
     try:
         data = request.get_json()
         market_id = data['market_id']
@@ -1884,7 +2206,7 @@ def sell_prediction_contract():
             "timestamp": datetime.now().isoformat()
         }
         portfolio["trade_history"].append(trade)
-        save_prediction_portfolio(portfolio)
+        save_prediction_portfolio(portfolio, user_id)
 
         return jsonify({
             "success": True,
@@ -1897,24 +2219,27 @@ def sell_prediction_contract():
 
 
 @app.route('/prediction-markets/history', methods=['GET'])
+@require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_prediction_trade_history():
     """Get prediction market trade history (last 50 trades)."""
-    portfolio = load_prediction_portfolio()
+    portfolio = load_prediction_portfolio(get_current_user_id())
     return jsonify(portfolio.get("trade_history", [])[-50:])
 
 
 @app.route('/prediction-markets/reset', methods=['POST'])
+@require_auth
 @limiter.limit(RateLimits.WRITE)
 def reset_prediction_portfolio():
     """Reset prediction markets portfolio to starting state."""
+    user_id = get_current_user_id()
     new_portfolio = {
         "cash": 10000.0,
         "starting_cash": 10000.0,
         "positions": {},
         "trade_history": []
     }
-    save_prediction_portfolio(new_portfolio)
+    save_prediction_portfolio(new_portfolio, user_id)
     return jsonify({
         "success": True,
         "message": "Prediction markets portfolio reset to starting state",
@@ -2402,4 +2727,3 @@ if __name__ == '__main__':
     checker_thread.start()
 
     app.run(debug=True, port=5001, use_reloader=False)
-

@@ -8,6 +8,7 @@ import {
     Clock,
     Activity
 } from 'lucide-react';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const MarketCalendarPage = () => {
     const [events, setEvents] = useState([]);
@@ -18,8 +19,7 @@ const MarketCalendarPage = () => {
     useEffect(() => {
         setLoading(true);
         // Hitting our new real-time backend route
-        fetch('http://127.0.0.1:5001/calendar/economic')
-            .then(res => res.json())
+        apiRequest(API_ENDPOINTS.ECONOMIC_CALENDAR)
             .then(data => {
                 if (!data.error && Array.isArray(data)) {
                     setEvents(data);

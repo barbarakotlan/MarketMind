@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Building2, Search, TrendingUp, DollarSign, BarChart3, Target, Calendar, FileText, ExternalLink } from 'lucide-react';
+import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const TABS = [
     { key: 'overview',   label: 'Overview' },
@@ -112,9 +113,9 @@ const FundamentalsPage = () => {
 
         const sym = ticker.toUpperCase().trim();
         const [overviewRes, financialsRes, filingsRes] = await Promise.allSettled([
-            fetch(`http://localhost:5001/fundamentals/${sym}`).then(r => r.json()),
-            fetch(`http://127.0.0.1:5001/fundamentals/financials/${sym}`).then(r => r.json()),
-            fetch(`http://127.0.0.1:5001/fundamentals/filings/${sym}`).then(r => r.json()),
+            apiRequest(API_ENDPOINTS.FUNDAMENTALS(sym)),
+            apiRequest(API_ENDPOINTS.FUNDAMENTALS_FINANCIALS(sym)),
+            apiRequest(API_ENDPOINTS.FUNDAMENTALS_FILINGS(sym)),
         ]);
 
         setLoading(false);

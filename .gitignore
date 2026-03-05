@@ -10,13 +10,19 @@ yarn-error.log*
 .idea/
 .vscode/
 
-# --- Environment Variables (CRITICAL) ---
+# --- Environment Variables (CRITICAL - NEVER COMMIT) ---
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Security Audit Reports
+SECURITY_AUDIT.md
+security_audit*.md
 
 # --- Frontend (Node/React) ---
 node_modules/
@@ -38,6 +44,7 @@ backend/__pycache__/
 # Virtual Environments
 venv/
 backend/venv/
+backend/.venv/
 env/
 
 # Distribution / Installs
@@ -74,3 +81,4 @@ backend/marketmind.db
 paper_portfolio.json
 backend/paper_portfolio.json
 backend/notifications.json
+backend/user_data/
