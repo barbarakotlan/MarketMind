@@ -27,7 +27,7 @@ const PredictionChart = ({ predictionData }) => {
     if (!predictionData || !predictionData.predictions) return null;
 
     const dates = predictionData.predictions.map(p => {
-        const date = new Date(p.date);
+        const date = new Date(p.date + 'T00:00:00');
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     });
 

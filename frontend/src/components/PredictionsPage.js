@@ -246,22 +246,33 @@ const PredictionsPage = ({ initialTicker }) => {
                         </div>
                     </div>
 
-                    <PredictionChart predictionData={{...predictionData, predictions: predictionData.predictions.filter(pred => {
-                        const day = new Date(pred.date).getDay();
-                        return day !== 0 && day !== 6; // skip Sundays (0) and Saturdays (6)
-                        })
-                    }}  />
+                    {(() => {
+                        const filteredPredictions = predictionData.predictions.filter(pred => {
+                            const day = new Date(pred.date + 'T00:00:00').getDay();
+                            return day !== 0 && day !== 6; // skip weekends
+                        });
 
-                    {useEnsemble && predictionData.modelBreakdown && (
-                    <ModelComparisonCard 
-                        modelBreakdown={predictionData.modelBreakdown}
-                        modelsUsed={predictionData.modelsUsed}
-                        confidence={predictionData.confidence}
-                    />
-                    )}
+                        const filteredData = { 
+                            ...predictionData, 
+                            predictions: filteredPredictions 
+                        };
 
+                        return (
+                            <>
+                                <PredictionChart predictionData={filteredData} />
 
-                    <StockPredictionCard data={predictionData} />
+                                {useEnsemble && predictionData.modelBreakdown && (
+                                    <ModelComparisonCard
+                                        modelBreakdown={predictionData.modelBreakdown}
+                                        modelsUsed={predictionData.modelsUsed}
+                                        confidence={predictionData.confidence}
+                                    />
+                                )}
+
+                                <StockPredictionCard data={filteredData} />
+                            </>
+                        );
+                    })()}
 
                     <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                         <h3 className="font-semibold text-blue-900 dark:text-blue-300 mb-2">About These Predictions</h3>
