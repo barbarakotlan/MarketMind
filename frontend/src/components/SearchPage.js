@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, TrendingUp, TrendingDown, Activity, Building, ChevronDown, ChevronUp } from 'lucide-react';
 import StockDataCard from './ui/StockDataCard';
 import StockChart from './charts/StockChart';
 import PredictionPreviewCard from './ui/PredictionPreviewCard';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import STATIC_TICKERS from '../data/tickers.json';
 
 // --- Helpers for Jimmy's cards ---
 const formatLargeNumber = (num) => {
@@ -189,22 +190,44 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         }
     };
 
-    // --- NEW: Autocomplete fetch function ---
-    const fetchAutocompleteSuggestions = async (query) => {
+    // --- Autocomplete: debounce timer ref ---
+    const debounceRef = useRef(null);
+
+    // --- Autocomplete fetch function: static list first, Finnhub fallback ---
+    const fetchAutocompleteSuggestions = (query) => {
         if (!query || query.length < 2) {
             setAutocompleteSuggestions([]);
             setShowAutocomplete(false);
             return;
         }
-        
-        try {
-            const data = await apiRequest(API_ENDPOINTS.SEARCH_SYMBOLS(query));
-            setAutocompleteSuggestions(data.slice(0, 8));
-            setShowAutocomplete(data.length > 0);
-        } catch (error) {
-            console.error('Error fetching autocomplete suggestions:', error);
-            setAutocompleteSuggestions([]);
-            setShowAutocomplete(false);
+
+        // Tier 1: filter static list instantly (no API call)
+        const q = query.toUpperCase();
+        const staticMatches = STATIC_TICKERS.filter(t =>
+            t.symbol.startsWith(q) || t.name.toUpperCase().startsWith(q)
+        ).slice(0, 8);
+
+        setAutocompleteSuggestions(staticMatches);
+        setShowAutocomplete(staticMatches.length > 0);
+
+        // Tier 2: if static list returned fewer than 3 results, fall back to Finnhub after 350ms
+        if (staticMatches.length < 3) {
+            clearTimeout(debounceRef.current);
+            debounceRef.current = setTimeout(async () => {
+                try {
+                    const data = await apiRequest(API_ENDPOINTS.SEARCH_SYMBOLS(query));
+                    if (data.length > 0) {
+                        // Merge: static matches first, then API results not already shown
+                        const staticSymbols = new Set(staticMatches.map(t => t.symbol));
+                        const apiOnly = data.filter(t => !staticSymbols.has(t.symbol));
+                        const merged = [...staticMatches, ...apiOnly].slice(0, 8);
+                        setAutocompleteSuggestions(merged);
+                        setShowAutocomplete(merged.length > 0);
+                    }
+                } catch (err) {
+                    console.error('Autocomplete Finnhub fallback error:', err);
+                }
+            }, 350);
         }
     };
     // --- END AUTOCOMPLETE ---

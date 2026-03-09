@@ -147,6 +147,7 @@ class RateLimits:
 # --- CONFIGURATION ---
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
+FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY')
 
 # Validate required environment variables in production
 if IS_PRODUCTION:
@@ -490,19 +491,24 @@ def clean_value(val):
 
 # --- Helper Function ---
 def get_symbol_suggestions(query):
-    if not ALPHA_VANTAGE_API_KEY:
-        logger.warning("Alpha Vantage key not configured. Cannot get suggestions.")
+    if not FINNHUB_API_KEY:
+        logger.warning("FINNHUB_API_KEY not configured. Cannot get suggestions.")
         return []
     try:
-        url = f'https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords={query}&apikey={ALPHA_VANTAGE_API_KEY}'
-        r = requests.get(url)
+        url = f'https://finnhub.io/api/v1/search?q={query}&token={FINNHUB_API_KEY}'
+        r = requests.get(url, timeout=5)
         data = r.json()
-        matches = data.get('bestMatches', [])
+        results = data.get('result', [])
         formatted_matches = []
-        for match in matches:
-            if "." not in match.get('1. symbol') and match.get('4. region') == "United States":
-                formatted_matches.append({"symbol": match.get('1. symbol'), "name": match.get('2. name')})
-        return formatted_matches
+        for item in results:
+            symbol = item.get('symbol', '')
+            # Filter to simple US equity symbols only (no dots, slashes, or exchange prefixes)
+            if symbol and '.' not in symbol and '/' not in symbol and ':' not in symbol:
+                formatted_matches.append({
+                    "symbol": symbol,
+                    "name": item.get('description', '')
+                })
+        return formatted_matches[:8]
     except Exception as e:
         logger.error(f"Error in get_symbol_suggestions: {e}")
         return []
@@ -2265,6 +2271,7 @@ def get_fundamentals(ticker):
         return jsonify({"error": f"Failed to fetch fundamentals: {str(e)}"}), 500
 # --- NEW: Autocomplete Symbol Search (from Jimmy's branch) ---
 @app.route('/search-symbols')
+@limiter.limit(RateLimits.LIGHT)
 def search_symbols():
     query = request.args.get('q')
     if not query: return jsonify([])
