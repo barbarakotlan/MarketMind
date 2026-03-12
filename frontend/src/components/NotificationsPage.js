@@ -137,6 +137,21 @@ const NotificationsPage = ({ onClearAlerts }) => {
         }
     };
 
+    const handleClearTriggeredAlerts = async () => {
+        setMessage(null);
+
+        try {
+            await apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(), { method: 'DELETE' });
+            setTriggeredAlerts([]);
+
+            if (onClearAlerts) {
+                onClearAlerts();
+            }
+        } catch (err) {
+            setMessage({ type: 'error', text: err.message });
+        }
+    };
+
     return (
         <div className="container mx-auto px-4 py-8 max-w-5xl animate-fade-in">
             {/* Header */}
@@ -312,7 +327,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                             <div className="w-2 h-2 rounded-full bg-red-500"></div> Recent Notifications
                         </h2>
                         {triggeredAlerts.length > 0 && (
-                            <button onClick={onClearAlerts} className="text-xs font-bold text-blue-600 hover:underline">Clear All</button>
+                            <button onClick={handleClearTriggeredAlerts} className="text-xs font-bold text-blue-600 hover:underline">Clear All</button>
                         )}
                     </div>
 
