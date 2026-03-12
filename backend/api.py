@@ -55,6 +55,21 @@ from prediction_markets_fetcher import (
     get_current_prices as pm_get_prices,
 )
 from logger_config import setup_logger, log_api_error
+from user_state_store import (
+    ensure_database_ready as ensure_user_state_database_ready,
+    list_app_user_ids as list_app_user_ids_db,
+    load_notifications as load_notifications_db,
+    load_portfolio as load_portfolio_db,
+    load_prediction_portfolio as load_prediction_portfolio_db,
+    load_watchlist as load_watchlist_db,
+    record_portfolio_snapshot as record_portfolio_snapshot_db,
+    save_notifications as save_notifications_db,
+    save_portfolio as save_portfolio_db,
+    save_prediction_portfolio as save_prediction_portfolio_db,
+    save_watchlist as save_watchlist_db,
+    session_scope as user_state_session_scope,
+    touch_app_user as touch_app_user_db,
+)
 
 #Emoji Fix
 import sys
@@ -167,6 +182,8 @@ if IS_PRODUCTION:
 # --- Paths & Auth Configuration ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE = os.path.join(BASE_DIR, 'marketmind.db')
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+PERSISTENCE_MODE = os.getenv('PERSISTENCE_MODE', 'json').strip().lower()
 
 PORTFOLIO_FILE = os.path.join(BASE_DIR, 'paper_portfolio.json')
 NOTIFICATIONS_FILE = os.path.join(BASE_DIR, 'notifications.json')
@@ -178,6 +195,52 @@ CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '').strip()
 CLERK_AUDIENCE = os.getenv('CLERK_AUDIENCE', '').strip()
 CLERK_JWKS_CACHE_TTL_SECONDS = int(os.getenv('CLERK_JWKS_CACHE_TTL_SECONDS', '3600'))
 _JWKS_CACHE = {}
+
+
+def _normalize_persistence_mode(mode):
+    normalized = str(mode or 'json').strip().lower()
+    if normalized not in {'json', 'dual', 'postgres'}:
+        logger.warning("Unknown PERSISTENCE_MODE '%s'; defaulting to json", normalized)
+        return 'json'
+    return normalized
+
+
+def _current_persistence_mode():
+    return _normalize_persistence_mode(PERSISTENCE_MODE)
+
+
+def _sql_persistence_enabled():
+    return _current_persistence_mode() in {'dual', 'postgres'}
+
+
+def _json_mirror_enabled():
+    return _current_persistence_mode() == 'dual'
+
+
+def _ensure_user_state_storage_ready():
+    if _sql_persistence_enabled():
+        ensure_user_state_database_ready(DATABASE_URL)
+
+
+def _current_auth_identity():
+    payload = getattr(g, 'auth_payload', {}) or {}
+    return {
+        "email": payload.get('email'),
+        "username": payload.get('username'),
+    }
+
+
+def _sync_authenticated_user(payload):
+    if not _sql_persistence_enabled():
+        return
+    _ensure_user_state_storage_ready()
+    with user_state_session_scope(DATABASE_URL) as session:
+        touch_app_user_db(
+            session,
+            payload['sub'],
+            email=payload.get('email'),
+            username=payload.get('username'),
+        )
 
 
 def get_db():
@@ -223,13 +286,23 @@ def _get_user_file_path(user_id, filename):
 
 
 def _iter_user_ids():
-    if not os.path.isdir(USER_DATA_DIR):
-        return []
-    return [
-        entry
-        for entry in os.listdir(USER_DATA_DIR)
-        if os.path.isdir(os.path.join(USER_DATA_DIR, entry))
-    ]
+    user_ids = set()
+    if os.path.isdir(USER_DATA_DIR):
+        user_ids.update(
+            entry
+            for entry in os.listdir(USER_DATA_DIR)
+            if os.path.isdir(os.path.join(USER_DATA_DIR, entry))
+        )
+
+    if _sql_persistence_enabled():
+        try:
+            _ensure_user_state_storage_ready()
+            with user_state_session_scope(DATABASE_URL) as session:
+                user_ids.update(list_app_user_ids_db(session))
+        except Exception as e:
+            logger.error(f"Failed to enumerate SQL-backed users: {e}")
+
+    return sorted(user_ids)
 
 
 def _get_bearer_token():
@@ -326,6 +399,7 @@ def require_auth(f):
 
         g.current_user_id = payload['sub']
         g.auth_payload = payload
+        _sync_authenticated_user(payload)
         return f(*args, **kwargs)
 
     return wrapper
@@ -399,8 +473,7 @@ def _should_seed_from_legacy(user_path, legacy_path):
     )
 
 
-def load_prediction_portfolio(user_id=None):
-    """Load prediction market paper portfolio for a specific user."""
+def _load_prediction_portfolio_json(user_id=None):
     user_path = _prediction_portfolio_file(user_id) if user_id else PREDICTION_PORTFOLIO_FILE
     source_path = user_path
     if user_id and _should_seed_from_legacy(user_path, PREDICTION_PORTFOLIO_FILE):
@@ -413,13 +486,32 @@ def load_prediction_portfolio(user_id=None):
     return data
 
 
-def save_prediction_portfolio(portfolio, user_id=None):
-    """Save prediction market paper portfolio for a specific user."""
+def _save_prediction_portfolio_json(portfolio, user_id=None):
     _save_json(_prediction_portfolio_file(user_id), portfolio)
 
 
-def load_portfolio(user_id=None):
-    """Load stock/options paper portfolio for a specific user."""
+def load_prediction_portfolio(user_id=None):
+    """Load prediction market paper portfolio for a specific user."""
+    if user_id and _sql_persistence_enabled():
+        _ensure_user_state_storage_ready()
+        with user_state_session_scope(DATABASE_URL) as session:
+            return load_prediction_portfolio_db(session, user_id)
+    return _load_prediction_portfolio_json(user_id)
+
+
+def save_prediction_portfolio(portfolio, user_id=None):
+    """Save prediction market paper portfolio for a specific user."""
+    if user_id and _sql_persistence_enabled():
+        _ensure_user_state_storage_ready()
+        with user_state_session_scope(DATABASE_URL) as session:
+            save_prediction_portfolio_db(session, user_id, portfolio)
+        if _json_mirror_enabled():
+            _save_prediction_portfolio_json(portfolio, user_id)
+        return
+    _save_prediction_portfolio_json(portfolio, user_id)
+
+
+def _load_portfolio_json(user_id=None):
     user_path = _portfolio_file(user_id) if user_id else PORTFOLIO_FILE
     source_path = user_path
     if user_id and _should_seed_from_legacy(user_path, PORTFOLIO_FILE):
@@ -434,13 +526,50 @@ def load_portfolio(user_id=None):
     return data
 
 
-def save_portfolio(portfolio, user_id=None):
-    """Save stock/options paper portfolio for a specific user."""
+def load_portfolio(user_id=None):
+    """Load stock/options paper portfolio for a specific user."""
+    if user_id and _sql_persistence_enabled():
+        _ensure_user_state_storage_ready()
+        with user_state_session_scope(DATABASE_URL) as session:
+            return load_portfolio_db(session, user_id)
+    return _load_portfolio_json(user_id)
+
+
+def _save_portfolio_json(portfolio, user_id=None):
     _save_json(_portfolio_file(user_id), portfolio)
 
 
-def load_notifications(user_id=None):
-    """Load active/triggered notifications for a specific user."""
+def save_portfolio(portfolio, user_id=None):
+    """Save stock/options paper portfolio for a specific user."""
+    if user_id and _sql_persistence_enabled():
+        _ensure_user_state_storage_ready()
+        with user_state_session_scope(DATABASE_URL) as session:
+            save_portfolio_db(session, user_id, portfolio)
+        if _json_mirror_enabled():
+            _save_portfolio_json(portfolio, user_id)
+        return
+    _save_portfolio_json(portfolio, user_id)
+
+
+def save_portfolio_with_snapshot(portfolio, user_id=None, *, reset_snapshots=False):
+    if user_id and _sql_persistence_enabled():
+        from user_state_store import PaperPortfolioSnapshot
+
+        _ensure_user_state_storage_ready()
+        with user_state_session_scope(DATABASE_URL) as session:
+            save_portfolio_db(session, user_id, portfolio)
+            if reset_snapshots:
+                session.query(PaperPortfolioSnapshot).filter_by(clerk_user_id=user_id).delete()
+            record_portfolio_snapshot_db(session, user_id, portfolio)
+        if _json_mirror_enabled():
+            _save_portfolio_json(portfolio, user_id)
+        return
+
+    _save_portfolio_json(portfolio, user_id)
+    record_portfolio_snapshot(portfolio, user_id)
+
+
+def _load_notifications_json(user_id=None):
     user_path = _notifications_file(user_id) if user_id else NOTIFICATIONS_FILE
     source_path = user_path
     if user_id and _should_seed_from_legacy(user_path, NOTIFICATIONS_FILE):
@@ -451,13 +580,32 @@ def load_notifications(user_id=None):
     return data
 
 
-def save_notifications(notifications, user_id=None):
-    """Save active/triggered notifications for a specific user."""
+def load_notifications(user_id=None):
+    """Load active/triggered notifications for a specific user."""
+    if user_id and _sql_persistence_enabled():
+        _ensure_user_state_storage_ready()
+        with user_state_session_scope(DATABASE_URL) as session:
+            return load_notifications_db(session, user_id)
+    return _load_notifications_json(user_id)
+
+
+def _save_notifications_json(notifications, user_id=None):
     _save_json(_notifications_file(user_id), notifications)
 
 
-def load_watchlist(user_id=None):
-    """Load watchlist tickers for a specific user."""
+def save_notifications(notifications, user_id=None):
+    """Save active/triggered notifications for a specific user."""
+    if user_id and _sql_persistence_enabled():
+        _ensure_user_state_storage_ready()
+        with user_state_session_scope(DATABASE_URL) as session:
+            save_notifications_db(session, user_id, notifications)
+        if _json_mirror_enabled():
+            _save_notifications_json(notifications, user_id)
+        return
+    _save_notifications_json(notifications, user_id)
+
+
+def _load_watchlist_json(user_id=None):
     legacy_watchlist_file = os.path.join(BASE_DIR, 'watchlist.json')
     user_path = _watchlist_file(user_id) if user_id else legacy_watchlist_file
     source_path = user_path
@@ -469,10 +617,31 @@ def load_watchlist(user_id=None):
     return sorted(list({str(t).upper() for t in data if str(t).strip()}))
 
 
-def save_watchlist(tickers, user_id=None):
-    """Save watchlist tickers for a specific user."""
+def load_watchlist(user_id=None):
+    """Load watchlist tickers for a specific user."""
+    if user_id and _sql_persistence_enabled():
+        _ensure_user_state_storage_ready()
+        with user_state_session_scope(DATABASE_URL) as session:
+            return load_watchlist_db(session, user_id)
+    return _load_watchlist_json(user_id)
+
+
+def _save_watchlist_json(tickers, user_id=None):
     normalized = sorted(list({str(t).upper() for t in tickers if str(t).strip()}))
     _save_json(_watchlist_file(user_id), normalized)
+
+
+def save_watchlist(tickers, user_id=None):
+    """Save watchlist tickers for a specific user."""
+    if user_id and _sql_persistence_enabled():
+        normalized = sorted(list({str(t).upper() for t in tickers if str(t).strip()}))
+        _ensure_user_state_storage_ready()
+        with user_state_session_scope(DATABASE_URL) as session:
+            save_watchlist_db(session, user_id, normalized)
+        if _json_mirror_enabled():
+            _save_watchlist_json(normalized, user_id)
+        return
+    _save_watchlist_json(tickers, user_id)
 
 
 @app.route('/auth/me', methods=['GET'])
@@ -1009,7 +1178,7 @@ def predict_ensemble(ticker):
 
 # --- Paper Trading Endpoints (Using JSON persistence) ---
 
-def record_portfolio_snapshot(portfolio_data, user_id):
+def _record_portfolio_snapshot_legacy(portfolio_data, user_id):
     total_value = portfolio_data['cash']
     for ticker, pos in portfolio_data.get("positions", {}).items():
         total_value += pos['shares'] * pos['avg_cost']
@@ -1027,6 +1196,15 @@ def record_portfolio_snapshot(portfolio_data, user_id):
         logger.error(f"Failed to record portfolio snapshot: {e}")
     finally:
         if conn: conn.close()
+
+
+def record_portfolio_snapshot(portfolio_data, user_id):
+    if user_id and _sql_persistence_enabled():
+        _ensure_user_state_storage_ready()
+        with user_state_session_scope(DATABASE_URL) as session:
+            record_portfolio_snapshot_db(session, user_id, portfolio_data)
+        return
+    _record_portfolio_snapshot_legacy(portfolio_data, user_id)
 
 
 @app.route('/paper/portfolio', methods=['GET'])
@@ -1229,8 +1407,7 @@ def buy_stock():
         portfolio["transactions"].append(
             {"date": datetime.now().strftime('%Y-%m-%d'), "type": "BUY", "ticker": ticker, "shares": shares,
              "price": price, "total": total_cost})
-        save_portfolio(portfolio, user_id)
-        record_portfolio_snapshot(portfolio, user_id)
+        save_portfolio_with_snapshot(portfolio, user_id)
         return jsonify({"success": True, "message": f"Bought {shares} shares of {ticker} at ${price:.2f}"}), 200
     except Exception as e:
         log_api_error(logger, '/paper/buy', e)
@@ -1285,8 +1462,7 @@ def sell_stock():
         portfolio["transactions"].append(
             {"date": datetime.now().strftime('%Y-%m-%d'), "type": "SELL", "ticker": ticker, "shares": shares,
              "price": price, "total": proceeds})
-        save_portfolio(portfolio, user_id)
-        record_portfolio_snapshot(portfolio, user_id)
+        save_portfolio_with_snapshot(portfolio, user_id)
         return jsonify({"success": True, "message": f"Sold {shares} shares of {ticker} at ${price:.2f}",
                         "profit": round(profit, 2)}), 200
     except Exception as e:
@@ -1317,8 +1493,7 @@ def buy_option():
         trade = {"type": "BUY_OPTION", "ticker": contract_symbol, "shares": quantity, "price": price,
                  "total": total_cost, "timestamp": datetime.now().isoformat()}
         portfolio["trade_history"].append(trade)
-        save_portfolio(portfolio, user_id)
-        record_portfolio_snapshot(portfolio, user_id)
+        save_portfolio_with_snapshot(portfolio, user_id)
         return jsonify(
             {"success": True, "message": f"Bought {quantity} {contract_symbol} contract(s) at ${price:.2f}"}), 200
     except Exception as e:
@@ -1349,8 +1524,7 @@ def sell_option():
         trade = {"type": "SELL_OPTION", "ticker": contract_symbol, "shares": quantity, "price": price,
                  "total": proceeds, "profit": profit, "timestamp": datetime.now().isoformat()}
         portfolio["trade_history"].append(trade)
-        save_portfolio(portfolio, user_id)
-        record_portfolio_snapshot(portfolio, user_id)
+        save_portfolio_with_snapshot(portfolio, user_id)
         return jsonify({"success": True, "message": f"Sold {quantity} {contract_symbol} contract(s) at ${price:.2f}",
                         "profit": round(profit, 2)}), 200
     except Exception as e:
@@ -1512,20 +1686,7 @@ def reset_portfolio():
         "cash": 100000.0, "starting_cash": 100000.0, "positions": {},
         "options_positions": {}, "transactions": [], "trade_history": []
     }
-    save_portfolio(new_portfolio, user_id)
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM portfolio_history WHERE user_id = ?", (user_id,))
-        cursor.execute(
-            "INSERT INTO portfolio_history (timestamp, portfolio_value, user_id) VALUES (?, ?, ?)",
-            (datetime.now(), 100000.0, user_id),
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Failed to reset portfolio_history table: {e}")
-    finally:
-        if conn: conn.close()
+    save_portfolio_with_snapshot(new_portfolio, user_id, reset_snapshots=True)
     return jsonify({"success": True, "message": "Portfolio reset to starting state",
                     "starting_cash": new_portfolio["starting_cash"]})
 
@@ -1888,6 +2049,10 @@ def evaluate_models(ticker):
         fast_mode = fast_mode_raw in {'1', 'true', 'yes', 'on'}
         include_selective_raw = str(request.args.get('include_selective', 'false')).strip().lower()
         include_selective = include_selective_raw in {'1', 'true', 'yes', 'on'}
+        include_selector_variants_raw = str(request.args.get('include_selector_variants', 'false')).strip().lower()
+        include_selector_variants = include_selector_variants_raw in {'1', 'true', 'yes', 'on'}
+        if include_selector_variants:
+            include_selective = True
         default_retrain = 10 if fast_mode else 5
         retrain_frequency = int(request.args.get('retrain_frequency', default_retrain))
         max_train_rows = request.args.get('max_train_rows', default=450 if fast_mode else None, type=int)
@@ -1897,6 +2062,7 @@ def evaluate_models(ticker):
             test_days=test_days,
             retrain_frequency=retrain_frequency,
             include_selective=include_selective,
+            include_selector_variants=include_selector_variants,
             fast_mode=fast_mode,
             max_train_rows=max_train_rows,
         )
@@ -2722,6 +2888,9 @@ def get_macro_overview():
 # --- Main execution ---
 if __name__ == '__main__':
     init_db()  # Initialize the SQLite history table
+    if _sql_persistence_enabled():
+        logger.info("Initializing SQL user-state storage...")
+        _ensure_user_state_storage_ready()
 
     # --- NEW: Start the background thread ---
     logger.info("Starting background alert checker...")
