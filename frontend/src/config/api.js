@@ -11,6 +11,19 @@
 // API Base URL from environment variable or default to localhost
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 
+const buildApiUrl = (path, params = {}) => {
+    const query = new URLSearchParams();
+
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+            query.set(key, value);
+        }
+    });
+
+    const queryString = query.toString();
+    return `${API_BASE_URL}${path}${queryString ? `?${queryString}` : ''}`;
+};
+
 /**
  * API Endpoints Configuration
  * All API endpoints are defined here for consistency
@@ -79,14 +92,13 @@ export const API_ENDPOINTS = {
     COMMODITIES_PRICE: (code) => `${API_BASE_URL}/commodities/price/${code}`,
     
     // Prediction Markets
-    PREDICTION_MARKETS: (exchange = 'polymarket', limit = 50) => 
-        `${API_BASE_URL}/prediction-markets?exchange=${exchange}&limit=${limit}`,
-    PREDICTION_MARKETS_SEARCH: (exchange, search) => 
-        `${API_BASE_URL}/prediction-markets/search?exchange=${exchange}&search=${encodeURIComponent(search)}`,
-    PREDICTION_MARKET: (exchange, marketId) => 
-        `${API_BASE_URL}/prediction-markets/${exchange}/${marketId}`,
+    PREDICTION_MARKETS: (exchange = 'polymarket', limit = 50, search = '') =>
+        buildApiUrl('/prediction-markets', { exchange, limit, search }),
+    PREDICTION_MARKETS_SEARCH: (exchange = 'polymarket', search = '', limit = 50) =>
+        buildApiUrl('/prediction-markets', { exchange, limit, search }),
+    PREDICTION_MARKET: (marketId, exchange = 'polymarket') =>
+        buildApiUrl(`/prediction-markets/${encodeURIComponent(marketId)}`, { exchange }),
     PREDICTION_EXCHANGES: `${API_BASE_URL}/prediction-markets/exchanges`,
-    PREDICTION_PRICES: (exchange) => `${API_BASE_URL}/prediction-markets/prices?exchange=${exchange}`,
     PREDICTION_PORTFOLIO: `${API_BASE_URL}/prediction-markets/portfolio`,
     PREDICTION_HISTORY: `${API_BASE_URL}/prediction-markets/history`,
     PREDICTION_BUY: `${API_BASE_URL}/prediction-markets/buy`,
@@ -94,8 +106,6 @@ export const API_ENDPOINTS = {
     PREDICTION_RESET: `${API_BASE_URL}/prediction-markets/reset`,
     
     // Macro & Calendar
-    MACRO_INDICATORS: `${API_BASE_URL}/macro/indicators`,
-    MACRO_CHART: (indicator, period = '5y') => `${API_BASE_URL}/macro/chart/${indicator}?period=${period}`,
     MACRO_OVERVIEW: `${API_BASE_URL}/macro/overview`,
     ECONOMIC_CALENDAR: `${API_BASE_URL}/calendar/economic`,
     
@@ -104,7 +114,6 @@ export const API_ENDPOINTS = {
     
     // Fundamentals
     FUNDAMENTALS: (ticker) => `${API_BASE_URL}/fundamentals/${ticker}`,
-    FILINGS: (ticker) => `${API_BASE_URL}/filings/${ticker}`,
     FUNDAMENTALS_FINANCIALS: (ticker) => `${API_BASE_URL}/fundamentals/financials/${ticker}`,
     FUNDAMENTALS_FILINGS: (ticker) => `${API_BASE_URL}/fundamentals/filings/${ticker}`,
 };
