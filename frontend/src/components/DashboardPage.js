@@ -153,7 +153,7 @@ function AlertsBadgeCard({ setActivePage }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED)
+        apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true))
             .then(d => { setCount(d.length); setLoading(false); })
             .catch(() => setLoading(false));
     }, []);

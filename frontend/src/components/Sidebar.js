@@ -79,7 +79,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
         };
 
     const checkAlerts = () => {
-        apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED)
+        apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true))
             .then(data => {
                 setNewAlertCount(data.length);
             })

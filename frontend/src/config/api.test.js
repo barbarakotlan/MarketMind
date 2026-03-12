@@ -19,6 +19,15 @@ describe('API_ENDPOINTS', () => {
         );
     });
 
+    test('builds triggered alert URLs without forcing seen state changes', () => {
+        expect(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED()).toBe(
+            `${API_BASE_URL}/notifications/triggered`
+        );
+        expect(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true)).toBe(
+            `${API_BASE_URL}/notifications/triggered?all=true`
+        );
+    });
+
     test('uses the supported fundamentals filings endpoint', () => {
         expect(API_ENDPOINTS.FUNDAMENTALS_FILINGS('AAPL')).toBe(
             `${API_BASE_URL}/fundamentals/filings/AAPL`
