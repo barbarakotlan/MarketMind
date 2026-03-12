@@ -45,7 +45,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
             // Note: Ensure your backend supports these endpoints
             const [activeData, triggeredDataRaw] = await Promise.all([
                 apiRequest(API_ENDPOINTS.NOTIFICATIONS),
-                apiRequest(`${API_ENDPOINTS.NOTIFICATIONS_TRIGGERED}?all=true`).catch(() => [])
+                apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true)).catch(() => [])
             ]);
             const triggeredData = Array.isArray(triggeredDataRaw) ? triggeredDataRaw : [];
 

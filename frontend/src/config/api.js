@@ -73,7 +73,8 @@ export const API_ENDPOINTS = {
     // Notifications
     NOTIFICATIONS: `${API_BASE_URL}/notifications`,
     NOTIFICATIONS_SMART: `${API_BASE_URL}/notifications/smart`,
-    NOTIFICATIONS_TRIGGERED: `${API_BASE_URL}/notifications/triggered`,
+    NOTIFICATIONS_TRIGGERED: (all = false) =>
+        buildApiUrl('/notifications/triggered', all ? { all: 'true' } : {}),
     NOTIFICATION: (id) => `${API_BASE_URL}/notifications/${id}`,
     NOTIFICATION_TRIGGERED: (id) => `${API_BASE_URL}/notifications/triggered/${id}`,
     
