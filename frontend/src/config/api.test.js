@@ -28,6 +28,15 @@ describe('API_ENDPOINTS', () => {
         );
     });
 
+    test('builds option chain URLs with an optional expiration date', () => {
+        expect(API_ENDPOINTS.OPTIONS_CHAIN('AAPL')).toBe(
+            `${API_BASE_URL}/options/chain/AAPL`
+        );
+        expect(API_ENDPOINTS.OPTIONS_CHAIN('AAPL', '2026-01-16')).toBe(
+            `${API_BASE_URL}/options/chain/AAPL?date=2026-01-16`
+        );
+    });
+
     test('uses the supported fundamentals filings endpoint', () => {
         expect(API_ENDPOINTS.FUNDAMENTALS_FILINGS('AAPL')).toBe(
             `${API_BASE_URL}/fundamentals/filings/AAPL`
