@@ -52,7 +52,8 @@ export const API_ENDPOINTS = {
     
     // Options
     OPTIONS: (ticker) => `${API_BASE_URL}/options/${ticker}`,
-    OPTIONS_CHAIN: (ticker) => `${API_BASE_URL}/options/chain/${ticker}`,
+    OPTIONS_CHAIN: (ticker, date = '') =>
+        buildApiUrl(`/options/chain/${ticker}`, { date }),
     OPTIONS_SUGGEST: (ticker) => `${API_BASE_URL}/options/suggest/${ticker}`,
     OPTIONS_STOCK_PRICE: (ticker) => `${API_BASE_URL}/options/stock_price/${ticker}`,
     
