@@ -19,16 +19,34 @@ const NewsPage = () => {
         { id: 'Mergers', label: 'Mergers & Acquisitions', icon: Filter },
     ];
 
+    const formatPublishTime = (article) => {
+        const rawTimestamp = article.publishTime ?? article.datetime;
+
+        if (rawTimestamp === undefined || rawTimestamp === null || rawTimestamp === '' || rawTimestamp === 'N/A') {
+            return 'Recent';
+        }
+
+        const parsedDate = new Date(
+            typeof rawTimestamp === 'number' ? rawTimestamp * 1000 : rawTimestamp
+        );
+
+        return Number.isNaN(parsedDate.getTime()) ? 'Recent' : parsedDate.toLocaleDateString();
+    };
+
     // Helper to standardize API responses because /api/news and /news return different formats
     const normalizeArticle = (article) => {
+        const headline = article.headline || article.title || 'No Headline';
+        const source = article.source?.name || article.source || article.publisher || 'Unknown Source';
+        const stableId = article.id || article.url || article.link || `${headline}-${source}`;
+
         return {
-            id: article.id || article.url || Math.random().toString(),
-            headline: article.headline || article.title || 'No Headline',
-            source: article.source || article.publisher || 'Unknown Source',
+            id: stableId,
+            headline,
+            source,
             url: article.url || article.link || '#',
             summary: article.summary || article.description || '',
             image: article.image || article.thumbnail_url || 'https://via.placeholder.com/400x200?text=No+Image',
-            publishTime: article.publishTime || article.datetime ? new Date(article.publishTime || article.datetime * 1000).toLocaleDateString() : 'Recent'
+            publishTime: formatPublishTime(article)
         };
     };
 
