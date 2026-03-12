@@ -200,9 +200,7 @@ const PredictionMarketsPage = () => {
     const fetchMarkets = async (search = '') => {
         setLoadingMarkets(true);
         try {
-            const url = `${API_ENDPOINTS.PREDICTION_MARKETS('polymarket', 50)}${
-                search ? `&search=${encodeURIComponent(search)}` : ''
-            }`;
+            const url = API_ENDPOINTS.PREDICTION_MARKETS('polymarket', 50, search);
             const data = await apiRequest(url);
             setMarkets(data.markets || []);
         } catch (err) {
