@@ -2,10 +2,15 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import App from './App';
 
 let mockIsSignedIn = false;
+let mockIsLoaded = true;
 
 jest.mock('@clerk/clerk-react', () => ({
     SignedIn: ({ children }) => (mockIsSignedIn ? children : null),
     SignedOut: ({ children }) => (mockIsSignedIn ? null : children),
+    useAuth: () => ({
+        isLoaded: mockIsLoaded,
+        isSignedIn: mockIsSignedIn,
+    }),
 }));
 
 jest.mock('./components/LandingPage', () => ({ onEnterApp }) => (
@@ -64,6 +69,8 @@ jest.mock('./components/SearchPage', () => ({ initialTicker }) => (
 describe('App', () => {
     beforeEach(() => {
         mockIsSignedIn = false;
+        mockIsLoaded = true;
+        window.localStorage.clear();
     });
 
     test('shows the landing page first', () => {
@@ -85,8 +92,6 @@ describe('App', () => {
         mockIsSignedIn = true;
         render(<App />);
 
-        fireEvent.click(screen.getByText('Enter App'));
-
         expect(screen.getByText('Sidebar')).toBeInTheDocument();
         expect(screen.getByText('Dashboard Page')).toBeInTheDocument();
     });
@@ -95,10 +100,27 @@ describe('App', () => {
         mockIsSignedIn = true;
         render(<App />);
 
-        fireEvent.click(screen.getByText('Enter App'));
         fireEvent.click(screen.getByText('Go Screener'));
         fireEvent.click(screen.getByText('Pick AAPL'));
 
         expect(screen.getByText('Search Page for AAPL')).toBeInTheDocument();
+    });
+
+    test('skips the landing page for signed-in users on refresh', () => {
+        mockIsSignedIn = true;
+
+        render(<App />);
+
+        expect(screen.queryByText('Landing Page')).not.toBeInTheDocument();
+        expect(screen.getByText('Sidebar')).toBeInTheDocument();
+        expect(screen.getByText('Dashboard Page')).toBeInTheDocument();
+    });
+
+    test('persists app entry so refresh stays in the app shell', () => {
+        render(<App />);
+
+        fireEvent.click(screen.getByText('Enter App'));
+
+        expect(window.localStorage.getItem('marketmind.hideLanding')).toBe('true');
     });
 });
