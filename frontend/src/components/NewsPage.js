@@ -2,6 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { Search, TrendingUp, Zap, Globe, RefreshCw, Filter } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
+const NEWS_IMAGE_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
+  <rect width="800" height="400" fill="#e5e7eb"/>
+  <rect x="32" y="32" width="736" height="336" rx="24" fill="#dbeafe"/>
+  <text x="50%" y="46%" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" fill="#1d4ed8">
+    MarketMind
+  </text>
+  <text x="50%" y="58%" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" fill="#334155">
+    News image unavailable
+  </text>
+</svg>
+`)}`;
+
 const NewsPage = () => {
     const [articles, setArticles] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -38,6 +51,11 @@ const NewsPage = () => {
         const headline = article.headline || article.title || 'No Headline';
         const source = article.source?.name || article.source || article.publisher || 'Unknown Source';
         const stableId = article.id || article.url || article.link || `${headline}-${source}`;
+        const image = typeof article.image === 'string' && article.image.trim()
+            ? article.image
+            : typeof article.thumbnail_url === 'string' && article.thumbnail_url.trim()
+                ? article.thumbnail_url
+                : NEWS_IMAGE_PLACEHOLDER;
 
         return {
             id: stableId,
@@ -45,7 +63,7 @@ const NewsPage = () => {
             source,
             url: article.url || article.link || '#',
             summary: article.summary || article.description || '',
-            image: article.image || article.thumbnail_url || 'https://via.placeholder.com/400x200?text=No+Image',
+            image,
             publishTime: formatPublishTime(article)
         };
     };
@@ -192,7 +210,10 @@ const NewsPage = () => {
                                         src={article.image} 
                                         alt={article.headline} 
                                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                        onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1611974765270-ca1258634369?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80'; }} 
+                                        onError={(e) => {
+                                            e.target.onerror = null;
+                                            e.target.src = NEWS_IMAGE_PLACEHOLDER;
+                                        }}
                                     />
                                     <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-md text-white text-xs px-2 py-1 rounded-md font-medium">
                                         {article.source}
