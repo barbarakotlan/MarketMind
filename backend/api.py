@@ -831,12 +831,7 @@ def get_chart_data(ticker):
                 "close": clean_value(row['Close']), "volume": clean_value(row['Volume'])
             })
         try:
-            predictions = predict_stock(sanitized_ticker).get_json()['predictions']
-            for pred in predictions:
-                chart_data.append({
-                    "date": pred["date"] + " 00:00:00", "open": None, "high": None, "low": None,
-                    "close": pred["predictedClose"], "volume": None
-                })
+            chart_data.extend(_chart_prediction_points(sanitized_ticker))
         except Exception as e:
             logger.warning(f"Could not append prediction to chart: {e}")
         return jsonify(chart_data)
@@ -1072,6 +1067,30 @@ def _live_ensemble_signal_components(sanitized_ticker):
         "raw_signal": raw_signal,
         "disagreement": disagreement,
     }
+
+
+def _chart_prediction_points(sanitized_ticker):
+    signal_parts = _live_ensemble_signal_components(sanitized_ticker)
+    if signal_parts is None:
+        return []
+
+    ensemble_preds = signal_parts["ensemble_preds"]
+    if ensemble_preds is None or len(ensemble_preds) == 0:
+        return []
+
+    recent_date = signal_parts["df"].index[-1]
+    future_dates = [recent_date + pd.Timedelta(days=i + 1) for i in range(len(ensemble_preds))]
+    return [
+        {
+            "date": date.strftime("%Y-%m-%d 00:00:00"),
+            "open": None,
+            "high": None,
+            "low": None,
+            "close": round(float(pred), 2),
+            "volume": None,
+        }
+        for date, pred in zip(future_dates, ensemble_preds)
+    ]
 
 
 def _resolve_selector_gate_for_ticker(sanitized_ticker, requested_mode, selector_source_requested="auto"):

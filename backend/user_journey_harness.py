@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from unittest import mock
 
+import numpy as np
+
 import api as backend_api
 from user_journey_state import (
     restore_user_state_snapshot,
@@ -58,6 +60,8 @@ def auth_shim(user_id: str):
 @contextmanager
 def deterministic_data_shim():
     pd = backend_api.pd
+    idx = pd.date_range("2026-01-01", periods=120, freq="D")
+    deterministic_df = pd.DataFrame({"Close": np.linspace(100, 120, len(idx))}, index=idx)
 
     class FakeTicker:
         def __init__(self, ticker: str):
@@ -133,6 +137,15 @@ def deterministic_data_shim():
         ]
         return backend_api.jsonify({"predictions": predictions})
 
+    def fake_ensemble_predict(df, days_ahead=6):
+        return (
+            np.array([121.0, 122.0, 123.0, 124.0, 125.0, 126.0]),
+            {
+                "linear_regression": np.array([121.0, 122.0, 123.0, 124.0, 125.0, 126.0]),
+                "random_forest": np.array([120.5, 121.5, 122.5, 123.5, 124.5, 125.5]),
+            },
+        )
+
     fake_market = {
         "id": "market-1",
         "question": "Will the launch happen?",
@@ -147,6 +160,8 @@ def deterministic_data_shim():
         stack.enter_context(mock.patch.object(backend_api.yf, "download", side_effect=fake_download))
         stack.enter_context(mock.patch.object(backend_api.requests, "get", return_value=FakeNewsResponse()))
         stack.enter_context(mock.patch.object(backend_api, "NEWS_API_KEY", "deterministic-news-key"))
+        stack.enter_context(mock.patch.object(backend_api, "create_dataset", side_effect=lambda ticker, period="1y": deterministic_df.copy()))
+        stack.enter_context(mock.patch.object(backend_api, "ensemble_predict", side_effect=fake_ensemble_predict))
         stack.enter_context(mock.patch.object(backend_api, "predict_stock", side_effect=fake_predict_stock))
         stack.enter_context(mock.patch.object(backend_api, "pm_fetch_markets", return_value=[fake_market]))
         stack.enter_context(mock.patch.object(backend_api, "pm_search_markets", return_value=[fake_market]))
