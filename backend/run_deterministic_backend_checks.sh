@@ -19,6 +19,7 @@ export PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX:-/tmp/marketmind_pycache}"
   backend/tests/test_user_journey_harness.py
 
 "$PYTHON_BIN" -m unittest \
+  backend.tests.test_auth_isolation \
   backend.tests.test_chart_prediction_append \
   backend.tests.test_user_journey_state \
   backend.tests.test_user_journey_harness \
