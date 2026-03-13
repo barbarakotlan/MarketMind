@@ -101,9 +101,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
         setIsAiLoading(true);
 
         try {
-            // This endpoint needs to be implemented in your backend
-            // It should parse the natural language and return a structured alert
-            await apiRequest(API_ENDPOINTS.NOTIFICATIONS_SMART, {
+            const response = await apiRequest(API_ENDPOINTS.NOTIFICATIONS_SMART, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -112,13 +110,11 @@ const NotificationsPage = ({ onClearAlerts }) => {
                 })
             });
 
-            setMessage({ type: 'success', text: 'Smart Alert created successfully!' });
+            setMessage({ type: 'success', text: response.message || 'Smart alert created successfully.' });
             setAiPrompt('');
             fetchAllAlerts();
         } catch (err) {
-            // Fallback for demo purposes if backend endpoint doesn't exist yet
-            console.warn("Backend /notifications/smart might not be implemented yet.");
-            setMessage({ type: 'error', text: "AI Backend not connected: " + err.message });
+            setMessage({ type: 'error', text: err.message || 'Failed to create smart alert.' });
         } finally {
             setIsAiLoading(false);
         }
