@@ -729,3 +729,393 @@ def import_portfolio_snapshots_from_legacy_sqlite(
             )
         )
     return len(rows)
+
+
+def _serialize_datetime(value: Optional[datetime]) -> Optional[str]:
+    if value is None:
+        return None
+    return _coerce_datetime(value).isoformat()
+
+
+def export_user_state(session: Session, clerk_user_id: str) -> Dict[str, Any]:
+    app_user = session.get(AppUser, clerk_user_id)
+    watchlist_items = session.scalars(
+        select(WatchlistItem)
+        .where(WatchlistItem.clerk_user_id == clerk_user_id)
+        .order_by(WatchlistItem.ticker.asc())
+    ).all()
+    alert_rules = session.scalars(
+        select(AlertRule)
+        .where(AlertRule.clerk_user_id == clerk_user_id)
+        .order_by(AlertRule.created_at.asc(), AlertRule.id.asc())
+    ).all()
+    triggered_alerts = session.scalars(
+        select(TriggeredAlert)
+        .where(TriggeredAlert.clerk_user_id == clerk_user_id)
+        .order_by(TriggeredAlert.triggered_at.asc(), TriggeredAlert.id.asc())
+    ).all()
+    paper_portfolio = session.get(PaperPortfolio, clerk_user_id)
+    paper_equity_positions = session.scalars(
+        select(PaperEquityPosition)
+        .where(PaperEquityPosition.clerk_user_id == clerk_user_id)
+        .order_by(PaperEquityPosition.ticker.asc())
+    ).all()
+    paper_option_positions = session.scalars(
+        select(PaperOptionPosition)
+        .where(PaperOptionPosition.clerk_user_id == clerk_user_id)
+        .order_by(PaperOptionPosition.contract_symbol.asc())
+    ).all()
+    paper_trade_events = session.scalars(
+        select(PaperTradeEvent)
+        .where(PaperTradeEvent.clerk_user_id == clerk_user_id)
+        .order_by(PaperTradeEvent.occurred_at.asc(), PaperTradeEvent.id.asc())
+    ).all()
+    paper_snapshots = session.scalars(
+        select(PaperPortfolioSnapshot)
+        .where(PaperPortfolioSnapshot.clerk_user_id == clerk_user_id)
+        .order_by(PaperPortfolioSnapshot.recorded_at.asc(), PaperPortfolioSnapshot.id.asc())
+    ).all()
+    prediction_portfolio = session.get(PredictionPortfolio, clerk_user_id)
+    prediction_positions = session.scalars(
+        select(PredictionMarketPosition)
+        .where(PredictionMarketPosition.clerk_user_id == clerk_user_id)
+        .order_by(PredictionMarketPosition.market_id.asc(), PredictionMarketPosition.outcome.asc())
+    ).all()
+    prediction_trades = session.scalars(
+        select(PredictionMarketTrade)
+        .where(PredictionMarketTrade.clerk_user_id == clerk_user_id)
+        .order_by(PredictionMarketTrade.occurred_at.asc(), PredictionMarketTrade.id.asc())
+    ).all()
+
+    return {
+        "app_user": (
+            {
+                "clerk_user_id": app_user.clerk_user_id,
+                "email": app_user.email,
+                "username": app_user.username,
+                "created_at": _serialize_datetime(app_user.created_at),
+                "last_seen_at": _serialize_datetime(app_user.last_seen_at),
+            }
+            if app_user
+            else None
+        ),
+        "watchlist_items": [
+            {
+                "ticker": row.ticker,
+                "created_at": _serialize_datetime(row.created_at),
+            }
+            for row in watchlist_items
+        ],
+        "alert_rules": [
+            {
+                "id": str(row.id),
+                "ticker": row.ticker,
+                "condition": row.condition,
+                "target_price": _as_float(row.target_price),
+                "alert_type": row.alert_type,
+                "prompt": row.prompt,
+                "is_active": row.is_active,
+                "created_at": _serialize_datetime(row.created_at),
+            }
+            for row in alert_rules
+        ],
+        "triggered_alerts": [
+            {
+                "id": str(row.id),
+                "alert_rule_id": str(row.alert_rule_id) if row.alert_rule_id else None,
+                "message": row.message,
+                "seen": row.seen,
+                "triggered_at": _serialize_datetime(row.triggered_at),
+                "payload": dict(row.payload or {}),
+            }
+            for row in triggered_alerts
+        ],
+        "paper_portfolio": (
+            {
+                "cash": _as_float(paper_portfolio.cash),
+                "starting_cash": _as_float(paper_portfolio.starting_cash),
+                "updated_at": _serialize_datetime(paper_portfolio.updated_at),
+            }
+            if paper_portfolio
+            else None
+        ),
+        "paper_equity_positions": [
+            {
+                "ticker": row.ticker,
+                "shares": _as_float(row.shares),
+                "avg_cost": _as_float(row.avg_cost),
+                "updated_at": _serialize_datetime(row.updated_at),
+            }
+            for row in paper_equity_positions
+        ],
+        "paper_option_positions": [
+            {
+                "contract_symbol": row.contract_symbol,
+                "quantity": row.quantity,
+                "avg_cost": _as_float(row.avg_cost),
+                "updated_at": _serialize_datetime(row.updated_at),
+            }
+            for row in paper_option_positions
+        ],
+        "paper_trade_events": [
+            {
+                "id": str(row.id),
+                "asset_class": row.asset_class,
+                "action": row.action,
+                "symbol": row.symbol,
+                "quantity": _as_float(row.quantity),
+                "price": _as_float(row.price),
+                "total": _as_float(row.total),
+                "profit": _as_float(row.profit),
+                "occurred_at": _serialize_datetime(row.occurred_at),
+                "metadata": dict(row.metadata_json or {}),
+            }
+            for row in paper_trade_events
+        ],
+        "paper_portfolio_snapshots": [
+            {
+                "portfolio_value": _as_float(row.portfolio_value),
+                "recorded_at": _serialize_datetime(row.recorded_at),
+            }
+            for row in paper_snapshots
+        ],
+        "prediction_portfolio": (
+            {
+                "cash": _as_float(prediction_portfolio.cash),
+                "starting_cash": _as_float(prediction_portfolio.starting_cash),
+                "updated_at": _serialize_datetime(prediction_portfolio.updated_at),
+            }
+            if prediction_portfolio
+            else None
+        ),
+        "prediction_market_positions": [
+            {
+                "market_id": row.market_id,
+                "outcome": row.outcome,
+                "exchange": row.exchange,
+                "question": row.question,
+                "contracts": _as_float(row.contracts),
+                "avg_cost": _as_float(row.avg_cost),
+                "updated_at": _serialize_datetime(row.updated_at),
+            }
+            for row in prediction_positions
+        ],
+        "prediction_market_trades": [
+            {
+                "id": str(row.id),
+                "market_id": row.market_id,
+                "outcome": row.outcome,
+                "exchange": row.exchange,
+                "question": row.question,
+                "action": row.action,
+                "contracts": _as_float(row.contracts),
+                "price": _as_float(row.price),
+                "total": _as_float(row.total),
+                "profit": _as_float(row.profit),
+                "occurred_at": _serialize_datetime(row.occurred_at),
+            }
+            for row in prediction_trades
+        ],
+    }
+
+
+def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
+    state = dict(state or {})
+
+    session.execute(
+        delete(PredictionMarketTrade).where(PredictionMarketTrade.clerk_user_id == clerk_user_id)
+    )
+    session.execute(
+        delete(PredictionMarketPosition).where(PredictionMarketPosition.clerk_user_id == clerk_user_id)
+    )
+    session.execute(
+        delete(PredictionPortfolio).where(PredictionPortfolio.clerk_user_id == clerk_user_id)
+    )
+    session.execute(
+        delete(PaperPortfolioSnapshot).where(PaperPortfolioSnapshot.clerk_user_id == clerk_user_id)
+    )
+    session.execute(delete(PaperTradeEvent).where(PaperTradeEvent.clerk_user_id == clerk_user_id))
+    session.execute(delete(PaperOptionPosition).where(PaperOptionPosition.clerk_user_id == clerk_user_id))
+    session.execute(delete(PaperEquityPosition).where(PaperEquityPosition.clerk_user_id == clerk_user_id))
+    session.execute(delete(PaperPortfolio).where(PaperPortfolio.clerk_user_id == clerk_user_id))
+    session.execute(delete(TriggeredAlert).where(TriggeredAlert.clerk_user_id == clerk_user_id))
+    session.execute(delete(AlertRule).where(AlertRule.clerk_user_id == clerk_user_id))
+    session.execute(delete(WatchlistItem).where(WatchlistItem.clerk_user_id == clerk_user_id))
+    session.execute(delete(AppUser).where(AppUser.clerk_user_id == clerk_user_id))
+    session.flush()
+
+    app_user = state.get("app_user")
+    if app_user:
+        session.add(
+            AppUser(
+                clerk_user_id=clerk_user_id,
+                email=app_user.get("email"),
+                username=app_user.get("username"),
+                created_at=_coerce_datetime(app_user.get("created_at")),
+                last_seen_at=_coerce_datetime(app_user.get("last_seen_at")),
+            )
+        )
+
+    for row in state.get("watchlist_items", []) or []:
+        session.add(
+            WatchlistItem(
+                clerk_user_id=clerk_user_id,
+                ticker=str(row.get("ticker", "")).upper(),
+                created_at=_coerce_datetime(row.get("created_at")),
+            )
+        )
+
+    for row in state.get("alert_rules", []) or []:
+        session.add(
+            AlertRule(
+                id=_coerce_uuid(row.get("id")),
+                clerk_user_id=clerk_user_id,
+                ticker=str(row.get("ticker", "")).upper(),
+                condition=str(row.get("condition", "")),
+                target_price=row.get("target_price"),
+                alert_type=str(row.get("alert_type") or row.get("type") or "price"),
+                prompt=row.get("prompt"),
+                is_active=bool(row.get("is_active", True)),
+                created_at=_coerce_datetime(row.get("created_at")),
+            )
+        )
+
+    for row in state.get("triggered_alerts", []) or []:
+        alert_rule_id = row.get("alert_rule_id")
+        session.add(
+            TriggeredAlert(
+                id=_coerce_uuid(row.get("id")),
+                clerk_user_id=clerk_user_id,
+                alert_rule_id=_coerce_uuid(alert_rule_id) if alert_rule_id else None,
+                message=str(row.get("message", "")),
+                seen=bool(row.get("seen", False)),
+                triggered_at=_coerce_datetime(row.get("triggered_at")),
+                payload=dict(row.get("payload", {}) or {}),
+            )
+        )
+
+    paper_portfolio = state.get("paper_portfolio")
+    if paper_portfolio:
+        session.add(
+            PaperPortfolio(
+                clerk_user_id=clerk_user_id,
+                cash=paper_portfolio.get("cash", 100000.0),
+                starting_cash=paper_portfolio.get("starting_cash", 100000.0),
+                updated_at=_coerce_datetime(paper_portfolio.get("updated_at")),
+            )
+        )
+
+    for row in state.get("paper_equity_positions", []) or []:
+        session.add(
+            PaperEquityPosition(
+                clerk_user_id=clerk_user_id,
+                ticker=str(row.get("ticker", "")).upper(),
+                shares=row.get("shares", 0),
+                avg_cost=row.get("avg_cost", 0),
+                updated_at=_coerce_datetime(row.get("updated_at")),
+            )
+        )
+
+    for row in state.get("paper_option_positions", []) or []:
+        session.add(
+            PaperOptionPosition(
+                clerk_user_id=clerk_user_id,
+                contract_symbol=str(row.get("contract_symbol", "")),
+                quantity=int(row.get("quantity", 0)),
+                avg_cost=row.get("avg_cost", 0),
+                updated_at=_coerce_datetime(row.get("updated_at")),
+            )
+        )
+
+    for row in state.get("paper_trade_events", []) or []:
+        session.add(
+            PaperTradeEvent(
+                id=_coerce_uuid(row.get("id")),
+                clerk_user_id=clerk_user_id,
+                asset_class=str(row.get("asset_class", "equity")),
+                action=str(row.get("action", "")),
+                symbol=str(row.get("symbol", "")),
+                quantity=row.get("quantity", 0),
+                price=row.get("price", 0),
+                total=row.get("total", 0),
+                profit=row.get("profit"),
+                occurred_at=_coerce_datetime(row.get("occurred_at")),
+                metadata_json=dict(row.get("metadata", {}) or {}),
+            )
+        )
+
+    for row in state.get("paper_portfolio_snapshots", []) or []:
+        session.add(
+            PaperPortfolioSnapshot(
+                clerk_user_id=clerk_user_id,
+                portfolio_value=row.get("portfolio_value", 0),
+                recorded_at=_coerce_datetime(row.get("recorded_at")),
+            )
+        )
+
+    prediction_portfolio = state.get("prediction_portfolio")
+    if prediction_portfolio:
+        session.add(
+            PredictionPortfolio(
+                clerk_user_id=clerk_user_id,
+                cash=prediction_portfolio.get("cash", 10000.0),
+                starting_cash=prediction_portfolio.get("starting_cash", 10000.0),
+                updated_at=_coerce_datetime(prediction_portfolio.get("updated_at")),
+            )
+        )
+
+    for row in state.get("prediction_market_positions", []) or []:
+        session.add(
+            PredictionMarketPosition(
+                clerk_user_id=clerk_user_id,
+                market_id=str(row.get("market_id", "")),
+                outcome=str(row.get("outcome", "")),
+                exchange=str(row.get("exchange", "polymarket")),
+                question=str(row.get("question", "")),
+                contracts=row.get("contracts", 0),
+                avg_cost=row.get("avg_cost", 0),
+                updated_at=_coerce_datetime(row.get("updated_at")),
+            )
+        )
+
+    for row in state.get("prediction_market_trades", []) or []:
+        session.add(
+            PredictionMarketTrade(
+                id=_coerce_uuid(row.get("id")),
+                clerk_user_id=clerk_user_id,
+                market_id=str(row.get("market_id", "")),
+                outcome=str(row.get("outcome", "")),
+                exchange=str(row.get("exchange", "polymarket")),
+                question=str(row.get("question", "")),
+                action=str(row.get("action", "")),
+                contracts=row.get("contracts", 0),
+                price=row.get("price", 0),
+                total=row.get("total", 0),
+                profit=row.get("profit"),
+                occurred_at=_coerce_datetime(row.get("occurred_at")),
+            )
+        )
+
+    session.flush()
+    return export_user_state(session, clerk_user_id)
+
+
+def summarize_user_state(state: Dict[str, Any]) -> Dict[str, Any]:
+    state = dict(state or {})
+    paper_portfolio = state.get("paper_portfolio") or {}
+    prediction_portfolio = state.get("prediction_portfolio") or {}
+
+    return {
+        "app_user_exists": bool(state.get("app_user")),
+        "watchlist_count": len(state.get("watchlist_items", []) or []),
+        "active_alert_count": len(state.get("alert_rules", []) or []),
+        "triggered_alert_count": len(state.get("triggered_alerts", []) or []),
+        "paper_position_count": len(state.get("paper_equity_positions", []) or []),
+        "paper_option_position_count": len(state.get("paper_option_positions", []) or []),
+        "paper_trade_count": len(state.get("paper_trade_events", []) or []),
+        "paper_snapshot_count": len(state.get("paper_portfolio_snapshots", []) or []),
+        "paper_cash": paper_portfolio.get("cash"),
+        "prediction_position_count": len(state.get("prediction_market_positions", []) or []),
+        "prediction_trade_count": len(state.get("prediction_market_trades", []) or []),
+        "prediction_cash": prediction_portfolio.get("cash"),
+    }
