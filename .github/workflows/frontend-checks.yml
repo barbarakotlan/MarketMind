@@ -1,4 +1,4 @@
-name: Frontend Checks
+name: Required Frontend Checks
 
 on:
   push:

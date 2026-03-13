@@ -1,4 +1,4 @@
-name: Backend Deterministic Checks
+name: Required Backend Checks
 
 on:
   push:
