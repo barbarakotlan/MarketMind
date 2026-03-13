@@ -76,9 +76,9 @@ const MarketCard = ({ market, isExpanded, onToggle, onTradeComplete }) => {
             setTradeSuccess(data.message);
             setContracts('');
             setBuyOutcome(null);
-            onTradeComplete();
-        } catch {
-            setTradeError('Failed to execute trade');
+            await onTradeComplete(data.message);
+        } catch (err) {
+            setTradeError(err.message || 'Failed to execute trade');
         } finally {
             setTradeLoading(false);
         }
@@ -210,23 +210,19 @@ const PredictionMarketsPage = () => {
         }
     };
 
-    const fetchPortfolio = async () => {
+    const refreshPortfolioState = async () => {
+        setLoadingPortfolio(true);
         try {
-            const data = await apiRequest(API_ENDPOINTS.PREDICTION_PORTFOLIO);
-            setPortfolio(data);
+            const [portfolioData, historyData] = await Promise.all([
+                apiRequest(API_ENDPOINTS.PREDICTION_PORTFOLIO),
+                apiRequest(API_ENDPOINTS.PREDICTION_HISTORY),
+            ]);
+            setPortfolio(portfolioData);
+            setTradeHistory(historyData || []);
         } catch (err) {
-            console.error('Error fetching prediction portfolio:', err);
+            console.error('Error refreshing prediction portfolio:', err);
         } finally {
             setLoadingPortfolio(false);
-        }
-    };
-
-    const fetchTradeHistory = async () => {
-        try {
-            const data = await apiRequest(API_ENDPOINTS.PREDICTION_HISTORY);
-            setTradeHistory(data || []);
-        } catch (err) {
-            console.error('Error fetching prediction trade history:', err);
         }
     };
 
@@ -235,8 +231,8 @@ const PredictionMarketsPage = () => {
         try {
             await apiRequest(API_ENDPOINTS.PREDICTION_RESET, { method: 'POST' });
             setStatusMessage({ type: 'success', text: 'Prediction portfolio reset successfully' });
-            fetchPortfolio();
-            fetchTradeHistory();
+            setActiveTab('portfolio');
+            await refreshPortfolioState();
         } catch {
             setStatusMessage({ type: 'error', text: 'Failed to reset portfolio' });
         }
@@ -258,10 +254,9 @@ const PredictionMarketsPage = () => {
                 })
             });
             setStatusMessage({ type: 'success', text: data.message });
-            fetchPortfolio();
-            fetchTradeHistory();
-        } catch {
-            setStatusMessage({ type: 'error', text: 'Failed to execute sell' });
+            await refreshPortfolioState();
+        } catch (err) {
+            setStatusMessage({ type: 'error', text: err.message || 'Failed to execute sell' });
         }
     };
 
@@ -271,15 +266,16 @@ const PredictionMarketsPage = () => {
         fetchMarkets(searchInput);
     };
 
-    const onTradeComplete = () => {
-        fetchPortfolio();
-        fetchTradeHistory();
+    const onTradeComplete = async (message) => {
+        setStatusMessage({ type: 'success', text: message || 'Trade executed successfully' });
+        setExpandedMarketId(null);
+        setActiveTab('portfolio');
+        await refreshPortfolioState();
     };
 
     useEffect(() => {
         fetchMarkets();
-        fetchPortfolio();
-        fetchTradeHistory();
+        refreshPortfolioState();
     }, []);
 
     return (
@@ -297,7 +293,7 @@ const PredictionMarketsPage = () => {
                         </p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <button onClick={() => { fetchMarkets(activeSearch); fetchPortfolio(); }}
+                        <button onClick={() => { fetchMarkets(activeSearch); refreshPortfolioState(); }}
                             title="Refresh"
                             className="p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             <RefreshCw className="w-4 h-4 text-gray-500" />
