@@ -188,16 +188,92 @@ def _compare_snapshot(current: Dict[str, Any], expected: Dict[str, Any]) -> Dict
     }
 
 
+def snapshot_user_state(
+    *,
+    base_dir: str,
+    user_id: str,
+    database_url: Optional[str],
+    snapshot_dir: str,
+) -> Dict[str, Any]:
+    snapshot = _collect_state(base_dir, user_id, database_url)
+    snapshot_path = _write_snapshot(snapshot_dir, snapshot)
+    return {
+        "action": "snapshot",
+        "snapshot_path": snapshot_path,
+        "user_id": user_id,
+        "summary": snapshot["summary"],
+        "snapshot": snapshot,
+    }
+
+
+def restore_user_state_snapshot(
+    *,
+    base_dir: str,
+    user_id: str,
+    database_url: Optional[str],
+    snapshot_dir: str,
+) -> Dict[str, Any]:
+    snapshot = _load_snapshot(snapshot_dir)
+    if snapshot.get("user_id") != user_id:
+        raise ValueError(f"Snapshot user_id {snapshot.get('user_id')} does not match requested user_id {user_id}")
+
+    if snapshot.get("sql_state") is not None:
+        if not database_url:
+            raise ValueError("DATABASE_URL or --database-url is required to restore SQL-backed state")
+        with session_scope(database_url) as session:
+            restore_user_state(session, user_id, snapshot["sql_state"])
+
+    _restore_json_mirror(base_dir, user_id, snapshot.get("json_state", {}))
+
+    current = _collect_state(base_dir, user_id, database_url)
+    comparison = _compare_snapshot(current, snapshot)
+    return {
+        "action": "restore",
+        "user_id": user_id,
+        "summary": current["summary"],
+        **comparison,
+    }
+
+
+def verify_user_state_snapshot(
+    *,
+    base_dir: str,
+    user_id: str,
+    database_url: Optional[str],
+    snapshot_dir: Optional[str] = None,
+) -> Dict[str, Any]:
+    current = _collect_state(base_dir, user_id, database_url)
+    output = {
+        "action": "verify",
+        "user_id": user_id,
+        "summary": current["summary"],
+    }
+
+    if snapshot_dir:
+        snapshot = _load_snapshot(snapshot_dir)
+        if snapshot.get("user_id") != user_id:
+            raise ValueError(
+                f"Snapshot user_id {snapshot.get('user_id')} does not match requested user_id {user_id}"
+            )
+        output.update(_compare_snapshot(current, snapshot))
+
+    return output
+
+
 def cmd_snapshot(args: argparse.Namespace) -> int:
-    snapshot = _collect_state(args.base_dir, args.user_id, args.database_url)
-    snapshot_path = _write_snapshot(args.snapshot_dir, snapshot)
+    result = snapshot_user_state(
+        base_dir=args.base_dir,
+        user_id=args.user_id,
+        database_url=args.database_url,
+        snapshot_dir=args.snapshot_dir,
+    )
     print(
         json.dumps(
             {
-                "action": "snapshot",
-                "snapshot_path": snapshot_path,
-                "user_id": args.user_id,
-                "summary": snapshot["summary"],
+                "action": result["action"],
+                "snapshot_path": result["snapshot_path"],
+                "user_id": result["user_id"],
+                "summary": result["summary"],
             },
             indent=2,
         )
@@ -206,55 +282,38 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
 
 
 def cmd_restore(args: argparse.Namespace) -> int:
-    snapshot = _load_snapshot(args.snapshot_dir)
-    if snapshot.get("user_id") != args.user_id:
-        raise SystemExit(
-            f"Snapshot user_id {snapshot.get('user_id')} does not match requested user_id {args.user_id}"
+    try:
+        result = restore_user_state_snapshot(
+            base_dir=args.base_dir,
+            user_id=args.user_id,
+            database_url=args.database_url,
+            snapshot_dir=args.snapshot_dir,
         )
-
-    if snapshot.get("sql_state") is not None:
-        if not args.database_url:
-            raise SystemExit("DATABASE_URL or --database-url is required to restore SQL-backed state")
-        with session_scope(args.database_url) as session:
-            restore_user_state(session, args.user_id, snapshot["sql_state"])
-
-    _restore_json_mirror(args.base_dir, args.user_id, snapshot.get("json_state", {}))
-
-    current = _collect_state(args.base_dir, args.user_id, args.database_url)
-    comparison = _compare_snapshot(current, snapshot)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
     print(
         json.dumps(
-            {
-                "action": "restore",
-                "user_id": args.user_id,
-                "summary": current["summary"],
-                **comparison,
-            },
+            result,
             indent=2,
         )
     )
-    return 0 if comparison["matches_snapshot"] else 1
+    return 0 if result["matches_snapshot"] else 1
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    current = _collect_state(args.base_dir, args.user_id, args.database_url)
-    output = {
-        "action": "verify",
-        "user_id": args.user_id,
-        "summary": current["summary"],
-    }
+    try:
+        result = verify_user_state_snapshot(
+            base_dir=args.base_dir,
+            user_id=args.user_id,
+            database_url=args.database_url,
+            snapshot_dir=args.snapshot_dir,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc))
 
-    if args.snapshot_dir:
-        snapshot = _load_snapshot(args.snapshot_dir)
-        if snapshot.get("user_id") != args.user_id:
-            raise SystemExit(
-                f"Snapshot user_id {snapshot.get('user_id')} does not match requested user_id {args.user_id}"
-            )
-        output.update(_compare_snapshot(current, snapshot))
-        print(json.dumps(output, indent=2))
-        return 0 if output["matches_snapshot"] else 1
-
-    print(json.dumps(output, indent=2))
+    print(json.dumps(result, indent=2))
+    if "matches_snapshot" in result:
+        return 0 if result["matches_snapshot"] else 1
     return 0
 
 

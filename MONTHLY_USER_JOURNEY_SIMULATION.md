@@ -43,6 +43,40 @@ SNAPSHOT_DIR="/tmp/marketmind-monthly-sim-$(date +%Y%m%d-%H%M%S)"
 
 Keep the printed `snapshot_path` or the `SNAPSHOT_DIR` itself. You will use it to restore the account after the simulation.
 
+## Automated Harness
+
+If you want to run the month-style journey automatically against the real Flask routes, use the harness:
+
+```bash
+cd /Users/tazeemmahashin/MarketMind/backend
+
+.venv/bin/python user_journey_harness.py \
+  --database-url "$DATABASE_URL" \
+  --base-dir "$(pwd)" \
+  --persistence-mode "$PERSISTENCE_MODE" \
+  --user-id "YOUR_CLERK_USER_ID"
+```
+
+Default behavior:
+
+- snapshots the target user first
+- runs the research, watchlist, alerts, paper trading, and prediction-market journey
+- restores the original state at the end
+- verifies the restore against the saved snapshot
+
+For deterministic local validation without live provider dependency, use:
+
+```bash
+cd /Users/tazeemmahashin/MarketMind/backend
+
+.venv/bin/python user_journey_harness.py \
+  --database-url "$DATABASE_URL" \
+  --base-dir "$(pwd)" \
+  --persistence-mode "$PERSISTENCE_MODE" \
+  --user-id "YOUR_CLERK_USER_ID" \
+  --mode deterministic
+```
+
 ## Run The Simulation
 
 Treat the simulation as four sessions, each representing a week of normal product use.
