@@ -202,6 +202,65 @@ class UserStatePersistenceModeTests(unittest.TestCase):
         self.assertEqual(len(loaded["trade_history"]), 1)
         self.assertEqual(snapshot_count, 1)
 
+    def test_postgres_mode_can_resave_triggered_notifications_with_same_id(self):
+        self._set_mode("postgres")
+
+        payload = {
+            "active": [],
+            "triggered": [
+                {
+                    "id": "smoke-trigger-static-id",
+                    "message": "Smoke triggered alert",
+                    "seen": False,
+                    "timestamp": "2026-03-13T05:00:00+00:00",
+                }
+            ],
+        }
+
+        backend_api.save_notifications(payload, "user_a")
+        backend_api.save_notifications(payload, "user_a")
+
+        alerts = self.client.get(
+            "/notifications/triggered?all=true",
+            headers=self._auth_headers("user_a"),
+        ).get_json()
+
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]["message"], "Smoke triggered alert")
+        self.assertFalse(alerts[0]["seen"])
+
+    def test_postgres_mode_scopes_legacy_triggered_ids_per_user(self):
+        self._set_mode("postgres")
+
+        payload = {
+            "active": [],
+            "triggered": [
+                {
+                    "id": "shared-legacy-id",
+                    "message": "Scoped alert",
+                    "seen": False,
+                    "timestamp": "2026-03-13T05:00:00+00:00",
+                }
+            ],
+        }
+
+        backend_api.save_notifications(payload, "user_a")
+        backend_api.save_notifications(payload, "user_b")
+
+        alerts_a = self.client.get(
+            "/notifications/triggered?all=true",
+            headers=self._auth_headers("user_a"),
+        ).get_json()
+        alerts_b = self.client.get(
+            "/notifications/triggered?all=true",
+            headers=self._auth_headers("user_b"),
+        ).get_json()
+
+        self.assertEqual(len(alerts_a), 1)
+        self.assertEqual(len(alerts_b), 1)
+        self.assertEqual(alerts_a[0]["message"], "Scoped alert")
+        self.assertEqual(alerts_b[0]["message"], "Scoped alert")
+
 
 if __name__ == "__main__":
     unittest.main()

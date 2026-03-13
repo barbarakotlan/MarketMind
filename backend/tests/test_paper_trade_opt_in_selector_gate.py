@@ -6,6 +6,7 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import api as backend_api
+from user_state_store import reset_runtime_state
 
 
 class _DummyTicker:
@@ -25,6 +26,8 @@ class PaperTradeOptInSelectorGateTests(unittest.TestCase):
         self.original_state = {
             "BASE_DIR": backend_api.BASE_DIR,
             "DATABASE": backend_api.DATABASE,
+            "DATABASE_URL": backend_api.DATABASE_URL,
+            "PERSISTENCE_MODE": backend_api.PERSISTENCE_MODE,
             "USER_DATA_DIR": backend_api.USER_DATA_DIR,
             "PORTFOLIO_FILE": backend_api.PORTFOLIO_FILE,
             "NOTIFICATIONS_FILE": backend_api.NOTIFICATIONS_FILE,
@@ -35,8 +38,11 @@ class PaperTradeOptInSelectorGateTests(unittest.TestCase):
             "ticker_cls": backend_api.yf.Ticker,
         }
 
+        reset_runtime_state()
         backend_api.BASE_DIR = self.tmp_root
         backend_api.DATABASE = os.path.join(self.tmp_root, "marketmind_test.db")
+        backend_api.DATABASE_URL = ""
+        backend_api.PERSISTENCE_MODE = "json"
         backend_api.USER_DATA_DIR = os.path.join(self.tmp_root, "user_data")
         backend_api.PORTFOLIO_FILE = os.path.join(self.tmp_root, "paper_portfolio.json")
         backend_api.NOTIFICATIONS_FILE = os.path.join(self.tmp_root, "notifications.json")
@@ -59,6 +65,8 @@ class PaperTradeOptInSelectorGateTests(unittest.TestCase):
     def tearDown(self):
         backend_api.BASE_DIR = self.original_state["BASE_DIR"]
         backend_api.DATABASE = self.original_state["DATABASE"]
+        backend_api.DATABASE_URL = self.original_state["DATABASE_URL"]
+        backend_api.PERSISTENCE_MODE = self.original_state["PERSISTENCE_MODE"]
         backend_api.USER_DATA_DIR = self.original_state["USER_DATA_DIR"]
         backend_api.PORTFOLIO_FILE = self.original_state["PORTFOLIO_FILE"]
         backend_api.NOTIFICATIONS_FILE = self.original_state["NOTIFICATIONS_FILE"]
@@ -67,6 +75,7 @@ class PaperTradeOptInSelectorGateTests(unittest.TestCase):
         backend_api.verify_clerk_token = self.original_state["verify_clerk_token"]
         backend_api._resolve_selector_gate_for_ticker = self.original_state["resolve_selector_gate"]
         backend_api.yf.Ticker = self.original_state["ticker_cls"]
+        reset_runtime_state()
         self.tmpdir.cleanup()
 
     def _headers(self):

@@ -251,6 +251,15 @@ def _coerce_uuid(value: Any) -> uuid.UUID:
         return uuid.uuid5(uuid.NAMESPACE_URL, f"marketmind:{value}")
 
 
+def _coerce_scoped_uuid(scope: str, value: Any) -> uuid.UUID:
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
+        return uuid.uuid5(uuid.NAMESPACE_URL, f"marketmind:{scope}:{value}")
+
+
 def _as_float(value: Any) -> Optional[float]:
     if value is None:
         return None
@@ -310,6 +319,7 @@ def save_watchlist(session: Session, clerk_user_id: str, tickers: Iterable[Any])
     normalized = _dedupe_upper(tickers)
     touch_app_user(session, clerk_user_id)
     session.execute(delete(WatchlistItem).where(WatchlistItem.clerk_user_id == clerk_user_id))
+    session.flush()
     now = utcnow()
     for ticker in normalized:
         session.add(WatchlistItem(clerk_user_id=clerk_user_id, ticker=ticker, created_at=now))
@@ -368,12 +378,13 @@ def save_notifications(
     touch_app_user(session, clerk_user_id)
     session.execute(delete(AlertRule).where(AlertRule.clerk_user_id == clerk_user_id))
     session.execute(delete(TriggeredAlert).where(TriggeredAlert.clerk_user_id == clerk_user_id))
+    session.flush()
 
     active = notifications.get("active", []) or []
     triggered = notifications.get("triggered", []) or []
 
     for alert in active:
-        alert_id = _coerce_uuid(alert.get("id") or uuid.uuid4())
+        alert_id = _coerce_scoped_uuid(f"alert_rule:{clerk_user_id}", alert.get("id") or uuid.uuid4())
         session.add(
             AlertRule(
                 id=alert_id,
@@ -389,14 +400,21 @@ def save_notifications(
         )
 
     for alert in triggered:
-        alert_id = _coerce_uuid(alert.get("id") or uuid.uuid4())
+        alert_id = _coerce_scoped_uuid(
+            f"triggered_alert:{clerk_user_id}",
+            alert.get("id") or uuid.uuid4(),
+        )
         alert_rule_id = alert.get("alert_rule_id")
         payload = dict(alert)
         session.add(
             TriggeredAlert(
                 id=alert_id,
                 clerk_user_id=clerk_user_id,
-                alert_rule_id=_coerce_uuid(alert_rule_id) if alert_rule_id else None,
+                alert_rule_id=(
+                    _coerce_scoped_uuid(f"alert_rule:{clerk_user_id}", alert_rule_id)
+                    if alert_rule_id
+                    else None
+                ),
                 message=str(alert.get("message", "")),
                 seen=bool(alert.get("seen", False)),
                 triggered_at=_coerce_datetime(alert.get("timestamp") or alert.get("triggered_at")),
@@ -497,6 +515,7 @@ def save_portfolio(session: Session, clerk_user_id: str, portfolio: Dict[str, An
     session.execute(delete(PaperEquityPosition).where(PaperEquityPosition.clerk_user_id == clerk_user_id))
     session.execute(delete(PaperOptionPosition).where(PaperOptionPosition.clerk_user_id == clerk_user_id))
     session.execute(delete(PaperTradeEvent).where(PaperTradeEvent.clerk_user_id == clerk_user_id))
+    session.flush()
 
     for ticker, pos in (portfolio.get("positions", {}) or {}).items():
         session.add(
@@ -525,7 +544,7 @@ def save_portfolio(session: Session, clerk_user_id: str, portfolio: Dict[str, An
         asset_class = "option" if "OPTION" in action else "equity"
         session.add(
             PaperTradeEvent(
-                id=_coerce_uuid(event.get("id") or uuid.uuid4()),
+                id=_coerce_scoped_uuid(f"paper_trade:{clerk_user_id}", event.get("id") or uuid.uuid4()),
                 clerk_user_id=clerk_user_id,
                 asset_class=asset_class,
                 action=action,
@@ -637,6 +656,7 @@ def save_prediction_portfolio(
     session.execute(
         delete(PredictionMarketTrade).where(PredictionMarketTrade.clerk_user_id == clerk_user_id)
     )
+    session.flush()
 
     for pos in (portfolio.get("positions", {}) or {}).values():
         session.add(
@@ -655,7 +675,10 @@ def save_prediction_portfolio(
     for trade in (portfolio.get("trade_history", []) or []):
         session.add(
             PredictionMarketTrade(
-                id=_coerce_uuid(trade.get("id") or uuid.uuid4()),
+                id=_coerce_scoped_uuid(
+                    f"prediction_trade:{clerk_user_id}",
+                    trade.get("id") or uuid.uuid4(),
+                ),
                 clerk_user_id=clerk_user_id,
                 market_id=str(trade.get("market_id", "")),
                 outcome=str(trade.get("outcome", "")),
