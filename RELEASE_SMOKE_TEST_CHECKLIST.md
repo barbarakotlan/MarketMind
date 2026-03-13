@@ -1,5 +1,7 @@
 # Release Smoke Test Checklist
 
+This checklist is one of MarketMind's release gates. See [QUALITY_GATES.md](QUALITY_GATES.md) for the full merge-versus-release policy.
+
 ## 1. Environment + Startup
 - [ ] Backend starts with `cd backend && ./start_backend.sh` and serves `http://localhost:5001`.
 - [ ] Frontend starts with `cd frontend && npm start` and serves `http://localhost:3000`.

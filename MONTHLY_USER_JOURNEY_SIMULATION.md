@@ -1,8 +1,10 @@
 # Monthly User Journey Simulation
 
+This runbook is one of MarketMind's release gates. See [QUALITY_GATES.md](QUALITY_GATES.md) for the full merge-versus-release policy.
+
 This runbook turns the MarketMind "use it like a real user for a month" exercise into a repeatable workflow. It is designed to validate the full UI -> API -> persistence path for one authenticated Clerk user while restoring that account to its original state afterward.
 
-Use this alongside [RELEASE_SMOKE_TEST_CHECKLIST.md](/Users/tazeemmahashin/MarketMind/RELEASE_SMOKE_TEST_CHECKLIST.md). The release checklist is broad and release-oriented; this document is a deeper product-usage simulation focused on realistic behavior over time.
+Use this alongside [RELEASE_SMOKE_TEST_CHECKLIST.md](RELEASE_SMOKE_TEST_CHECKLIST.md). The release checklist is broad and release-oriented; this document is a deeper product-usage simulation focused on realistic behavior over time.
 
 ## What This Covers
 
@@ -29,7 +31,7 @@ It does not attempt to persist or backfill third-party market/news data, model o
 Before touching the account, capture a baseline snapshot for the target Clerk user.
 
 ```bash
-cd /Users/tazeemmahashin/MarketMind/backend
+cd backend
 
 SNAPSHOT_DIR="/tmp/marketmind-monthly-sim-$(date +%Y%m%d-%H%M%S)"
 
@@ -48,7 +50,7 @@ Keep the printed `snapshot_path` or the `SNAPSHOT_DIR` itself. You will use it t
 If you want to run the month-style journey automatically against the real Flask routes, use the harness:
 
 ```bash
-cd /Users/tazeemmahashin/MarketMind/backend
+cd backend
 
 .venv/bin/python user_journey_harness.py \
   --database-url "$DATABASE_URL" \
@@ -67,7 +69,7 @@ Default behavior:
 For deterministic local validation without live provider dependency, use:
 
 ```bash
-cd /Users/tazeemmahashin/MarketMind/backend
+cd backend
 
 .venv/bin/python user_journey_harness.py \
   --database-url "$DATABASE_URL" \
@@ -140,7 +142,7 @@ Expected outcomes:
 Use these checkpoints after each weekly session if you want stronger evidence than the UI alone.
 
 ```bash
-cd /Users/tazeemmahashin/MarketMind/backend
+cd backend
 
 .venv/bin/python user_journey_state.py \
   --database-url "$DATABASE_URL" \
@@ -169,7 +171,7 @@ Only product bugs should block the simulation from being called a real product s
 After the simulation is complete, restore the baseline snapshot.
 
 ```bash
-cd /Users/tazeemmahashin/MarketMind/backend
+cd backend
 
 .venv/bin/python user_journey_state.py \
   --database-url "$DATABASE_URL" \
@@ -186,7 +188,7 @@ The command exits non-zero if the restored state does not match the saved snapsh
 Run a final comparison against the saved snapshot.
 
 ```bash
-cd /Users/tazeemmahashin/MarketMind/backend
+cd backend
 
 .venv/bin/python user_journey_state.py \
   --database-url "$DATABASE_URL" \
