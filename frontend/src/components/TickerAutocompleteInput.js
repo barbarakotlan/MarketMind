@@ -16,14 +16,16 @@ import { API_ENDPOINTS, apiRequest } from '../config/api';
  */
 const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, className }) => {
     const [suggestions, setSuggestions] = useState([]);
-    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [isFocused, setIsFocused] = useState(false);
     const debounceRef = useRef(null);
+
+    // Show the dropdown whenever the input is focused and has 2+ characters
+    const showDropdown = isFocused && value.trim().length >= 2;
 
     useEffect(() => {
         const q = value.trim().toUpperCase();
-        if (q.length < 1) {
+        if (q.length < 2) {
             setSuggestions([]);
-            setShowSuggestions(false);
             return;
         }
 
@@ -42,7 +44,6 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
         ).sort(sortByRelevance).slice(0, 8);
 
         setSuggestions(staticMatches);
-        setShowSuggestions(staticMatches.length > 0);
 
         // Tier 2: fall back to Finnhub if static list is sparse
         if (staticMatches.length < 3) {
@@ -55,7 +56,6 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
                         const apiOnly = data.filter(t => !staticSymbols.has(t.symbol));
                         const merged = [...staticMatches, ...apiOnly].sort(sortByRelevance).slice(0, 8);
                         setSuggestions(merged);
-                        setShowSuggestions(merged.length > 0);
                     }
                 } catch (_) {}
             }, 350);
@@ -65,7 +65,7 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
     }, [value]);
 
     const handleSelect = (symbol) => {
-        setShowSuggestions(false);
+        setIsFocused(false);
         setSuggestions([]);
         if (onSelect) onSelect(symbol);
     };
@@ -76,24 +76,30 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
                 type="text"
                 value={value}
                 onChange={(e) => onChange(e.target.value.toUpperCase())}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setTimeout(() => setIsFocused(false), 150)}
                 placeholder={placeholder}
                 className={className}
                 autoComplete="off"
             />
-            {showSuggestions && suggestions.length > 0 && (
+            {showDropdown && (
                 <ul className="absolute top-full left-0 right-0 z-20 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg overflow-hidden">
-                    {suggestions.map((s) => (
-                        <li
-                            key={s.symbol}
-                            onMouseDown={() => handleSelect(s.symbol)}
-                            className="px-4 py-2.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3"
-                        >
-                            <span className="font-bold text-gray-900 dark:text-white text-sm">{s.symbol}</span>
-                            <span className="text-gray-500 dark:text-gray-400 text-sm truncate">{s.name}</span>
+                    {suggestions.length > 0 ? (
+                        suggestions.map((s) => (
+                            <li
+                                key={s.symbol}
+                                onMouseDown={() => handleSelect(s.symbol)}
+                                className="px-4 py-2.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3"
+                            >
+                                <span className="font-bold text-gray-900 dark:text-white text-sm">{s.symbol}</span>
+                                <span className="text-gray-500 dark:text-gray-400 text-sm truncate">{s.name}</span>
+                            </li>
+                        ))
+                    ) : (
+                        <li className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">
+                            No results found for &ldquo;{value}&rdquo;
                         </li>
-                    ))}
+                    )}
                 </ul>
             )}
         </>

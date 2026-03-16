@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, TrendingUp, TrendingDown, Activity, Building, ChevronDown, ChevronUp } from 'lucide-react';
 import StockDataCard from './ui/StockDataCard';
 import StockChart from './charts/StockChart';
 import PredictionPreviewCard from './ui/PredictionPreviewCard';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
-import STATIC_TICKERS from '../data/tickers.json';
+import TickerAutocompleteInput from './TickerAutocompleteInput';
 
 // --- Helpers for Jimmy's cards ---
 const formatLargeNumber = (num) => {
@@ -165,10 +165,6 @@ const mapScreenerSuggestion = (stock = {}) => ({
 const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTicker }) => {
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [expandedSectors, setExpandedSectors] = useState({});
-    // --- NEW: Autocomplete states ---
-    const [autocompleteSuggestions, setAutocompleteSuggestions] = useState([]);
-    const [showAutocomplete, setShowAutocomplete] = useState(false);
-
     // Fetch suggestions from API
     const fetchSuggestions = async () => {
         setLoadingSuggestions(true);
@@ -189,57 +185,6 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
             setLoadingSuggestions(false);
         }
     };
-
-    // --- Autocomplete: debounce timer ref ---
-    const debounceRef = useRef(null);
-
-    // --- Autocomplete fetch function: static list first, Finnhub fallback ---
-    const fetchAutocompleteSuggestions = (query) => {
-        if (!query || query.length < 2) {
-            setAutocompleteSuggestions([]);
-            setShowAutocomplete(false);
-            return;
-        }
-
-        // Tier 1: filter static list instantly (no API call)
-        const q = query.toUpperCase();
-        const sortByRelevance = (a, b) => {
-            const scoreOf = (t) => {
-                const s = t.symbol.toUpperCase();
-                if (s === q) return 0;
-                if (s.startsWith(q)) return 1;
-                return 2; // name match
-            };
-            return scoreOf(a) - scoreOf(b);
-        };
-        const staticMatches = STATIC_TICKERS.filter(t =>
-            t.symbol.startsWith(q) || t.name.toUpperCase().startsWith(q)
-        ).sort(sortByRelevance).slice(0, 8);
-
-        setAutocompleteSuggestions(staticMatches);
-        setShowAutocomplete(staticMatches.length > 0);
-
-        // Tier 2: if static list returned fewer than 3 results, fall back to Finnhub after 350ms
-        if (staticMatches.length < 3) {
-            clearTimeout(debounceRef.current);
-            debounceRef.current = setTimeout(async () => {
-                try {
-                    const data = await apiRequest(API_ENDPOINTS.SEARCH_SYMBOLS(query));
-                    if (data.length > 0) {
-                        // Merge: static matches first, then API results not already shown
-                        const staticSymbols = new Set(staticMatches.map(t => t.symbol));
-                        const apiOnly = data.filter(t => !staticSymbols.has(t.symbol));
-                        const merged = [...staticMatches, ...apiOnly].sort(sortByRelevance).slice(0, 8);
-                        setAutocompleteSuggestions(merged);
-                        setShowAutocomplete(merged.length > 0);
-                    }
-                } catch (err) {
-                    console.error('Autocomplete Finnhub fallback error:', err);
-                }
-            }, 350);
-        }
-    };
-    // --- END AUTOCOMPLETE ---
 
     // Handle suggestion click
     const handleSuggestionClick = async (ticker) => {
@@ -363,33 +308,6 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         }
     };
 
-    // --- NEW: Autocomplete handlers ---
-    const handleAutocompleteClick = (suggestion) => {
-        setTicker(suggestion.symbol);
-        setShowAutocomplete(false);
-        setAutocompleteSuggestions([]);
-        handleSearch({ preventDefault: () => {} }, suggestion.symbol);
-    };
-
-    const handleTickerChange = (e) => {
-        const value = e.target.value.toUpperCase();
-        setTicker(value);
-        fetchAutocompleteSuggestions(value);
-    };
-
-    const handleTickerFocus = () => {
-        if (ticker.length > 1 && autocompleteSuggestions.length > 0) {
-            setShowAutocomplete(true);
-        }
-    };
-
-    const handleTickerBlur = () => {
-        setTimeout(() => {
-            setShowAutocomplete(false);
-        }, 200);
-    };
-    // --- END AUTOCOMPLETE HANDLERS ---
-
     const handleSearch = async (e, overrideTicker) => {
         e.preventDefault();
         const searchTicker = (overrideTicker || ticker || '').trim().toUpperCase();
@@ -487,15 +405,12 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                     <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
                         <Search className="w-6 h-6 text-gray-400" />
                     </div>
-                    <input
-                        type="text"
+                    <TickerAutocompleteInput
                         value={ticker}
-                        onChange={handleTickerChange}
-                        onFocus={handleTickerFocus}
-                        onBlur={handleTickerBlur}
+                        onChange={setTicker}
+                        onSelect={(sym) => { setTicker(sym); handleSearch({ preventDefault: () => {} }, sym); }}
                         placeholder="e.g., AAPL or Apple"
                         className="w-full pl-12 pr-4 py-4 text-lg border-2 border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow"
-                        autoComplete="off"
                     />
                     <button
                         type="submit"
@@ -504,24 +419,6 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                     >
                         {loading ? '...' : 'Search'}
                     </button>
-
-                    {/* Autocomplete Dropdown */}
-                    {showAutocomplete && autocompleteSuggestions.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-600 rounded-lg shadow-lg overflow-hidden animate-fade-in">
-                            <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                                {autocompleteSuggestions.map((stock) => (
-                                    <li
-                                        key={stock.symbol}
-                                        onMouseDown={() => handleAutocompleteClick(stock)}
-                                        className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
-                                    >
-                                        <span className="font-bold text-gray-900 dark:text-white">{stock.symbol}</span>
-                                        <span className="ml-3 text-gray-600 dark:text-gray-400">{stock.name}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
                 </form>
                 
                 {recentSearches.length > 0 && (
