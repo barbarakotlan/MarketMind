@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import ActualVsPredictedChart from './charts/ActualVsPredictedChart';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import TickerAutocompleteInput from './TickerAutocompleteInput';
 
 const ModelPerformancePage = () => {
     const [ticker, setTicker] = useState('');
@@ -10,10 +11,8 @@ const ModelPerformancePage = () => {
     const [selectedModel, setSelectedModel] = useState('ensemble');
     const [testDays, setTestDays] = useState(60);
 
-    const handleEvaluate = async (e) => {
-        e.preventDefault();
-        
-        if (!ticker.trim()) {
+    const fetchEvaluation = async (sym) => {
+        if (!sym.trim()) {
             setError('Please enter a stock ticker');
             return;
         }
@@ -23,14 +22,19 @@ const ModelPerformancePage = () => {
         setEvaluationData(null);
 
         try {
-            const data = await apiRequest(API_ENDPOINTS.EVALUATE(ticker.toUpperCase(), { test_days: testDays }));
+            const data = await apiRequest(API_ENDPOINTS.EVALUATE(sym.toUpperCase(), { test_days: testDays }));
             setEvaluationData(data);
         } catch (err) {
-            setError(`Error: Could not evaluate ${ticker.toUpperCase()}. Please check the ticker and try again.`);
+            setError(`Error: Could not evaluate ${sym.toUpperCase()}. Please check the ticker and try again.`);
             console.error('Evaluation error:', err);
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleEvaluate = (e) => {
+        e.preventDefault();
+        fetchEvaluation(ticker);
     };
 
     return (
@@ -59,11 +63,10 @@ const ModelPerformancePage = () => {
                                 >
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                                 </svg>
-                                <input
-                                
-                                    type="text"
+                                <TickerAutocompleteInput
                                     value={ticker}
-                                    onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                                    onChange={setTicker}
+                                    onSelect={(sym) => { setTicker(sym); fetchEvaluation(sym); }}
                                     placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
                                     className="w-full px-4 py-3 pl-12 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-lg"
                                 />

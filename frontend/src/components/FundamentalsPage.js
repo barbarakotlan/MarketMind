@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Building2, Search, TrendingUp, DollarSign, BarChart3, Target, Calendar, FileText, ExternalLink } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import TickerAutocompleteInput from './TickerAutocompleteInput';
 
 const TABS = [
     { key: 'overview',   label: 'Overview' },
@@ -100,9 +101,8 @@ const FundamentalsPage = () => {
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState('overview');
 
-    const handleSearch = async (e) => {
-        e.preventDefault();
-        if (!ticker.trim()) return;
+    const fetchFundamentals = async (sym) => {
+        if (!sym.trim()) return;
 
         setLoading(true);
         setError('');
@@ -111,7 +111,6 @@ const FundamentalsPage = () => {
         setFilings(null);
         setActiveTab('overview');
 
-        const sym = ticker.toUpperCase().trim();
         const [overviewRes, financialsRes, filingsRes] = await Promise.allSettled([
             apiRequest(API_ENDPOINTS.FUNDAMENTALS(sym)),
             apiRequest(API_ENDPOINTS.FUNDAMENTALS_FINANCIALS(sym)),
@@ -126,7 +125,6 @@ const FundamentalsPage = () => {
             return;
         }
 
-        // Backend already returns snake_case keys — use directly
         setFundamentals(ov);
 
         if (financialsRes.status === 'fulfilled' && !financialsRes.value?.error) {
@@ -135,6 +133,11 @@ const FundamentalsPage = () => {
         if (filingsRes.status === 'fulfilled' && !filingsRes.value?.error) {
             setFilings(filingsRes.value);
         }
+    };
+
+    const handleSearch = (e) => {
+        e.preventDefault();
+        fetchFundamentals(ticker.toUpperCase().trim());
     };
 
     const formatNumber = (value, prefix = '', suffix = '') => {
@@ -171,11 +174,11 @@ const FundamentalsPage = () => {
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8 animate-fade-in">
                 <form onSubmit={handleSearch} className="flex gap-4">
                     <div className="flex-1 relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <input
-                            type="text"
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 z-10 pointer-events-none" />
+                        <TickerAutocompleteInput
                             value={ticker}
-                            onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                            onChange={setTicker}
+                            onSelect={(sym) => { setTicker(sym); fetchFundamentals(sym); }}
                             placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
                             className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                         />

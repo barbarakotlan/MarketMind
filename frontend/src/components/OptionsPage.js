@@ -15,6 +15,7 @@ import {
     Activity 
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import TickerAutocompleteInput from './TickerAutocompleteInput';
 
 // Helper to format numbers or return 'N/A'
 const formatNum = (num, digits = 2) => {
@@ -437,9 +438,8 @@ const OptionsPage = () => {
         }
     };
 
-    const handleSearchTicker = async (e) => {
-        e.preventDefault();
-        if (!ticker) return;
+    const searchTicker = async (sym) => {
+        if (!sym) return;
 
         setLoading(true);
         setError('');
@@ -448,27 +448,32 @@ const OptionsPage = () => {
         setSelectedDate('');
         setStockPrice(null);
         setTradeMessage({ type: '', text: '' });
-        
+
         setSuggestion(null);
-        fetchSuggestion(ticker); 
-        
-        fetchOwnedPositions(); 
+        fetchSuggestion(sym);
+
+        fetchOwnedPositions();
 
         try {
-            const expData = await apiRequest(API_ENDPOINTS.OPTIONS(ticker));
+            const expData = await apiRequest(API_ENDPOINTS.OPTIONS(sym));
             setExpirations(expData);
-            
+
             if (expData.length > 0) {
                 setSelectedDate(expData[0]);
-                await fetchChain(ticker, expData[0]);
+                await fetchChain(sym, expData[0]);
             } else {
                 setLoading(false);
             }
         } catch (err) {
             setError(err.message);
             setLoading(false);
-            setSuggestionLoading(false); 
+            setSuggestionLoading(false);
         }
+    };
+
+    const handleSearchTicker = (e) => {
+        e.preventDefault();
+        searchTicker(ticker);
     };
 
     const fetchChain = async (tickerToFetch, date) => {
@@ -547,14 +552,14 @@ const OptionsPage = () => {
                 <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <form onSubmit={handleSearchTicker} className="flex flex-col md:flex-row gap-4">
                         <div className="flex-1 relative">
-                            <input
-                                type="text"
+                            <TickerAutocompleteInput
                                 value={ticker}
-                                onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                                onChange={setTicker}
+                                onSelect={(sym) => { setTicker(sym); searchTicker(sym); }}
                                 placeholder="Search ticker (e.g., AAPL)"
                                 className="w-full px-5 py-4 pl-14 border-2 border-gray-200 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-lg font-medium transition-all"
                             />
-                            <Search className="absolute left-5 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6" />
+                            <Search className="absolute left-5 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6 pointer-events-none" />
                         </div>
                         <button
                             type="submit"
