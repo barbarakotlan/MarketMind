@@ -203,9 +203,18 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
         // Tier 1: filter static list instantly (no API call)
         const q = query.toUpperCase();
+        const sortByRelevance = (a, b) => {
+            const scoreOf = (t) => {
+                const s = t.symbol.toUpperCase();
+                if (s === q) return 0;
+                if (s.startsWith(q)) return 1;
+                return 2; // name match
+            };
+            return scoreOf(a) - scoreOf(b);
+        };
         const staticMatches = STATIC_TICKERS.filter(t =>
             t.symbol.startsWith(q) || t.name.toUpperCase().startsWith(q)
-        ).slice(0, 8);
+        ).sort(sortByRelevance).slice(0, 8);
 
         setAutocompleteSuggestions(staticMatches);
         setShowAutocomplete(staticMatches.length > 0);
@@ -220,7 +229,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                         // Merge: static matches first, then API results not already shown
                         const staticSymbols = new Set(staticMatches.map(t => t.symbol));
                         const apiOnly = data.filter(t => !staticSymbols.has(t.symbol));
-                        const merged = [...staticMatches, ...apiOnly].slice(0, 8);
+                        const merged = [...staticMatches, ...apiOnly].sort(sortByRelevance).slice(0, 8);
                         setAutocompleteSuggestions(merged);
                         setShowAutocomplete(merged.length > 0);
                     }

@@ -508,6 +508,14 @@ def get_symbol_suggestions(query):
                     "symbol": symbol,
                     "name": item.get('description', '')
                 })
+
+        # Sort: exact match first, then starts-with, then the rest
+        q = query.upper()
+        formatted_matches.sort(key=lambda item: (
+            0 if item['symbol'].upper() == q else
+            1 if item['symbol'].upper().startswith(q) else
+            2
+        ))
         return formatted_matches[:8]
     except Exception as e:
         logger.error(f"Error in get_symbol_suggestions: {e}")
