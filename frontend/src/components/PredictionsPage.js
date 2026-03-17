@@ -204,7 +204,7 @@ const PredictionsPage = ({ initialTicker }) => {
                 : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
             }`}
         >
-            LSTM
+        LSTM
         </button>
     </div>
   )}

@@ -823,7 +823,7 @@ def predict_stock(model, ticker):
         elif model == "XGBoost":
             preds = xgboost_predict(df, days_ahead=7)
         elif model == "LSTM":
-            lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=100, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+            lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
             preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device, days_ahead=7)
         else:
             return jsonify({"error": "Unknown model"}), 400

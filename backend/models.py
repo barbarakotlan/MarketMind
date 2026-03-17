@@ -402,7 +402,7 @@ def create_sequences(X, y, seq_len, forecast_horizon):
     return np.array(Xs), np.array(ys)
 
 # Train LSTM model
-def lstm_train(df, lookback=14, seq_len=60, days_ahead=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001):
+def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001):
     '''Train an LSTM model for stock price prediction'''
     # Prepare data
     X_train_feat, y_train_vals, X_test_feat, y_test_vals = prepare_model_data(df, lookback)
