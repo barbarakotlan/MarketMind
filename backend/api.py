@@ -35,10 +35,9 @@ try:
 except ImportError:
     OPENBB_AVAILABLE = False
 
-# --- Tazeem's Imports ---
-from model import create_dataset, estimate_week, try_today, estimate_new, good_model
+# --- Imports ---
 from news_fetcher import get_general_news
-from ensemble_model import ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict
+from models import create_dataset, ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
@@ -990,7 +989,7 @@ def predict_stock(model, ticker):
         elif model == "XGBoost":
             preds = xgboost_predict(df, days_ahead=7)
         elif model == "LSTM":
-            lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=100, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+            lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
             preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device, days_ahead=7)
         else:
             return jsonify({"error": "Unknown model"}), 400
