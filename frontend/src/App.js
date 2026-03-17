@@ -4,6 +4,7 @@ import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import AuthFetchBridge from './components/AuthFetchBridge';
 import Sidebar from './components/Sidebar';
+import PlanPage from './components/PlanPage';
 import DashboardPage from './components/DashboardPage';
 import SearchPage from './components/SearchPage';
 import GettingStartedPage from './components/GettingStartedPage';
@@ -100,6 +101,7 @@ function App() {
                         {activePage === 'dashboard' && <DashboardPage setActivePage={setActivePage} />}
                         {activePage === 'search' && <SearchPage initialTicker={sharedTicker} onClearInitialTicker={() => setSharedTicker(null)} />}
                         {activePage === 'screener' && <ScreenerPage onSearchTicker={handleScreenerNav} />}
+                        {activePage === 'plan' && <PlanPage/>}
                         {activePage === 'macro' && <MacroPage />}
                         {activePage === 'watchlist' && <WatchlistPage />}
                         {activePage === 'portfolio' && <PaperTradingPage />}

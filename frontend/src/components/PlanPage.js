@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-    Check, X, Zap, Crown, Code2, Sparkles, ArrowUpRight,
+    Check, X, Zap, Crown, Sparkles, ArrowUpRight,
     TrendingUp, Shield, Clock, Users, GraduationCap, ChevronRight
 } from 'lucide-react';
 
@@ -26,25 +26,22 @@ const PLANS = [
             'bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-700 dark:hover:bg-gray-100',
         includes: [
             'Basic stock search',
-            'Up to 3 AI predictions / day',
-            'Watchlist (5 stocks max)',
-            'Paper trading (15-min delay)',
-            'Basic charts',
-            'News feed',
+            'Up to 5 AI predictions / day',
+            'Watchlist (10 tickers)',
+            'Alerts: 2 Active Alerts',
+            'Paper trading (20 per month)',
+            'Prediction Markets paper trades: 0',
+            'Limited and delayed access to Fundamentals/Macro/Ccreener',
         ],
         excludes: [
-            'Full backtesting metrics',
-            'Unlimited predictions',
-            'Advanced portfolio analytics',
-            'Alerts & signals',
-            'Ensemble model access',
+           
         ],
     },
     {
         id: 'pro',
         icon: Crown,
         label: 'Pro',
-        price: 10,
+        price: 23.97,
         cadence: 'per month',
         tagline: 'Everything you need to trade smarter.',
         accent: 'from-blue-600 to-indigo-700',
@@ -57,17 +54,16 @@ const PLANS = [
         badge: 'Most Popular',
         includes: [
             'Everything in Free',
-            'Unlimited AI predictions',
-            'Ensemble models (RF + XGB + LR)',
-            'Full backtesting dashboard',
-            'Portfolio analytics & Sharpe ratio',
-            'Larger watchlists (unlimited)',
-            'Alerts & signals',
-            'Faster API rate limits',
+            '100 AI predictions / day',
+            'Unlimited Watchlist Size',
+            'Alerts: 50 Active Alerts',
+            'Unlimited Paper Trading',
+            'Unlimited Prediction Markets paper trades',
+            'Full, Unlimited Access to Fundamentals/Macro/Screener'
         ],
         excludes: [],
     },
-    {
+    /*{
         id: 'api',
         icon: Code2,
         label: 'API Access',
@@ -91,7 +87,7 @@ const PLANS = [
             'Developer documentation',
         ],
         excludes: [],
-    },
+    },*/
 ];
 
 const FUTURE_FEATURES = [
