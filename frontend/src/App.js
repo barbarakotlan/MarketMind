@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { SignedIn, SignedOut } from '@clerk/clerk-react';
+import React, { useEffect, useState } from 'react';
+import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import AuthFetchBridge from './components/AuthFetchBridge';
@@ -23,26 +23,60 @@ import MarketCalendarPage from './components/MarketCalendarPage';
 import ScreenerPage from './components/ScreenerPage';
 import MacroPage from './components/MacroPage';
 
+const LANDING_VISIBILITY_KEY = 'marketmind.hideLanding';
+
+const shouldHideLandingByDefault = () => {
+    if (typeof window === 'undefined') {
+        return false;
+    }
+
+    return window.localStorage.getItem(LANDING_VISIBILITY_KEY) === 'true';
+};
+
 function App() {
-    const [showLanding, setShowLanding] = useState(true);
+    const { isLoaded, isSignedIn } = useAuth();
+    const [showLanding, setShowLanding] = useState(() => !shouldHideLandingByDefault());
     const [activePage, setActivePage] = useState('dashboard');
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [sharedTicker, setSharedTicker] = useState(null);
+
+    useEffect(() => {
+        if (!isLoaded || !isSignedIn || typeof window === 'undefined') {
+            return;
+        }
+
+        window.localStorage.setItem(LANDING_VISIBILITY_KEY, 'true');
+        setShowLanding(false);
+    }, [isLoaded, isSignedIn]);
 
     const handleScreenerNav = (ticker) => {
         setSharedTicker(ticker);
         setActivePage('search');
     };
 
-    if (showLanding) {
-        return <LandingPage onEnterApp={() => setShowLanding(false)} />;
+    const handleEnterApp = () => {
+        if (typeof window !== 'undefined') {
+            window.localStorage.setItem(LANDING_VISIBILITY_KEY, 'true');
+        }
+        setShowLanding(false);
+    };
+
+    const handleReturnToLanding = () => {
+        if (typeof window !== 'undefined') {
+            window.localStorage.removeItem(LANDING_VISIBILITY_KEY);
+        }
+        setShowLanding(true);
+    };
+
+    if (showLanding && !(isLoaded && isSignedIn)) {
+        return <LandingPage onEnterApp={handleEnterApp} />;
     }
 
     return (
         <>
             <AuthFetchBridge />
             <SignedOut>
-                <AuthPage onBack={() => setShowLanding(true)} />
+                <AuthPage onBack={handleReturnToLanding} />
             </SignedOut>
 
             <SignedIn>

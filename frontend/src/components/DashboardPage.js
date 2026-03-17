@@ -99,7 +99,9 @@ function PortfolioSummaryCard({ setActivePage }) {
             .catch(() => setLoading(false));
     }, []);
 
-    const hasPositions = portfolio?.positions?.length > 0;
+    const stockPositionsCount = portfolio?.positions?.length || 0;
+    const optionsPositionsCount = portfolio?.options_positions?.length || 0;
+    const hasPositions = stockPositionsCount + optionsPositionsCount > 0;
     const totalValue = portfolio?.total_value;
     const pnl = portfolio?.total_pl; // Fixed from total_pnl to match your backend
     const pnlPos = pnl > 0;
@@ -153,7 +155,7 @@ function AlertsBadgeCard({ setActivePage }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED)
+        apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true))
             .then(d => { setCount(d.length); setLoading(false); })
             .catch(() => setLoading(false));
     }, []);

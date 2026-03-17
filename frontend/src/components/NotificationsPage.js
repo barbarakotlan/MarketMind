@@ -45,7 +45,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
             // Note: Ensure your backend supports these endpoints
             const [activeData, triggeredDataRaw] = await Promise.all([
                 apiRequest(API_ENDPOINTS.NOTIFICATIONS),
-                apiRequest(`${API_ENDPOINTS.NOTIFICATIONS_TRIGGERED}?all=true`).catch(() => [])
+                apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true)).catch(() => [])
             ]);
             const triggeredData = Array.isArray(triggeredDataRaw) ? triggeredDataRaw : [];
 
@@ -101,9 +101,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
         setIsAiLoading(true);
 
         try {
-            // This endpoint needs to be implemented in your backend
-            // It should parse the natural language and return a structured alert
-            await apiRequest(API_ENDPOINTS.NOTIFICATIONS_SMART, {
+            const response = await apiRequest(API_ENDPOINTS.NOTIFICATIONS_SMART, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -112,13 +110,11 @@ const NotificationsPage = ({ onClearAlerts }) => {
                 })
             });
 
-            setMessage({ type: 'success', text: 'Smart Alert created successfully!' });
+            setMessage({ type: 'success', text: response.message || 'Smart alert created successfully.' });
             setAiPrompt('');
             fetchAllAlerts();
         } catch (err) {
-            // Fallback for demo purposes if backend endpoint doesn't exist yet
-            console.warn("Backend /notifications/smart might not be implemented yet.");
-            setMessage({ type: 'error', text: "AI Backend not connected: " + err.message });
+            setMessage({ type: 'error', text: err.message || 'Failed to create smart alert.' });
         } finally {
             setIsAiLoading(false);
         }
@@ -132,6 +128,21 @@ const NotificationsPage = ({ onClearAlerts }) => {
         try {
             await apiRequest(endpoint, { method: 'DELETE' });
             fetchAllAlerts();
+        } catch (err) {
+            setMessage({ type: 'error', text: err.message });
+        }
+    };
+
+    const handleClearTriggeredAlerts = async () => {
+        setMessage(null);
+
+        try {
+            await apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(), { method: 'DELETE' });
+            setTriggeredAlerts([]);
+
+            if (onClearAlerts) {
+                onClearAlerts();
+            }
         } catch (err) {
             setMessage({ type: 'error', text: err.message });
         }
@@ -312,7 +323,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                             <div className="w-2 h-2 rounded-full bg-red-500"></div> Recent Notifications
                         </h2>
                         {triggeredAlerts.length > 0 && (
-                            <button onClick={onClearAlerts} className="text-xs font-bold text-blue-600 hover:underline">Clear All</button>
+                            <button onClick={handleClearTriggeredAlerts} className="text-xs font-bold text-blue-600 hover:underline">Clear All</button>
                         )}
                     </div>
 

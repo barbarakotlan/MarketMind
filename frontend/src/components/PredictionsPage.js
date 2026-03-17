@@ -4,13 +4,15 @@ import PredictionChart from './charts/PredictionChart';
 import ModelComparisonCard from './ui/ModelComparisonCard';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
+const DEFAULT_SINGLE_MODEL = 'LinReg';
+
 const PredictionsPage = ({ initialTicker }) => {
     const [ticker, setTicker] = useState('');
     const [predictionData, setPredictionData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [useEnsemble, setUseEnsemble] = useState(true);
-    const [useModel, setUseModel] = useState('');
+    const [useModel, setUseModel] = useState(DEFAULT_SINGLE_MODEL);
     // Auto-search when initialTicker is provided or ensemble mode changes
     useEffect(() => {
         if (initialTicker && initialTicker.trim()) {
@@ -27,9 +29,10 @@ const PredictionsPage = ({ initialTicker }) => {
         setPredictionData(null);
 
         try {
+            const selectedModel = useModel || DEFAULT_SINGLE_MODEL;
             const endpoint = useEnsemble 
                 ? API_ENDPOINTS.PREDICT_ENSEMBLE(searchTicker.toUpperCase())
-                : API_ENDPOINTS.PREDICT(useModel, searchTicker.toUpperCase());
+                : API_ENDPOINTS.PREDICT(selectedModel, searchTicker.toUpperCase());
 
             const data = await apiRequest(endpoint);
             setPredictionData(data);
@@ -50,6 +53,17 @@ const PredictionsPage = ({ initialTicker }) => {
         }
 
         fetchPredictions(ticker);
+    };
+
+    const handleSelectEnsembleMode = () => {
+        setUseEnsemble(true);
+    };
+
+    const handleSelectSingleModelMode = () => {
+        setUseEnsemble(false);
+        if (!useModel) {
+            setUseModel(DEFAULT_SINGLE_MODEL);
+        }
     };
 
     return (
@@ -100,115 +114,93 @@ const PredictionsPage = ({ initialTicker }) => {
                 </form>
                 
                 {/* Ensemble Toggle */}
-               <div className="mt-4 flex items-center justify-center gap-3">
-  <button
-    onClick={() => {
-      const next = !useEnsemble;
-      setUseEnsemble(next);
-      if (next) {
-        setUseModel("LinReg"); // placeholder
-      }
-      
-    }}
-    className={`flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
-      useEnsemble
-        ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800'
-        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
-    }`}
-  >
-    <svg
-      className="w-5 h-5 mr-2"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
-      />
-    </svg>
-    'Ensemble Mode (3 Models)'
-  </button>
-  <button
-    onClick={() => {
-      const next = !useEnsemble;
-      setUseEnsemble(next);
-      if (next) {
-        setUseModel("LinReg"); // placeholder
-      }
-      
-    }}
-    className={`flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
-      useEnsemble
-        ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
-        : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800'
-    }`}
-  >
-    <svg
-      className="w-5 h-5 mr-2"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
-      />
-    </svg>
-    'Single Model'
-  </button>
-  {/* 👇 CONDITIONAL BUTTONS */}
-  {!useEnsemble && (
-    <div className="flex gap-3">
-        <button
-        onClick={() => setUseModel("LinReg")}
-        className={`px-3 py-2 rounded-md transition-all ${
-        useModel === "LinReg"
-            ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
-            : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-        }`}
-        >
-        Linear Regression
-        </button>
-
-        <button
-            onClick={() => setUseModel("RandomForest")}
-            className={`px-3 py-2 rounded-md transition-all ${
-            useModel === "RandomForest"
-                ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
-                : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-            }`}
-        >
-        Random Forest
-        </button>
-
-        <button
-        onClick={() => setUseModel("XGBoost")}
-        className={`px-3 py-2 rounded-md transition-all ${
-        useModel === "XGBoost"
-            ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
-            : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-        }`}
-        >
-        XGBoost
-        </button>
-        <button
-            onClick={() => setUseModel("LSTM")}
-            className={`px-3 py-2 rounded-md transition-all ${
-            useModel === "LSTM"
-                ? "bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400"
-                : "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-            }`}
-        >
-        LSTM
-        </button>
-    </div>
-  )}
-</div>
+                <div className="mt-4 flex items-center justify-center gap-3">
+                    <button
+                        type="button"
+                        onClick={handleSelectEnsembleMode}
+                        className={`flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+                            useEnsemble
+                                ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
+                        }`}
+                    >
+                        <svg
+                            className="w-5 h-5 mr-2"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+                            />
+                        </svg>
+                        Ensemble Mode (3 Models)
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSelectSingleModelMode}
+                        className={`flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+                            useEnsemble
+                                ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'
+                                : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800'
+                        }`}
+                    >
+                        <svg
+                            className="w-5 h-5 mr-2"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+                            />
+                        </svg>
+                        Single Model
+                    </button>
+                    {!useEnsemble && (
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setUseModel('LinReg')}
+                                className={`px-3 py-2 rounded-md transition-all ${
+                                    useModel === 'LinReg'
+                                        ? 'bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400'
+                                        : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800'
+                                }`}
+                            >
+                                Linear Regression
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setUseModel('RandomForest')}
+                                className={`px-3 py-2 rounded-md transition-all ${
+                                    useModel === 'RandomForest'
+                                        ? 'bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400'
+                                        : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800'
+                                }`}
+                            >
+                                Random Forest
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setUseModel('XGBoost')}
+                                className={`px-3 py-2 rounded-md transition-all ${
+                                    useModel === 'XGBoost'
+                                        ? 'bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400'
+                                        : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800'
+                                }`}
+                            >
+                                XGBoost
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Error Message */}
