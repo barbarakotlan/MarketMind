@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-    Check, X, Zap, Crown, Code2, Sparkles, ArrowUpRight,
+    Check, X, Zap, Crown, Sparkles, ArrowUpRight,
     TrendingUp, Shield, Clock, Users, GraduationCap, ChevronRight
 } from 'lucide-react';
 
