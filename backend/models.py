@@ -1,6 +1,5 @@
 import warnings
 warnings.filterwarnings('ignore')
-import model
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -22,6 +21,19 @@ except ImportError:
     XGBOOST_AVAILABLE = False
     print("XGBoost not available. Install with: pip install xgboost")
 
+# Creating a dataset based on ticker and period
+def create_dataset(ticker, period):
+    try:
+        data = yf.download(ticker, period=period, auto_adjust=False)
+    except yf.shared.YFPricesMissingError as e:
+        print(f"[Warning] Could not download data for {ticker}: {e}")
+        return pd.DataFrame()
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = [col[0] for col in data.columns]
+    df = data[['Close']].copy()
+    df.index = pd.to_datetime(df.index)
+    return df
+
 
 def create_features(df, lookback=14):
     """
@@ -34,12 +46,12 @@ def create_features(df, lookback=14):
         df[f'lag_{i}'] = df['Close'].shift(i)
 
     # Moving averages
-    df['ma_7'] = df['Close'].rolling(window=7).mean()
-    df['ma_14'] = df['Close'].rolling(window=14).mean()
-    df['ma_30'] = df['Close'].rolling(window=30).mean() if len(df) > 30 else df['Close'].mean()
+    df['ma_7']  = df['Close'].rolling(window=7,  min_periods=1).mean()
+    df['ma_14'] = df['Close'].rolling(window=14, min_periods=1).mean()
+    df['ma_30'] = df['Close'].rolling(window=30, min_periods=1).mean()
 
-    # Volatility (standard deviation)
-    df['volatility'] = df['Close'].rolling(window=7).std()
+    # Volatility
+    df['volatility'] = df['Close'].rolling(window=7, min_periods=2).std()
 
     # Price change
     df['price_change'] = df['Close'].pct_change()
@@ -49,7 +61,7 @@ def create_features(df, lookback=14):
 
     return df
 
-
+# General function to prepare data for ML models that require no training
 def prepare_ml_data(df, lookback=14):
     """
     Prepare data for ML models
@@ -62,6 +74,26 @@ def prepare_ml_data(df, lookback=14):
     y = df_features['Close'].values
 
     return X, y, df_features
+
+# General function to prepare data for models that require training
+def prepare_model_data(df, lookback=14):
+    """
+    Prepare data for all models (including LSTM/Transformer)
+    """
+    # Split prices, before any feature engineering
+    split_idx = int(len(df) * 0.8)
+    train_df = df.iloc[:split_idx]
+    test_df = df.iloc[split_idx:]
+
+    # Build features separately on each split
+    X_train_feat, _, train_features = prepare_ml_data(train_df, lookback)
+    X_test_feat,  _, test_features  = prepare_ml_data(test_df,  lookback)
+
+    y_train_vals = train_features[['Close']].values
+    y_test_vals  = test_features[['Close']].values
+
+    # For LSTM/Transformer, we will create sequences later
+    return X_train_feat, y_train_vals, X_test_feat, y_test_vals
 
 
 def linear_regression_predict(df, days_ahead=7):
@@ -370,41 +402,34 @@ def create_sequences(X, y, seq_len, forecast_horizon):
     return np.array(Xs), np.array(ys)
 
 # Train LSTM model
-def lstm_train(df, lookback=14, seq_len=60, days_ahead=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001):
+def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001):
     '''Train an LSTM model for stock price prediction'''
-    # --- Build features ---
-    X_features, _, df_features = prepare_ml_data(df, lookback)
-    y_values = df_features[['Close']].values
+    # Prepare data
+    X_train_feat, y_train_vals, X_test_feat, y_test_vals = prepare_model_data(df, lookback)
 
-    # --- Create sequences BEFORE splitting and scaling ---
-    X_seq, y_seq = create_sequences(X_features, y_values, seq_len, days_ahead)
+    # Create sequences on each split separately
+    X_train_raw, y_train_raw = create_sequences(X_train_feat, y_train_vals, seq_len, days_ahead)
+    X_test_raw,  y_test_raw  = create_sequences(X_test_feat,  y_test_vals,  seq_len, days_ahead)
 
-    # --- Split BEFORE normalizing ---
-    split = int(len(X_seq) * 0.8)
-    X_train_raw, X_test_raw = X_seq[:split], X_seq[split:]
-    y_train_raw, y_test_raw = y_seq[:split], y_seq[split:]
-
-    # --- Fit scalers on training data only ---
-    # Reshape to 2D to fit scaler, then reshape back to 3D
+    # Fit scalers on training data only
     n_train, seq_len_, n_features = X_train_raw.shape
 
     scaler_X = MinMaxScaler()
     scaler_y = MinMaxScaler()
 
-    # Flatten time dimension to fit scaler across all timesteps in training set
     X_train_scaled = scaler_X.fit_transform(X_train_raw.reshape(-1, n_features)).reshape(n_train, seq_len_, n_features)
-    X_test_scaled = scaler_X.transform(X_test_raw.reshape(-1, n_features)).reshape(X_test_raw.shape)
+    X_test_scaled  = scaler_X.transform(X_test_raw.reshape(-1, n_features)).reshape(X_test_raw.shape)
 
     y_train_scaled = scaler_y.fit_transform(y_train_raw.reshape(-1, 1)).reshape(y_train_raw.shape)
     y_test_scaled  = scaler_y.transform(y_test_raw.reshape(-1, 1)).reshape(y_test_raw.shape)
 
-    # --- Convert to tensors ---
+    # Convert to tensors
     X_train = torch.FloatTensor(X_train_scaled)
     X_test  = torch.FloatTensor(X_test_scaled)
     y_train = torch.FloatTensor(y_train_scaled)
     y_test  = torch.FloatTensor(y_test_scaled)
 
-    # --- Model ---
+    # Model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_size = n_features
     model = LSTM(input_size, hidden_size, layer_size, days_ahead).to(device)
@@ -413,7 +438,7 @@ def lstm_train(df, lookback=14, seq_len=60, days_ahead=7, hidden_size=64, layer_
     criterion = nn.MSELoss()
     loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
 
-    # --- Training loop ---
+    # Training loop
     for epoch in range(epochs):
         model.train()
         total_loss = 0
@@ -436,7 +461,7 @@ def lstm_train(df, lookback=14, seq_len=60, days_ahead=7, hidden_size=64, layer_
     return model, scaler_X, scaler_y, device
 
 # Long Short-Term Memory (LSTM) prediction function
-def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=60, days_ahead=7):
+def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30, days_ahead=7):
     '''Predict future stock prices using the trained LSTM model'''
     try:
         model.eval()
@@ -470,25 +495,152 @@ def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=60,
         print(f"LSTM error: {e}")
         return None
 
+# Transformer Class
+class TransformerModel(nn.Module):
+    '''
+    Transformer model for time series forecasting
+    '''
+    def __init__(self, input_size, d_model=64, nhead=4, num_layers=2, output_size=7, dropout=0.1):
+        super(TransformerModel, self).__init__()
 
+        # Project input features into d_model dimensions
+        self.input_projection = nn.Linear(input_size, d_model)
+
+        # Positional encoding (tells model the order of timesteps)
+        self.pos_encoder = PositionalEncoding(d_model, dropout)
+
+        # Transformer encoder (stacked self-attention + feedforward layers)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=d_model * 4,
+            dropout=dropout,
+            batch_first=True       # (batch, seq, features)
+        )
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        # Final output layer → predict N days ahead
+        self.fc = nn.Linear(d_model, output_size)
+
+    def forward(self, x):
+        # x shape: (batch, seq_len, input_size)
+        x = self.input_projection(x)        # → (batch, seq_len, d_model)
+        x = self.pos_encoder(x)             # → add positional info
+        x = self.transformer_encoder(x)     # → self-attention across all timesteps
+        x = self.fc(x[:, -1, :])           # → take last timestep → (batch, output_size)
+        return x
+
+# Positional Encoding
+# Adds order information since Transformer has no built-in sense of sequence order
+class PositionalEncoding(nn.Module):
+    '''
+    Adds positional encoding to the input so the Transformer knows the order of timesteps
+    '''
+    def __init__(self, d_model, dropout=0.1, max_len=500):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        # Build positional encoding matrix
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len).unsqueeze(1).float()
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
+
+        pe[:, 0::2] = torch.sin(position * div_term)   # even indices
+        pe[:, 1::2] = torch.cos(position * div_term)   # odd indices
+        pe = pe.unsqueeze(0)                            # (1, max_len, d_model)
+
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        # x: (batch, seq_len, d_model)
+        x = x + self.pe[:, :x.size(1), :]
+        return self.dropout(x)
+
+# Train Transformer model
+def transformer_train(df, lookback=14, seq_len=60, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=50, batch_size=32, lr=0.001):
+    '''Train a Transformer model for stock price prediction'''
+    # Prepare data
+    X_train_feat, y_train_vals, X_test_feat, y_test_vals = prepare_model_data(df, lookback)
+
+    # Create sequences on each split separately
+    X_train_raw, y_train_raw = create_sequences(X_train_feat, y_train_vals, seq_len, days_ahead)
+    X_test_raw,  y_test_raw  = create_sequences(X_test_feat,  y_test_vals,  seq_len, days_ahead)
+
+    # Fit scalers on training data only
+    n_train, seq_len_, n_features = X_train_raw.shape
+
+    scaler_X = MinMaxScaler()
+    scaler_y = MinMaxScaler()
+
+    X_train_scaled = scaler_X.fit_transform(X_train_raw.reshape(-1, n_features)).reshape(n_train, seq_len_, n_features)
+    X_test_scaled  = scaler_X.transform(X_test_raw.reshape(-1, n_features)).reshape(X_test_raw.shape)
+
+    y_train_scaled = scaler_y.fit_transform(y_train_raw.reshape(-1, 1)).reshape(y_train_raw.shape)
+    y_test_scaled  = scaler_y.transform(y_test_raw.reshape(-1, 1)).reshape(y_test_raw.shape)
+
+    # --- Convert to tensors ---
+    X_train = torch.FloatTensor(X_train_scaled)
+    X_test  = torch.FloatTensor(X_test_scaled)
+    y_train = torch.FloatTensor(y_train_scaled)
+    y_test  = torch.FloatTensor(y_test_scaled)
+
+    # --- Model ---
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = TransformerModel(
+        input_size=n_features,
+        d_model=d_model,
+        nhead=nhead,
+        num_layers=num_layers,
+        output_size=days_ahead
+    ).to(device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.MSELoss()
+    loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
+
+    # Training loop
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            pred = model(xb)
+            loss = criterion(pred, yb)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        if (epoch + 1) % 10 == 0:
+            model.eval()
+            with torch.no_grad():
+                val_pred = model(X_test.to(device))
+                val_loss = criterion(val_pred, y_test.to(device))
+            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f} | Val Loss: {val_loss:.6f}")
+
+    return model, scaler_X, scaler_y, device
+
+
+# Main for Testing
 if __name__ == "__main__":
     # Test the models
     ticker = 'AAPL'
     print(f"Testing ensemble model for {ticker}...")
 
     # Download data
-    data = yf.download(ticker, period="1y", auto_adjust=False)
-    df = data[['Close']].copy()
+    df = create_dataset(ticker, period="2y")
 
-    # # Get predictions
-    # ensemble, individual = ensemble_predict(df, days_ahead=7)
-
-    # print("\nPredictions:")
-    # print(f"Ensemble: {ensemble}")
-    # print(f"\nIndividual models:")
-    # for model_name, preds in individual.items():
-    #     print(f"  {model_name}: {preds}")
-    # ann_predict(data)
+    # Get predictions
+    print("\nPredictions:")
+    print("\nIndividual models:")
+    linear_reg = linear_regression_predict(df, days_ahead=7)
+    random_forest = random_forest_predict(df, days_ahead=7)
+    xgboost = xgboost_predict(df, days_ahead=7)
+    ensemble = ensemble_predict(df, days_ahead=7)
+    print(f"Linear Regression: {linear_reg}")
+    print(f"Random Forest: {random_forest}")
+    if XGBOOST_AVAILABLE:
+        print(f"XGBoost: {xgboost}")
 
 
     # --- LSTM Train ---

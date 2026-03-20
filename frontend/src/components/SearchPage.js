@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, TrendingUp, TrendingDown, Activity, Building, ChevronDown, ChevronUp } from 'lucide-react';
 import StockDataCard from './ui/StockDataCard';
 import StockChart from './charts/StockChart';
@@ -188,34 +188,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
     // Handle suggestion click
     const handleSuggestionClick = async (ticker) => {
-        const normalizedTicker = ticker.toUpperCase();
-        setTicker(normalizedTicker);
-        setLoading(true);
-        setStockData(null);
-        setChartData(null);
-        setError('');
-        const defaultTimeFrame = timeFrames.find(f => f.value === '14d');
-        setActiveTimeFrame(defaultTimeFrame);
-        try {
-            const stockJson = await apiRequest(API_ENDPOINTS.STOCK(normalizedTicker));
-            setStockData(stockJson);
-            setSearchedTicker(normalizedTicker);
-            fetchNewsData(stockJson.companyName);
-            await fetchChartData(normalizedTicker, defaultTimeFrame);
-            
-            // Fetch prediction data
-            try {
-                const predJson = await apiRequest(API_ENDPOINTS.PREDICT_ENSEMBLE(normalizedTicker));
-                setPredictionData(predJson);
-            } catch {
-                setPredictionData(null);
-            }
-        } catch (err) {
-            setError(err.message || 'An error occurred.');
-            setSearchedTicker('');
-        } finally {
-            setLoading(false);
-        }
+        await runSearch(ticker);
     };
 
     // Fetch suggestions on component mount
@@ -249,10 +222,17 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
     // --- Autocomplete state ---
     const [suggestions, setSuggestions] = useState(null);
+    const latestSearchRequestIdRef = useRef(0);
+    const latestChartRequestIdRef = useRef(0);
+    const latestComparisonRequestIdRef = useRef(0);
+
+    const isCurrentSearchRequest = (requestId) => latestSearchRequestIdRef.current === requestId;
+    const isCurrentChartRequest = (requestId) => latestChartRequestIdRef.current === requestId;
+    const isCurrentComparisonRequest = (requestId) => latestComparisonRequestIdRef.current === requestId;
 
     useEffect(() => {
         if (initialTicker) {
-            handleSuggestionClick(initialTicker);
+            runSearch(initialTicker);
             if (onClearInitialTicker) onClearInitialTicker();
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -271,9 +251,12 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
     }, []); 
 
     const saveRecentSearch = (ticker) => {
-        const updated = [ticker.toUpperCase(), ...recentSearches.filter(t => t !== ticker.toUpperCase())].slice(0, 8);
-        setRecentSearches(updated);
-        localStorage.setItem('recentSearches', JSON.stringify(updated));
+        const normalizedTicker = ticker.toUpperCase();
+        setRecentSearches((prevSearches) => {
+            const updated = [normalizedTicker, ...prevSearches.filter(t => t !== normalizedTicker)].slice(0, 8);
+            localStorage.setItem('recentSearches', JSON.stringify(updated));
+            return updated;
+        });
     };
 
     const clearRecentSearches = () => {
@@ -281,37 +264,97 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         localStorage.removeItem('recentSearches');
     };
 
-    const fetchNewsData = async (companyName) => {
-        if (!companyName) return;
+    const fetchNewsData = async (companyName, requestId) => {
+        if (!companyName) {
+            if (isCurrentSearchRequest(requestId)) {
+                setNewsData(null);
+                setNewsLoading(false);
+            }
+            return;
+        }
+
         setNewsLoading(true);
         try {
             const data = await apiRequest(API_ENDPOINTS.NEWS(companyName));
+            if (!isCurrentSearchRequest(requestId)) return;
             setNewsData(Array.isArray(data) ? data : null);
         } catch {
+            if (!isCurrentSearchRequest(requestId)) return;
             setNewsData(null);
         } finally {
-            setNewsLoading(false);
+            if (isCurrentSearchRequest(requestId)) {
+                setNewsLoading(false);
+            }
         }
     };
 
-    const fetchChartData = async (symbol, timeFrame) => {
+    const fetchChartData = async (symbol, timeFrame, requestId = null) => {
+        const chartRequestId = latestChartRequestIdRef.current + 1;
+        latestChartRequestIdRef.current = chartRequestId;
+        if (requestId === null || isCurrentSearchRequest(requestId)) {
+            setError('');
+        }
         setChartLoading(true);
-        setError('');
         try {
             const chartJson = await apiRequest(API_ENDPOINTS.CHART(symbol, timeFrame.value));
+            if ((requestId !== null && !isCurrentSearchRequest(requestId)) || !isCurrentChartRequest(chartRequestId)) {
+                return false;
+            }
             setChartData(chartJson);
+            return true;
         } catch (err) {
+            if ((requestId !== null && !isCurrentSearchRequest(requestId)) || !isCurrentChartRequest(chartRequestId)) {
+                return false;
+            }
             setError(err.message);
             setChartData(null);
+            return false;
         } finally {
-            setChartLoading(false);
+            if ((requestId === null || isCurrentSearchRequest(requestId)) && isCurrentChartRequest(chartRequestId)) {
+                setChartLoading(false);
+            }
         }
     };
 
-    const handleSearch = async (e, overrideTicker) => {
-        e.preventDefault();
-        const searchTicker = (overrideTicker || ticker || '').trim().toUpperCase();
+    const fetchPredictionData = async (symbol, requestId) => {
+        try {
+            const predJson = await apiRequest(API_ENDPOINTS.PREDICT_ENSEMBLE(symbol));
+            if (!isCurrentSearchRequest(requestId)) return;
+            setPredictionData(predJson);
+        } catch {
+            if (!isCurrentSearchRequest(requestId)) return;
+            setPredictionData(null);
+        }
+    };
+
+    const fetchComparisonChartData = async (symbol, timeFrame) => {
+        const comparisonRequestId = latestComparisonRequestIdRef.current + 1;
+        latestComparisonRequestIdRef.current = comparisonRequestId;
+
+        try {
+            const chartJson = await apiRequest(API_ENDPOINTS.CHART(symbol, timeFrame.value));
+            if (!isCurrentComparisonRequest(comparisonRequestId)) {
+                return false;
+            }
+            setComparisonData({ ticker: symbol, data: chartJson });
+            return true;
+        } catch (err) {
+            if (!isCurrentComparisonRequest(comparisonRequestId)) {
+                return false;
+            }
+            setComparisonData(null);
+            throw err;
+        }
+    };
+
+    const runSearch = async (rawTicker) => {
+        const searchTicker = (rawTicker || '').trim().toUpperCase();
         if (!searchTicker) return;
+
+        const requestId = latestSearchRequestIdRef.current + 1;
+        latestSearchRequestIdRef.current = requestId;
+        latestChartRequestIdRef.current += 1;
+        latestComparisonRequestIdRef.current += 1;
 
         setTicker(searchTicker);
         setLoading(true);
@@ -321,32 +364,40 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         setComparisonData(null);
         setCompareTicker('');
         setNewsData(null);
+        setNewsLoading(false);
         setError('');
+        setSearchedTicker('');
 
         const defaultTimeFrame = timeFrames.find(f => f.value === '14d');
         setActiveTimeFrame(defaultTimeFrame);
 
         try {
             const stockJson = await apiRequest(API_ENDPOINTS.STOCK(searchTicker));
+            if (!isCurrentSearchRequest(requestId)) return;
+
             setStockData(stockJson);
             setSearchedTicker(searchTicker);
             saveRecentSearch(searchTicker);
-            fetchNewsData(stockJson.companyName);
 
-            await fetchChartData(searchTicker, defaultTimeFrame);
-            try {
-                const predJson = await apiRequest(API_ENDPOINTS.PREDICT_ENSEMBLE(searchTicker));
-                setPredictionData(predJson);
-            } catch {
-                setPredictionData(null);
-            }
-
+            await Promise.allSettled([
+                fetchNewsData(stockJson.companyName, requestId),
+                fetchChartData(searchTicker, defaultTimeFrame, requestId),
+                fetchPredictionData(searchTicker, requestId),
+            ]);
         } catch (err) {
+            if (!isCurrentSearchRequest(requestId)) return;
             setError(err.message || 'An error occurred. Try "AAPL", "GOOGL", or "TSLA".');
             setSearchedTicker('');
         } finally {
-            setLoading(false);
+            if (isCurrentSearchRequest(requestId)) {
+                setLoading(false);
+            }
         }
+    };
+
+    const handleSearch = async (e, overrideTicker) => {
+        e.preventDefault();
+        await runSearch(overrideTicker || ticker);
     };
     
     const handleAddComparison = async (e) => {
@@ -355,8 +406,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         const normalizedTicker = compareTicker.trim().toUpperCase();
         
         try {
-            const chartJson = await apiRequest(API_ENDPOINTS.CHART(normalizedTicker, activeTimeFrame.value));
-            setComparisonData({ ticker: normalizedTicker, data: chartJson });
+            await fetchComparisonChartData(normalizedTicker, activeTimeFrame);
             setCompareTicker(''); 
         } catch (err) {
             alert(err.message);
@@ -364,8 +414,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
     };
 
     const handleRecentSearchClick = (recentTicker) => {
-        setTicker(recentTicker);
-        handleSearch({ preventDefault: () => {} }, recentTicker);
+        runSearch(recentTicker);
     };
 
     const handleTimeFrameChange = (timeFrame) => {
@@ -375,8 +424,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
             if (comparisonData) {
                 (async () => {
                     try {
-                        const chartJson = await apiRequest(API_ENDPOINTS.CHART(comparisonData.ticker, timeFrame.value));
-                        setComparisonData({ ...comparisonData, data: chartJson });
+                        await fetchComparisonChartData(comparisonData.ticker, timeFrame);
                     } catch {
                         setComparisonData(null);
                     }

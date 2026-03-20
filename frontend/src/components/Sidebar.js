@@ -3,7 +3,7 @@ import { UserButton } from '@clerk/clerk-react';
 import { useDarkMode } from '../context/DarkModeContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 import {
-    LayoutDashboard, Search, Star, Briefcase, Building2,
+    LayoutDashboard, Crown, Search, Star, Briefcase, Building2,
     TrendingUp, Target, BarChart3, DollarSign, Bitcoin,
     Layers, Newspaper, Bell, BookOpen, Sun, Moon,
     ChevronLeft, ChevronRight, Boxes, Calendar, SlidersHorizontal, Globe
@@ -52,6 +52,7 @@ const NAV_GROUPS = [
             { page: 'news', icon: Newspaper, label: 'News' },
             { page: 'notifications', icon: Bell, label: 'Alerts' },
             { page: 'gettingStarted', icon: BookOpen, label: 'Learn' },
+            {page: 'plan', icon: Crown, label: 'Upgrade Plan' },
         ],
     },
 ];
@@ -79,7 +80,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
         };
 
     const checkAlerts = () => {
-        apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED)
+        apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true))
             .then(data => {
                 setNewAlertCount(data.length);
             })

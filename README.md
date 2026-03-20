@@ -1,296 +1,199 @@
-# 📈 MarketMind
+# MarketMind
 
-**Professional Stock Market Prediction & Multi-Asset Analysis Platform**
+MarketMind is a market intelligence and paper-trading platform that combines live market data, ML-assisted analysis, and a web-based research workflow for equities and related asset classes.
 
-MarketMind is a comprehensive stock market intelligence platform that provides real-time stock data, AI-powered price predictions, professional backtesting tools, and virtual paper trading capabilities.
+## Overview
 
-### Key Features
-- **🤖 AI-Powered Predictions** - 7-day stock price forecasting using ensemble ML models (Random Forest, XGBoost, Linear Regression)
-- **📊 Professional Backtesting** - Rolling window evaluation with 40+ performance metrics (Sharpe Ratio, Max Drawdown, Returns vs Buy-and-Hold)
-- **💰 Paper Trading** - Virtual portfolio management with persistent data storage
-- **📈 Real-time Data** - Live stock prices, forex rates, cryptocurrency, and commodities
-- **📋 Watchlist Management** - Track multiple stocks with detailed analytics
-- **🔍 Comprehensive Analysis** - 40+ fundamental metrics and technical indicators
-- **🌗 Dark Mode UI** - Modern, responsive interface with dark/light theme support
-- **💾 Database Persistence** - All data stored in SQLite database with migration support
+MarketMind brings together market data, forecasting, evaluation, and portfolio simulation in a single codebase. The application includes a React frontend for interactive workflows and a Flask backend that handles market data retrieval, analytics, model execution, evaluation, and authenticated user state.
 
-## 🎯 Features
+The project is designed to support both product-facing usage and ongoing backend experimentation. The root repository is best understood as a working application first, with additional research-oriented modules for selective prediction and benchmark tooling layered behind the main user experience.
 
-### 📊 Stock Analysis & Predictions
-- **Stock Price Predictions** - 7-day forecast using ensemble ML models
-- **Model Performance Evaluation** - Professional backtesting with rolling windows
-- **Multiple ML Models** - Random Forest, XGBoost, Linear Regression, Ensemble
-- **Company Fundamentals** - 40+ financial metrics (P/E, EPS, margins, growth rates)
-- **Real-time Stock Data** - Live prices and historical data
-- **Watchlist Management** - Track your favorite stocks
+## Core Capabilities
 
-### 💼 Paper Trading
-- **Virtual Trading Portfolio** - Practice trading with $100,000 virtual cash
-- **Buy/Sell Functionality** - Real-time stock transactions
-- **Portfolio Tracking** - Track positions, P/L, and total value
-- **Trade History** - Complete record of all transactions
-- **Performance Metrics** - Returns, gains/losses per position
+- Search equities and review price charts, quote data, and recent market context.
+- Generate stock predictions and evaluate model behavior through rolling backtests.
+- Review company fundamentals, filings, and screener-style market views.
+- Manage paper-trading portfolios, watchlists, and alert workflows.
+- Explore macro indicators, forex, cryptocurrency, and commodities data.
+- Browse and simulate positions in supported prediction markets.
 
-### 🌍 Multi-Asset Markets
-- **Forex (Foreign Exchange)** - Real-time currency conversion for 20+ pairs
-- **Cryptocurrency** - Live crypto prices (BTC, ETH, ADA, DOT, SOL, etc.)
-- **Commodities** - 12 futures markets (Energy, Metals, Agriculture)
-  - Energy: Crude Oil (WTI/Brent), Natural Gas
-  - Metals: Gold, Silver, Copper, Platinum
-  - Agriculture: Wheat, Corn, Coffee, Sugar, Cotton
+## Architecture
 
-### 🎨 User Experience
-- **Dark Mode** - Full dark/light theme support with toggle
-- **Lucide Icons** - Professional icon system throughout
-- **Responsive Design** - Mobile-friendly interface
-- **Error Recovery** - Retry buttons for failed API calls
-- **Recent Searches** - Quick access to previously searched stocks
+MarketMind is structured as a browser-based frontend backed by a single Flask service. The frontend lives in [`frontend/`](./frontend/) and is organized around page-level React components for dashboard, search, predictions, evaluation, fundamentals, paper trading, news, macro data, and related workflows. [`frontend/src/App.js`](./frontend/src/App.js) acts as the page switchboard, while [`frontend/src/config/api.js`](./frontend/src/config/api.js) centralizes backend endpoint construction so the UI uses a single API boundary.
 
-### 🔧 Technical Features
-- **42 Engineered Features** - Lagged prices, moving averages, volatility, momentum, volume
-- **Rolling Window Backtesting** - Realistic evaluation with model retraining
-- **Comprehensive Metrics** - MAE, RMSE, MAPE, R², Directional Accuracy
-- **Trading Performance** - Sharpe Ratio, Max Drawdown, Returns vs Buy-and-Hold
-- **Data Quality** - Alpha Vantage + yfinance with validation and outlier removal
-- **Professional API** - RESTful endpoints with Flask
+Authentication is handled with Clerk on the frontend and verified on the backend. The frontend installs a fetch interceptor through [`frontend/src/config/authFetch.js`](./frontend/src/config/authFetch.js) and [`frontend/src/components/AuthFetchBridge.js`](./frontend/src/components/AuthFetchBridge.js). That layer normalizes backend URLs, adds bearer tokens for authenticated requests, and retries once on `401` responses with a refreshed token. On the backend, [`backend/api.py`](./backend/api.py) validates Clerk tokens, attaches the current user ID to the request context, and gates user-specific routes such as watchlists, paper trading, notifications, and prediction-market portfolios.
 
-## 🚀 Quick Start
+The backend is centered on [`backend/api.py`](./backend/api.py), which combines route registration, auth enforcement, rate limiting, CORS, and security headers with orchestration of domain modules. Feature-specific logic is delegated to supporting modules such as [`backend/data_fetcher.py`](./backend/data_fetcher.py) for market data preparation, [`backend/ensemble_model.py`](./backend/ensemble_model.py) and [`backend/model.py`](./backend/model.py) for forecasting, [`backend/professional_evaluation.py`](./backend/professional_evaluation.py) for rolling backtests, [`backend/prediction_markets_fetcher.py`](./backend/prediction_markets_fetcher.py) for prediction-market data, and the selective prediction modules for abstention and selector experiments.
 
-### Prerequisites
-- Python 3.8+
-- Node.js 14+
-- npm or yarn
+At runtime, the Flask service sits between the frontend and several external providers. Market and historical pricing data primarily come from yfinance, with Alpha Vantage used for selected data workflows and fallback behavior. News retrieval uses Finnhub, and some fundamentals, filings, screener, and macro functionality can use optional OpenBB integrations where available. This makes the backend the single integration layer for third-party services, rather than having the frontend call providers directly.
 
-### Backend Setup
-```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+Persistence is intentionally mixed. SQLite is used for selected local history and snapshot data, while most authenticated user state is stored as JSON files under `backend/user_data/`, including portfolios, watchlists, notifications, and prediction-market positions. This keeps the application easy to run locally while still supporting per-user state isolation and authenticated workflows.
 
-# Initialize database with seed data
-python migrate.py init
-python migrate.py seed
+The high-level request path looks like this:
 
-brew install libomp #For Mac homebrew
-
-# Start the API server
-python api.py
+```text
++--------------------+       HTTPS / fetch       +-------------------------+
+| React frontend     | -----------------------> | Flask API               |
+| frontend/src/*     |                          | backend/api.py          |
++--------------------+                          +-------------------------+
+          |                                                |
+          | Clerk auth UI                                  | Route handlers
+          v                                                v
++--------------------+                          +-------------------------+
+| Clerk session      |                          | Domain modules          |
+| token retrieval    |                          | data_fetcher.py         |
++--------------------+                          | ensemble_model.py       |
+          |                                     | professional_evaluation |
+          | Bearer token via                    | prediction_markets_*    |
+          | authFetch interceptor               | selective_prediction*   |
+          v                                     +-------------------------+
++--------------------+                                      |
+| Authenticated API  |                                      |
+| requests           |                                      v
++--------------------+                          +-------------------------+
+                                                  | External providers     |
+                                                  | yfinance               |
+                                                  | Finnhub               |
+                                                  | Alpha Vantage         |
+                                                  | OpenBB (optional)     |
+                                                  +-------------------------+
+                                                              |
+                                                              v
+                                                  +-------------------------+
+                                                  | Local persistence       |
+                                                  | SQLite                  |
+                                                  | backend/user_data/*.json|
+                                                  +-------------------------+
 ```
 
-Backend runs on: `http://localhost:5001`
+In practice, this means the frontend is primarily responsible for navigation, presentation, and authenticated request initiation, while the backend owns business logic, data-provider integration, model execution, portfolio state transitions, and persistence.
 
-### Frontend Setup
+## Repository Structure
+
+```text
+MarketMind/
+|-- backend/
+|   |-- api.py
+|   |-- data_fetcher.py
+|   |-- professional_evaluation.py
+|   |-- selective_prediction.py
+|   |-- selective_prediction_global.py
+|   |-- prediction_markets_fetcher.py
+|   |-- requirements.txt
+|   `-- tests/
+|-- frontend/
+|   |-- package.json
+|   |-- src/
+|   |   |-- App.js
+|   |   |-- components/
+|   |   |-- config/api.js
+|   |   `-- config/authFetch.js
+|   `-- public/
+|-- .env.example
+|-- backend/API_DOCUMENTATION.md
+|-- backend/DATA_SPECS.md
+`-- README.md
+```
+
+## Local Development
+
+MarketMind is developed as two local processes: the Flask backend on port `5001` and the React frontend on port `3000`.
+
+1. Copy the example environment files and fill in the required values.
+
+```bash
+cp .env.example .env
+cp frontend/.env.example frontend/.env
+```
+
+2. Set up and start the backend.
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python3 api.py
+```
+
+On macOS, XGBoost may require `libomp`:
+
+```bash
+brew install libomp
+```
+
+You can also start the backend with the helper script:
+
+```bash
+cd backend
+./start_backend.sh
+```
+
+3. Set up and start the frontend.
+
 ```bash
 cd frontend
 npm install
 npm start
 ```
 
-Frontend runs on: `http://localhost:3000`
+When both processes are running, the frontend is available at `http://localhost:3000` and the backend API is available at `http://localhost:5001`.
 
-## 📊 API Endpoints
+## For Developers
 
-### Stock Data
-- `GET /stock/<ticker>` - Stock information and current price
-- `GET /chart/<ticker>` - Historical chart data (1 year)
-- `GET /fundamentals/<ticker>` - Company fundamentals (40+ metrics)
+If you are new to the repository, the fastest way to get oriented is to follow one feature from the UI to the backend. A good starting point is the search or predictions flow.
 
-### Predictions
-- `GET /predict/<ticker>` - 7-day price prediction (Linear Regression)
-- `GET /predict/ensemble/<ticker>` - 7-day ensemble prediction (RF + XGB + LR)
+- Start with [`frontend/src/App.js`](./frontend/src/App.js) to see how the main pages are wired together.
+- Review [`frontend/src/config/api.js`](./frontend/src/config/api.js) to understand how the frontend addresses backend routes.
+- Review [`frontend/src/config/authFetch.js`](./frontend/src/config/authFetch.js) and [`frontend/src/components/AuthFetchBridge.js`](./frontend/src/components/AuthFetchBridge.js) to understand how authenticated requests are sent.
+- Use [`backend/api.py`](./backend/api.py) as the backend entrypoint for most feature work, since many routes and orchestration paths are defined there.
+- For prediction and evaluation logic, read [`backend/professional_evaluation.py`](./backend/professional_evaluation.py), [`backend/ensemble_model.py`](./backend/ensemble_model.py), and [`backend/selective_prediction.py`](./backend/selective_prediction.py).
 
-### Model Evaluation
-- `GET /evaluate/<ticker>?test_days=60&retrain_frequency=5` - Professional backtesting
+Common development workflow:
 
-### Paper Trading
-- `GET /paper/portfolio` - Get portfolio summary and positions
-- `POST /paper/buy` - Buy stocks (body: `{ticker, shares}`)
-- `POST /paper/sell` - Sell stocks (body: `{ticker, shares}`)
-- `GET /paper/history` - Get trade history
-- `POST /paper/reset` - Reset portfolio to initial state
+1. Run the backend and frontend locally.
+2. Pick a single page or endpoint and trace the full request path.
+3. When changing a backend-powered feature, update the Flask route or supporting module first, then update the frontend API config, then update the consuming component.
+4. When changing authenticated features, verify both Clerk-based auth behavior and user-specific persistence under `backend/user_data/`.
 
-### Forex
-- `GET /forex/convert?from=USD&to=EUR` - Currency exchange rate
-- `GET /forex/currencies` - List of available currencies
+Beginner-friendly tips:
 
-### Cryptocurrency
-- `GET /crypto/convert?from=BTC&to=USD` - Crypto exchange rate
-- `GET /crypto/list` - List of popular cryptocurrencies
-- `GET /crypto/currencies` - List of target fiat currencies
+- The frontend should call the Flask API, not third-party market providers directly.
+- Some user-facing features will not work correctly unless Clerk is configured in both the frontend and backend environment files.
+- On macOS, XGBoost-related backend issues are often caused by a missing `libomp` installation.
+- If you are unsure where logic lives, search [`backend/api.py`](./backend/api.py) first and then follow imports into supporting modules.
 
-### Commodities
-- `GET /commodities/price/<commodity>` - Commodity futures price
-- `GET /commodities/list` - List of available commodities
-- `GET /commodities/all` - All commodities grouped by category
+## Configuration
 
-### Watchlist
-- `GET /watchlist` - Get all watchlist items
-- `POST /watchlist` - Add ticker to watchlist
-- `DELETE /watchlist/<ticker>` - Remove ticker
+The root [`.env.example`](./.env.example) and [`frontend/.env.example`](./frontend/.env.example) files define the expected local configuration. Important values include:
 
-### News
-- `GET /news` - Latest market news
+- `ALPHA_VANTAGE_API_KEY` for market and reference data integrations.
+- `NEWS_API_KEY` for news-related backend integrations where configured.
+- `FINNHUB_API_KEY` for market news retrieval.
+- `FLASK_SECRET_KEY` for backend session and security configuration.
+- `CORS_ORIGINS` for allowed frontend origins in production-style deployments.
+- `CLERK_JWKS_URL` for backend Clerk token verification when needed.
+- `CLERK_AUDIENCE` for optional Clerk audience validation.
+- `REACT_APP_API_URL` for the frontend's backend base URL.
+- `REACT_APP_CLERK_PUBLISHABLE_KEY` for frontend Clerk initialization.
 
-## 🧠 Machine Learning Models
+Keep local secrets out of version control and review provider-specific setup before deploying outside local development.
 
-### Models Used
-1. **Random Forest Regressor** - 100 trees, ensemble learning
-2. **XGBoost** - Gradient boosting with 100 estimators
-3. **Linear Regression** - Baseline time series model
-4. **Ensemble** - Weighted average of all models
+## Advanced Backend Work
 
-### Feature Engineering (42 Features)
-- **Lagged Prices** (30) - Previous 30 days
-- **Moving Averages** (4) - 5, 10, 20, 30 day SMA
-- **Volatility** (3) - 5, 10, 20 day standard deviation
-- **Momentum** (3) - 1, 5, 20 day returns
-- **Volume Ratios** (2) - 5, 20 day average ratios
+The backend also contains ongoing work around selective prediction, pooled or global selector experiments, and benchmark tooling for model evaluation. These modules support more advanced research and validation workflows than the main README needs to cover, but they remain part of the repository for continued backend development and testing.
 
-### Evaluation Metrics
-- **MAE** - Mean Absolute Error
-- **RMSE** - Root Mean Square Error
-- **MAPE** - Mean Absolute Percentage Error
-- **R²** - Coefficient of Determination
-- **Directional Accuracy** - % of correct up/down predictions
-- **Sharpe Ratio** - Risk-adjusted returns
-- **Max Drawdown** - Largest peak-to-trough decline
+## Additional Documentation
 
-## 🗂️ Project Structure
+- [API documentation](./backend/API_DOCUMENTATION.md)
+- [Model data specifications](./backend/DATA_SPECS.md)
+- [Code of conduct](./CODE_OF_CONDUCT.md)
+- [License](./LICENSE)
 
-```
-MarketMind/
-├── backend/
-│   ├── api.py                  # Flask API with all endpoints
-│   ├── database.py             # SQLAlchemy database models and utilities
-│   ├── migrate.py              # Database migration and seeding scripts
-│   ├── model.py                # Linear regression predictor
-│   ├── ensemble_model.py       # RF + XGBoost + Ensemble
-│   ├── professional_evaluation.py      # Rolling window backtesting
-│   ├── data_fetcher.py         # Data pipeline (yfinance + Alpha Vantage)
-│   ├── forex_fetcher.py        # Forex exchange rates
-│   ├── crypto_fetcher.py       # Cryptocurrency prices
-│   ├── commodities_fetcher.py  # Commodity futures data
-│   ├── news_fetcher.py         # News API integration
-│   ├── security.py             # Rate limiting and input validation
-│   ├── logger_config.py        # Logging configuration
-│   ├── requirements.txt        # Python dependencies
-│   ├── test_db.py              # Database integration tests
-│   └── DATA_SPECS.md           # Technical specifications
-│
-├── frontend/
-│   ├── src/
-│   │   ├── App.js                      # Main app component
-│   │   ├── components/
-│   │   │   ├── Header.js               # Navigation with dropdown
-│   │   │   ├── SearchPage.js           # Stock search
-│   │   │   ├── PredictionsPage.js      # Predictions view
-│   │   │   ├── ModelPerformancePage.js # Evaluation dashboard
-│   │   │   ├── FundamentalsPage.js     # Company fundamentals
-│   │   │   ├── PaperTradingPage.js     # Virtual trading portfolio
-│   │   │   ├── ForexPage.js            # Currency exchange
-│   │   │   ├── CryptoPage.js           # Cryptocurrency tracking
-│   │   │   ├── CommoditiesPage.js      # Commodities market
-│   │   │   ├── WatchlistPage.js        # Watchlist management
-│   │   │   ├── NewsPage.js             # News feed
-│   │   │   └── charts/
-│   │   │       ├── ActualVsPredictedChart.js
-│   │   │       └── PredictionChart.js
-│   │   ├── context/
-│   │   │   └── DarkModeContext.js      # Dark mode provider
-│   │   └── index.css                   # Tailwind styles
-│   ├── public/
-│   │   └── index.html                  # HTML template
-│   └── package.json
-│
-└── README.md
-```
+## License
 
-## 🔑 Environment Variables
+This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
 
-Create a `.env` file in the root directory:
+## Disclaimer
 
-```env
-ALPHA_VANTAGE_API_KEY=your_key_here
-FINNHUB_API_KEY=your_key_here
-```
-
-## 🎨 Tech Stack
-
-### Backend
-- **Flask** - Web framework
-- **Flask-CORS** - Cross-origin resource sharing
-- **Flask-SQLAlchemy** - Database ORM
-- **Flask-Limiter** - Rate limiting
-- **scikit-learn** - Random Forest, Linear Regression
-- **XGBoost** - Gradient boosting
-- **pandas** - Data manipulation
-- **yfinance** - Stock & commodity data (primary)
-- **Alpha Vantage** - Forex, crypto, fundamentals API
-- **NumPy** - Numerical computing
-- **requests** - HTTP library
-- **python-dotenv** - Environment variables
-- **SQLite** - Database storage
-
-### Frontend
-- **React** - UI framework
-- **Chart.js** - Data visualization
-- **Tailwind CSS** - Styling
-- **lucide-react** - Professional icon system
-- **Axios** - HTTP client
-- **Context API** - State management (Dark mode)
-
-## 💾 Database
-
-MarketMind uses SQLite for persistent data storage with SQLAlchemy ORM. The database includes:
-
-### Database Models
-- **User** - User accounts (demo user for development)
-- **Watchlist** - Stock watchlists with detailed data
-- **Portfolio** - Paper trading portfolios
-- **Position** - Current stock positions in portfolios
-- **Trade** - Complete trade history
-- **Alert** - Price alerts and notifications
-- **PortfolioHistory** - Daily portfolio snapshots for analytics
-
-### Database Operations
-```bash
-# Initialize database
-python migrate.py init
-
-# Reset database (clear all data)
-python migrate.py reset
-
-# Seed with sample data
-python migrate.py seed
-
-# Backup database
-python migrate.py backup
-
-# Restore from backup
-python migrate.py restore backup_file.db
-
-# View database info
-python migrate.py info
-```
-
-## 📈 Performance
-
-**Typical Results (AAPL, 60-day backtest):**
-- MAE: $2-5
-- MAPE: 1-2%
-- R²: 0.80-0.93
-- Directional Accuracy: 55-65%
-
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## ⚠️ Disclaimer
-
-This tool is for educational and research purposes only. Stock market predictions are inherently uncertain. Past performance does not guarantee future results. Always do your own research and consult with financial advisors before making investment decisions.
->>>>>>> 2e78c3d026cb68bb66abfca85131da7d22f7700e
+MarketMind is intended for research, education, and product development purposes. Forecasts, market signals, and simulated trading results should not be treated as investment advice or as guarantees of future performance.

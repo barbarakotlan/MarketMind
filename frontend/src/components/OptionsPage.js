@@ -481,7 +481,7 @@ const OptionsPage = () => {
         setError('');
         setChain(null);
         try {
-            const chainData = await apiRequest(`${API_ENDPOINTS.OPTIONS_CHAIN(tickerToFetch)}?date=${date}`);
+            const chainData = await apiRequest(API_ENDPOINTS.OPTIONS_CHAIN(tickerToFetch, date));
             setChain(chainData);
             setStockPrice(chainData.stock_price); 
         } catch (err) {
