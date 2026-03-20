@@ -971,7 +971,7 @@ def predict_stock(model, ticker):
             period = "6mo"
             min_rows = 40
         elif model == "LSTM":
-            period = "1y"
+            period = "2y"
             min_rows = 120
         else:
             return jsonify({"error": "Unknown model"}), 400
@@ -993,7 +993,7 @@ def predict_stock(model, ticker):
             preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device, days_ahead=7)
         else:
             return jsonify({"error": "Unknown model"}), 400
-        
+    
         if preds is None or len(preds) == 0:
             return jsonify({
                 "error": f"{model} prediction failed."

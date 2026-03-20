@@ -198,6 +198,18 @@ const PredictionsPage = ({ initialTicker }) => {
                             >
                                 XGBoost
                             </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setUseModel('LSTM')}
+                                className={`px-3 py-2 rounded-md transition-all ${
+                                    useModel === 'LSTM'
+                                        ? 'bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400'
+                                        : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800'
+                                }`}
+                            >
+                                LSTM
+                            </button>
                         </div>
                     )}
                 </div>
