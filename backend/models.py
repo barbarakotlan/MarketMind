@@ -628,18 +628,19 @@ if __name__ == "__main__":
     print(f"Testing ensemble model for {ticker}...")
 
     # Download data
-    data = yf.download(ticker, period="2y", auto_adjust=False)
-    df = data[['Close']].copy()
+    df = create_dataset(ticker, period="2y")
 
-    # # Get predictions
-    # ensemble, individual = ensemble_predict(df, days_ahead=7)
-
-    # print("\nPredictions:")
-    # print(f"Ensemble: {ensemble}")
-    # print(f"\nIndividual models:")
-    # for model_name, preds in individual.items():
-    #     print(f"  {model_name}: {preds}")
-    # ann_predict(data)
+    # Get predictions
+    print("\nPredictions:")
+    print("\nIndividual models:")
+    linear_reg = linear_regression_predict(df, days_ahead=7)
+    random_forest = random_forest_predict(df, days_ahead=7)
+    xgboost = xgboost_predict(df, days_ahead=7)
+    ensemble = ensemble_predict(df, days_ahead=7)
+    print(f"Linear Regression: {linear_reg}")
+    print(f"Random Forest: {random_forest}")
+    if XGBOOST_AVAILABLE:
+        print(f"XGBoost: {xgboost}")
 
 
     # --- LSTM Train ---
