@@ -17,7 +17,9 @@ import { API_ENDPOINTS, apiRequest } from '../config/api';
 const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, className }) => {
     const [suggestions, setSuggestions] = useState([]);
     const [isFocused, setIsFocused] = useState(false);
+    const [highlightedIndex, setHighlightedIndex] = useState(-1);
     const debounceRef = useRef(null);
+    const lastInputMethodRef = useRef(null); // 'keyboard' | 'mouse'
 
     // Show the dropdown whenever the input is focused and has 2+ characters
     const showDropdown = isFocused && value.trim().length >= 2;
@@ -43,6 +45,8 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
             t.symbol.startsWith(q) || t.name.toUpperCase().startsWith(q)
         ).sort(sortByRelevance).slice(0, 8);
 
+        setHighlightedIndex(-1);
+        lastInputMethodRef.current = null;
         setSuggestions(staticMatches);
 
         // Tier 2: fall back to Finnhub if static list is sparse
@@ -65,9 +69,28 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
     }, [value]);
 
     const handleSelect = (symbol) => {
+        setHighlightedIndex(-1);
+        lastInputMethodRef.current = null;
         setIsFocused(false);
-        setSuggestions([]);
         if (onSelect) onSelect(symbol);
+    };
+
+    const handleKeyDown = (e) => {
+        if (!showDropdown || suggestions.length === 0) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            lastInputMethodRef.current = 'keyboard';
+            setHighlightedIndex(i => Math.min(i + 1, suggestions.length - 1));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            lastInputMethodRef.current = 'keyboard';
+            setHighlightedIndex(i => Math.max(i - 1, 0));
+        } else if (e.key === 'Enter' && lastInputMethodRef.current === 'keyboard' && highlightedIndex >= 0) {
+            e.preventDefault();
+            handleSelect(suggestions[highlightedIndex].symbol);
+        } else if (e.key === 'Escape') {
+            setIsFocused(false);
+        }
     };
 
     return (
@@ -78,6 +101,7 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
                 onChange={(e) => onChange(e.target.value.toUpperCase())}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setTimeout(() => setIsFocused(false), 150)}
+                onKeyDown={handleKeyDown}
                 placeholder={placeholder}
                 className={className}
                 autoComplete="off"
@@ -85,11 +109,19 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
             {showDropdown && (
                 <ul className="absolute top-full left-0 right-0 z-20 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg overflow-hidden">
                     {suggestions.length > 0 ? (
-                        suggestions.map((s) => (
+                        suggestions.map((s, idx) => (
                             <li
                                 key={s.symbol}
                                 onMouseDown={() => handleSelect(s.symbol)}
-                                className="px-4 py-2.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3"
+                                onMouseEnter={() => {
+                                    lastInputMethodRef.current = 'mouse';
+                                    setHighlightedIndex(idx);
+                                }}
+                                className={`px-4 py-2.5 cursor-pointer flex items-center gap-3 ${
+                                    idx === highlightedIndex
+                                        ? 'bg-gray-100 dark:bg-gray-700'
+                                        : ''
+                                }`}
                             >
                                 <span className="font-bold text-gray-900 dark:text-white text-sm">{s.symbol}</span>
                                 <span className="text-gray-500 dark:text-gray-400 text-sm truncate">{s.name}</span>
