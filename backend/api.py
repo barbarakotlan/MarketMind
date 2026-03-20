@@ -1030,7 +1030,7 @@ def _live_ensemble_signal_components(sanitized_ticker):
     if df.empty or len(df) < 30:
         return None
 
-    ensemble_preds, individual_preds = ensemble_predict(df, days_ahead=6)
+    ensemble_preds, individual_preds = ensemble_predict(df, days_ahead=7)
     if ensemble_preds is None or len(ensemble_preds) == 0:
         return None
 
@@ -1090,7 +1090,7 @@ def predict_ensemble(ticker):
         info = stock.info
         df = create_dataset(sanitized_ticker, period="1y")
         if df.empty or len(df) < 30: return jsonify({"error": "Insufficient historical data."}), 404
-        ensemble_preds, individual_preds = ensemble_predict(df, days_ahead=6)
+        ensemble_preds, individual_preds = ensemble_predict(df, days_ahead=7)
         if ensemble_preds is None: return jsonify({"error": "Ensemble prediction failed."}), 500
         recent_close = float(df["Close"].iloc[-1])
         recent_date = df.index[-1]

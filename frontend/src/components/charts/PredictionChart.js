@@ -25,19 +25,16 @@ ChartJS.register(
 
 const PredictionChart = ({ predictionData }) => {
     if (!predictionData || !predictionData.predictions) return null;
+    
+    const formatDate = (dateStr) => {
+        const [year, month, day] = dateStr.split('-');
+        return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
 
-    const dates = predictionData.predictions.map(p => {
-        const date = new Date(p.date);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    });
-
+    const dates = predictionData.predictions.map(p => formatDate(p.date));
     const predictedPrices = predictionData.predictions.map(p => p.predictedClose);
 
-    // Add recent actual price as the starting point
-    const allDates = [
-        new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        ...dates
-    ];
+    const allDates = [formatDate(predictionData.recentDate), ...dates];
     const allPrices = [predictionData.recentClose, ...predictedPrices];
 
     const data = {
@@ -59,7 +56,7 @@ const PredictionChart = ({ predictionData }) => {
             },
             {
                 label: 'Current Price',
-                data: [predictionData.recentClose, null, null, null, null, null, null],
+                data: [predictionData.recentClose, ...Array(predictionData.predictions.length).fill(null)],
                 borderColor: 'rgb(34, 197, 94)', // Green
                 backgroundColor: 'rgba(34, 197, 94, 0.2)',
                 borderWidth: 2,

@@ -238,11 +238,7 @@ const PredictionsPage = ({ initialTicker }) => {
                         </div>
                     </div>
 
-                    <PredictionChart predictionData={{...predictionData, predictions: predictionData.predictions.filter(pred => {
-                        const day = new Date(pred.date).getDay();
-                        return day !== 0 && day !== 6; // skip Sundays (0) and Saturdays (6)
-                        })
-                    }}  />
+                    <PredictionChart predictionData={predictionData} />
 
                     {useEnsemble && predictionData.modelBreakdown && (
                     <ModelComparisonCard 
