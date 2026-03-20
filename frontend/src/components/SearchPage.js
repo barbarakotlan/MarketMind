@@ -402,16 +402,18 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                 <h1 className="text-5xl font-extrabold text-gray-800 dark:text-white">Stock Ticker Search</h1>
                 <p className="text-lg text-gray-500 dark:text-gray-400 mt-3">Enter a stock symbol to get the latest data.</p>
                 <form onSubmit={handleSearch} className="mt-8 relative">
-                    <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
-                        <Search className="w-6 h-6 text-gray-400" />
+                    <div className="relative">
+                        <div className="absolute left-4 top-1/2 transform -translate-y-1/2 z-10">
+                            <Search className="w-6 h-6 text-gray-400" />
+                        </div>
+                        <TickerAutocompleteInput
+                            value={ticker}
+                            onChange={setTicker}
+                            onSelect={(sym) => { setTicker(sym); handleSearch({ preventDefault: () => {} }, sym); }}
+                            placeholder="e.g., AAPL or Apple"
+                            className="w-full pl-12 pr-4 py-4 text-lg border-2 border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow"
+                        />
                     </div>
-                    <TickerAutocompleteInput
-                        value={ticker}
-                        onChange={setTicker}
-                        onSelect={(sym) => { setTicker(sym); handleSearch({ preventDefault: () => {} }, sym); }}
-                        placeholder="e.g., AAPL or Apple"
-                        className="w-full pl-12 pr-4 py-4 text-lg border-2 border-gray-200 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow"
-                    />
                     <button
                         type="submit"
                         disabled={loading}

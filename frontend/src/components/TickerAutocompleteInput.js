@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import STATIC_TICKERS from '../data/tickers.json';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
@@ -22,14 +22,19 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const debounceRef = useRef(null);
     const [lastInputMethod, setLastInputMethod] = useState(null); // 'keyboard' | 'mouse'
+    const id = useId();
 
     // Show the dropdown whenever the input is focused and has 2+ characters
     const showDropdown = isFocused && value.trim().length >= 2 && !suppressDropdown;
+
+    const listboxId = `${id}-listbox`;
+    const activeOptionId = highlightedIndex >= 0 ? `${id}-option-${highlightedIndex}` : undefined;
 
     useEffect(() => {
         const q = value.trim().toUpperCase();
         if (q.length < 2) {
             setSuggestions([]);
+            setIsLoadingMore(false);
             return;
         }
 
@@ -54,8 +59,9 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
         // Tier 2: fall back to Finnhub if static list is sparse
         if (staticMatches.length < 3) {
             clearTimeout(debounceRef.current);
-            setIsLoadingMore(true);
             debounceRef.current = setTimeout(async () => {
+                // Only show spinner after debounce settles, not during typing
+                setIsLoadingMore(true);
                 try {
                     const data = await apiRequest(API_ENDPOINTS.SEARCH_SYMBOLS(value));
                     if (data.length > 0) {
@@ -101,10 +107,19 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
         }
     };
 
+    const hintText = lastInputMethod === 'keyboard'
+        ? <><span>↑↓</span> to navigate · <span>↵</span> searches highlighted</>
+        : <><span>↵</span> searches typed · click searches highlighted</>;
+
     return (
         <>
             <input
                 type="text"
+                role="combobox"
+                aria-expanded={showDropdown}
+                aria-autocomplete="list"
+                aria-controls={listboxId}
+                aria-activedescendant={activeOptionId}
                 value={value}
                 onChange={(e) => { setSuppressDropdown(false); setIsFocused(true); onChange(e.target.value.toUpperCase()); }}
                 onFocus={() => { setIsFocused(true); setHighlightedIndex(-1); setSuppressDropdown(false); setLastInputMethod(null); }}
@@ -115,11 +130,19 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
                 autoComplete="off"
             />
             {showDropdown && (
-                <ul onMouseLeave={() => { setHighlightedIndex(-1); setLastInputMethod(null); }} className="absolute top-full left-0 right-0 z-20 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg overflow-hidden">
+                <ul
+                    id={listboxId}
+                    role="listbox"
+                    onMouseLeave={() => { setHighlightedIndex(-1); setLastInputMethod(null); }}
+                    className="absolute top-full left-0 right-0 z-20 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg overflow-hidden"
+                >
                     {suggestions.length > 0 ? (
                         suggestions.map((s, idx) => (
                             <li
                                 key={s.symbol}
+                                id={`${id}-option-${idx}`}
+                                role="option"
+                                aria-selected={idx === highlightedIndex}
                                 onMouseDown={(e) => { e.preventDefault(); handleSelect(s.symbol); }}
                                 onMouseEnter={() => { setLastInputMethod('mouse'); setHighlightedIndex(idx); }}
                                 onMouseMove={() => { if (lastInputMethod !== 'mouse') { setLastInputMethod('mouse'); setHighlightedIndex(idx); } }}
@@ -135,11 +158,11 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
                                 <span className="text-gray-500 dark:text-gray-400 text-sm truncate">{s.name}</span>
                             </li>
                         ))
-                    ) : (
-                        <li className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">
+                    ) : !isLoadingMore ? (
+                        <li role="option" aria-selected="false" className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">
                             No results found for &ldquo;{value}&rdquo;
                         </li>
-                    )}
+                    ) : null}
                     {isLoadingMore && (
                         <li className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 flex items-center gap-2">
                             <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
@@ -150,7 +173,7 @@ const TickerAutocompleteInput = ({ value, onChange, onSelect, placeholder, class
                         </li>
                     )}
                     <li className="px-4 py-1.5 text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 flex items-center gap-1">
-                        <span>↑↓</span> to navigate · <span>↵</span> to select
+                        {hintText}
                     </li>
                 </ul>
             )}
