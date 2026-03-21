@@ -75,6 +75,7 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # --- New Imports for Options Suggester ---
 from options_suggester import generate_suggestion
+from checkout_endpoint import checkout_bp
 
 # Initialize logger
 import logging
@@ -95,7 +96,7 @@ app = Flask(__name__)
 # --- Security Configuration ---
 # Set Flask secret key for session management
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
-
+app.register_blueprint(checkout_bp)
 FLASK_ENV = os.getenv('FLASK_ENV', 'development').strip().lower()
 IS_PRODUCTION = FLASK_ENV == 'production'
 
@@ -2782,5 +2783,5 @@ if __name__ == '__main__':
     logger.info("Starting background alert checker...")
     checker_thread = threading.Thread(target=run_scheduler, daemon=True)
     checker_thread.start()
-
+  
     app.run(debug=True, port=5001, use_reloader=False)

@@ -32,6 +32,10 @@ export const API_ENDPOINTS = {
     // Authentication
     AUTH_ME: `${API_BASE_URL}/auth/me`,
 
+    // Checkout
+    CHECKOUT_CREATE_SUBSCRIPTION: `${API_BASE_URL}/checkout/create-subscription`,
+    CHECKOUT_CANCEL_SUBSCRIPTION: `${API_BASE_URL}/checkout/cancel-subscription`,
+    
     // Stock & Market Data
     STOCK: (ticker) => `${API_BASE_URL}/stock/${ticker}`,
     CHART: (ticker, period = '6mo') => `${API_BASE_URL}/chart/${ticker}?period=${period}`,
