@@ -22,6 +22,7 @@ import PredictionMarketsPage from './components/PredictionMarketsPage';
 import MarketCalendarPage from './components/MarketCalendarPage';
 import ScreenerPage from './components/ScreenerPage';
 import MacroPage from './components/MacroPage';
+import MarketMindAIPage from './components/MarketMindAIPage';
 
 const LANDING_VISIBILITY_KEY = 'marketmind.hideLanding';
 
@@ -113,6 +114,7 @@ function App() {
                         {activePage === 'news' && <NewsPage />}
                         {activePage === 'notifications' && <NotificationsPage />}
                         {activePage === 'predictionMarkets' && <PredictionMarketsPage />}
+                        {activePage === 'marketmindAI' && <MarketMindAIPage />}
                         {activePage === 'gettingStarted' && <GettingStartedPage />}
                         {activePage === 'calendar' && <MarketCalendarPage />}
                     </main>

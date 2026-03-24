@@ -3,11 +3,12 @@ import { useAuth } from '@clerk/clerk-react';
 import {
     clearAuthTokenGetter,
     installAuthFetchInterceptor,
+    setAuthSessionState,
     setAuthTokenGetter,
 } from '../config/authFetch';
 
 const AuthFetchBridge = () => {
-    const { getToken, isSignedIn } = useAuth();
+    const { getToken, isLoaded, isSignedIn } = useAuth();
     const jwtTemplate = process.env.REACT_APP_CLERK_JWT_TEMPLATE;
 
     useEffect(() => {
@@ -15,7 +16,17 @@ const AuthFetchBridge = () => {
     }, []);
 
     useEffect(() => {
+        if (!isLoaded) {
+            setAuthSessionState('loading');
+            clearAuthTokenGetter();
+            return () => {
+                clearAuthTokenGetter();
+                setAuthSessionState('unknown');
+            };
+        }
+
         if (isSignedIn) {
+            setAuthSessionState('signedIn');
             setAuthTokenGetter(async ({ skipCache = false } = {}) => {
                 try {
                     const opts = {};
@@ -32,13 +43,15 @@ const AuthFetchBridge = () => {
                 }
             });
         } else {
+            setAuthSessionState('signedOut');
             clearAuthTokenGetter();
         }
 
         return () => {
             clearAuthTokenGetter();
+            setAuthSessionState(isLoaded ? (isSignedIn ? 'signedIn' : 'signedOut') : 'unknown');
         };
-    }, [isSignedIn, getToken, jwtTemplate]);
+    }, [isLoaded, isSignedIn, getToken, jwtTemplate]);
 
     return null;
 };

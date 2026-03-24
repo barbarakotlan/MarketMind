@@ -6,7 +6,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests
-from flask import Flask, jsonify, request, g
+from flask import Flask, jsonify, request, g, send_file
 from flask_cors import CORS
 from datetime import datetime, timedelta, date
 import json
@@ -18,12 +18,16 @@ import uuid  # For unique notification IDs
 import re  # Added for Smart Alert parsing
 import math
 import jwt
+from io import BytesIO
 from functools import wraps
 
 # --- DOTENV MUST BE FIRST ---
 from dotenv import load_dotenv
 
-load_dotenv()
+CURRENT_FILE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT_DIR = os.path.dirname(CURRENT_FILE_DIR)
+load_dotenv(os.path.join(PROJECT_ROOT_DIR, '.env'))
+load_dotenv(os.path.join(CURRENT_FILE_DIR, '.env'), override=True)
 # --- END FIX ---
 
 # --- OpenBB (optional, used for financials/filings/screener/macro) ---
@@ -55,6 +59,35 @@ from prediction_markets_fetcher import (
     get_current_prices as pm_get_prices,
 )
 from logger_config import setup_logger, log_api_error
+from deliverables import (
+    DOCX_MIME_TYPE,
+    DeliverableError,
+    add_deliverable_review,
+    build_deliverable_context,
+    create_deliverable,
+    create_deliverable_preflight,
+    generate_deliverable_memo,
+    get_deliverable_detail,
+    get_deliverable_memo_artifact,
+    list_deliverable_memos,
+    list_deliverables,
+    replace_deliverable_assumptions,
+    update_deliverable,
+)
+from marketmind_ai import (
+    MarketMindAIError,
+    build_marketmind_ai_context,
+    create_artifact_preflight,
+    delete_marketmind_ai_chat,
+    generate_marketmind_ai_artifact,
+    generate_marketmind_ai_reply,
+    get_bootstrap_payload as get_marketmind_ai_bootstrap_payload,
+    get_marketmind_ai_artifact_detail,
+    get_marketmind_ai_artifact_download,
+    get_marketmind_ai_chat_detail,
+    list_marketmind_ai_artifacts,
+    list_marketmind_ai_chats,
+)
 from user_state_store import (
     ensure_database_ready as ensure_user_state_database_ready,
     list_app_user_ids as list_app_user_ids_db,
@@ -145,7 +178,7 @@ def add_security_headers(response):
     response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
     # Cross-origin hardening for API responses
     response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
-    response.headers['Cross-Origin-Resource-Policy'] = 'same-site'
+    response.headers['Cross-Origin-Resource-Policy'] = 'same-site' if IS_PRODUCTION else 'cross-origin'
     return response
 
 # --- Rate Limiting Setup ---
@@ -220,6 +253,10 @@ def _json_mirror_enabled():
 def _ensure_user_state_storage_ready():
     if _sql_persistence_enabled():
         ensure_user_state_database_ready(DATABASE_URL)
+
+
+def _deliverables_ready():
+    return _sql_persistence_enabled() and bool(DATABASE_URL)
 
 
 def _current_auth_identity():
@@ -654,6 +691,427 @@ def auth_me():
         "email": payload.get('email'),
         "username": payload.get('username'),
     })
+
+
+def _deliverables_not_configured_response():
+    return jsonify({"error": "Deliverables require SQL-backed persistence and DATABASE_URL configuration"}), 503
+
+
+def _marketmind_ai_not_configured_response():
+    return jsonify({"error": "MarketMindAI requires SQL-backed persistence and DATABASE_URL configuration"}), 503
+
+
+@app.route('/deliverables', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_deliverables():
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    with user_state_session_scope(DATABASE_URL) as session:
+        deliverables = list_deliverables(session, get_current_user_id())
+    return jsonify(deliverables)
+
+
+@app.route('/deliverables', methods=['POST'])
+@require_auth
+@limiter.limit(RateLimits.WRITE)
+def post_deliverable():
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    payload = request.get_json(silent=True) or {}
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            deliverable = create_deliverable(session, get_current_user_id(), payload)
+        return jsonify(deliverable), 201
+    except DeliverableError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/deliverables/<string:deliverable_id>', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_deliverable(deliverable_id):
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            payload = get_deliverable_detail(session, get_current_user_id(), deliverable_id)
+        return jsonify(payload)
+    except DeliverableError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/deliverables/<string:deliverable_id>', methods=['PATCH'])
+@require_auth
+@limiter.limit(RateLimits.WRITE)
+def patch_deliverable(deliverable_id):
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    payload = request.get_json(silent=True) or {}
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            updated = update_deliverable(session, get_current_user_id(), deliverable_id, payload)
+        return jsonify(updated)
+    except DeliverableError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/deliverables/<string:deliverable_id>/assumptions', methods=['PUT'])
+@require_auth
+@limiter.limit(RateLimits.WRITE)
+def put_deliverable_assumptions(deliverable_id):
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    payload = request.get_json(silent=True) or {}
+    assumptions = payload if isinstance(payload, list) else payload.get("assumptions", [])
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            saved = replace_deliverable_assumptions(
+                session,
+                get_current_user_id(),
+                deliverable_id,
+                assumptions,
+            )
+        return jsonify(saved)
+    except DeliverableError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/deliverables/<string:deliverable_id>/reviews', methods=['POST'])
+@require_auth
+@limiter.limit(RateLimits.WRITE)
+def post_deliverable_review(deliverable_id):
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    payload = request.get_json(silent=True) or {}
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            review = add_deliverable_review(session, get_current_user_id(), deliverable_id, payload)
+        return jsonify(review), 201
+    except DeliverableError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/deliverables/<string:deliverable_id>/preflight', methods=['POST'])
+@require_auth
+@limiter.limit(RateLimits.WRITE)
+def post_deliverable_preflight(deliverable_id):
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            preflight = create_deliverable_preflight(session, get_current_user_id(), deliverable_id)
+        return jsonify(preflight)
+    except DeliverableError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/deliverables/<string:deliverable_id>/context', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_deliverable_context(deliverable_id):
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            payload = build_deliverable_context(session, get_current_user_id(), deliverable_id)
+        return jsonify(payload)
+    except DeliverableError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/deliverables/<string:deliverable_id>/memos', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_deliverable_memos(deliverable_id):
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            payload = list_deliverable_memos(session, get_current_user_id(), deliverable_id)
+        return jsonify(payload)
+    except DeliverableError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/deliverables/<string:deliverable_id>/memos/generate', methods=['POST'])
+@require_auth
+@limiter.limit(RateLimits.HEAVY)
+def post_deliverable_generate(deliverable_id):
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            memo = generate_deliverable_memo(session, get_current_user_id(), deliverable_id)
+        status_code = memo.pop("_statusCode", 201)
+        if status_code >= 400:
+            return jsonify({"error": memo.get("errorMessage") or "Memo generation failed", "memo": memo}), status_code
+        return jsonify(memo), status_code
+    except DeliverableError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/deliverables/<string:deliverable_id>/memos/<string:memo_id>/download', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def download_deliverable_memo(deliverable_id, memo_id):
+    if not _deliverables_ready():
+        return _deliverables_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            artifact = get_deliverable_memo_artifact(
+                session,
+                get_current_user_id(),
+                deliverable_id,
+                memo_id,
+            )
+    except DeliverableError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+    return send_file(
+        BytesIO(artifact["bytes"]),
+        mimetype=artifact.get("mimeType") or DOCX_MIME_TYPE,
+        as_attachment=True,
+        download_name=artifact["filename"],
+    )
+
+
+@app.route('/marketmind-ai/bootstrap', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_marketmind_ai_bootstrap():
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+    return jsonify(get_marketmind_ai_bootstrap_payload())
+
+
+@app.route('/marketmind-ai/chats', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_marketmind_ai_chats():
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    with user_state_session_scope(DATABASE_URL) as session:
+        chats = list_marketmind_ai_chats(session, get_current_user_id())
+    return jsonify(chats)
+
+
+@app.route('/marketmind-ai/chats/<string:chat_id>', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_marketmind_ai_chat(chat_id):
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            payload = get_marketmind_ai_chat_detail(session, get_current_user_id(), chat_id)
+        return jsonify(payload)
+    except MarketMindAIError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/marketmind-ai/chats/<string:chat_id>', methods=['DELETE'])
+@require_auth
+@limiter.limit(RateLimits.WRITE)
+def delete_marketmind_ai_chat_route(chat_id):
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            delete_marketmind_ai_chat(session, get_current_user_id(), chat_id)
+        return jsonify({"deleted": True, "chatId": chat_id})
+    except MarketMindAIError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/marketmind-ai/context', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_marketmind_ai_context():
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+
+    ticker = request.args.get('ticker', '').strip().upper()
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            payload = build_marketmind_ai_context(session, get_current_user_id(), ticker)
+        return jsonify(payload)
+    except MarketMindAIError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/marketmind-ai/chat', methods=['POST'])
+@require_auth
+@limiter.limit(RateLimits.HEAVY)
+def post_marketmind_ai_chat():
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+
+    payload = request.get_json(silent=True) or {}
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            response_payload = generate_marketmind_ai_reply(
+                session,
+                get_current_user_id(),
+                messages=payload.get('messages') or [],
+                attached_ticker=payload.get('attachedTicker'),
+                chat_id=payload.get('chatId'),
+                mode=payload.get('mode'),
+            )
+        return jsonify(response_payload)
+    except MarketMindAIError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/marketmind-ai/artifacts/preflight', methods=['POST'])
+@require_auth
+@limiter.limit(RateLimits.WRITE)
+def post_marketmind_ai_artifact_preflight():
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+
+    payload = request.get_json(silent=True) or {}
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            preflight = create_artifact_preflight(
+                session,
+                get_current_user_id(),
+                template_key=payload.get('templateKey'),
+                messages=payload.get('messages') or [],
+                attached_ticker=payload.get('attachedTicker'),
+            )
+        return jsonify(preflight)
+    except MarketMindAIError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/marketmind-ai/artifacts', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_marketmind_ai_artifacts():
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    with user_state_session_scope(DATABASE_URL) as session:
+        artifacts = list_marketmind_ai_artifacts(session, get_current_user_id())
+    return jsonify(artifacts)
+
+
+@app.route('/marketmind-ai/artifacts', methods=['POST'])
+@require_auth
+@limiter.limit(RateLimits.HEAVY)
+def post_marketmind_ai_artifact_generate():
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+
+    payload = request.get_json(silent=True) or {}
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            artifact_payload = generate_marketmind_ai_artifact(
+                session,
+                get_current_user_id(),
+                payload,
+            )
+        status_code = artifact_payload.pop("_statusCode", 201)
+        if status_code >= 400:
+            return jsonify({"error": artifact_payload["version"].get("errorMessage") or "Artifact generation failed", **artifact_payload}), status_code
+        return jsonify(artifact_payload), status_code
+    except MarketMindAIError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/marketmind-ai/artifacts/<string:artifact_id>', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_marketmind_ai_artifact(artifact_id):
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            payload = get_marketmind_ai_artifact_detail(session, get_current_user_id(), artifact_id)
+        return jsonify(payload)
+    except MarketMindAIError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+
+@app.route('/marketmind-ai/artifacts/<string:artifact_id>/versions/<string:version_id>/download', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def download_marketmind_ai_artifact(artifact_id, version_id):
+    if not _deliverables_ready():
+        return _marketmind_ai_not_configured_response()
+
+    _ensure_user_state_storage_ready()
+    try:
+        with user_state_session_scope(DATABASE_URL) as session:
+            artifact = get_marketmind_ai_artifact_download(
+                session,
+                get_current_user_id(),
+                artifact_id,
+                version_id,
+            )
+    except MarketMindAIError as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify(body), exc.status_code
+
+    return send_file(
+        BytesIO(artifact["bytes"]),
+        mimetype=artifact.get("mimeType") or DOCX_MIME_TYPE,
+        as_attachment=True,
+        download_name=artifact["filename"],
+    )
 
 # --- Helper function ---
 def clean_value(val):

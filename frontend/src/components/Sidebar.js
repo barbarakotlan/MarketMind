@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Search, Star, Briefcase, Building2,
     TrendingUp, Target, BarChart3, DollarSign, Bitcoin,
     Layers, Newspaper, Bell, BookOpen, Sun, Moon,
-    ChevronLeft, ChevronRight, Boxes, Calendar, SlidersHorizontal, Globe
+    ChevronLeft, ChevronRight, Boxes, Calendar, SlidersHorizontal, Globe, Bot, Trash2
 } from 'lucide-react';
 
 
@@ -36,6 +36,12 @@ const NAV_GROUPS = [
         ],
     },
     {
+        label: 'AI',
+        items: [
+            { page: 'marketmindAI', icon: Bot, label: 'MarketMindAI' },
+        ],
+    },
+    {
         label: 'Markets',
         items: [
             { page: 'forex', icon: DollarSign, label: 'Forex' },
@@ -59,6 +65,8 @@ const NAV_GROUPS = [
 const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) => {
     const { isDarkMode, toggleDarkMode } = useDarkMode();
     const [newAlertCount, setNewAlertCount] = useState(0);
+    const [recentAiChats, setRecentAiChats] = useState([]);
+    const [activeAiChatId, setActiveAiChatId] = useState(null);
 
     const theme = isDarkMode
         ? {
@@ -86,10 +94,32 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             .catch(err => console.error("Error fetching alerts:", err));
     };
 
+    const loadRecentAiChats = () => {
+        apiRequest(API_ENDPOINTS.MARKETMIND_AI_CHATS)
+            .then(data => {
+                setRecentAiChats(Array.isArray(data) ? data.slice(0, 6) : []);
+            })
+            .catch(err => console.error("Error fetching MarketMindAI chats:", err));
+    };
+
     useEffect(() => {
         checkAlerts();
         const interval = setInterval(checkAlerts, 15000);
         return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        loadRecentAiChats();
+        const handleHistoryUpdated = () => loadRecentAiChats();
+        const handleActiveChatChanged = (event) => {
+            setActiveAiChatId(event?.detail?.chatId || null);
+        };
+        window.addEventListener('marketmindai:history-updated', handleHistoryUpdated);
+        window.addEventListener('marketmindai:active-chat-changed', handleActiveChatChanged);
+        return () => {
+            window.removeEventListener('marketmindai:history-updated', handleHistoryUpdated);
+            window.removeEventListener('marketmindai:active-chat-changed', handleActiveChatChanged);
+        };
     }, []);
 
     const handleNavClick = (pageName) => {
@@ -99,31 +129,105 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
         setActivePage(pageName);
     };
 
+    const handleRecentAiChatClick = (chatId) => {
+        if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem('marketmindai:selectedChatId', chatId);
+        }
+        setActivePage('marketmindAI');
+        window.dispatchEvent(new CustomEvent('marketmindai:select-chat', { detail: { chatId } }));
+    };
+
+    const handleRecentAiChatDelete = async (event, chatId) => {
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+            await apiRequest(API_ENDPOINTS.MARKETMIND_AI_CHAT_DELETE(chatId), { method: 'DELETE' });
+            setRecentAiChats((current) => current.filter((chat) => chat.id !== chatId));
+            if (activeAiChatId === chatId) {
+                setActiveAiChatId(null);
+                window.dispatchEvent(new CustomEvent('marketmindai:active-chat-changed', { detail: { chatId: null } }));
+                window.dispatchEvent(new CustomEvent('marketmindai:chat-deleted', { detail: { chatId } }));
+            }
+            window.dispatchEvent(new CustomEvent('marketmindai:notice', { detail: { message: 'Chat deleted.', tone: 'success' } }));
+            window.dispatchEvent(new CustomEvent('marketmindai:history-updated'));
+        } catch (err) {
+            console.error("Error deleting MarketMindAI chat:", err);
+            window.dispatchEvent(new CustomEvent('marketmindai:notice', { detail: { message: 'Could not delete that chat.', tone: 'warn' } }));
+        }
+    };
+
     const NavItem = ({ item }) => {
         const Icon = item.icon;
         const isActive = activePage === item.page;
         const isAlerts = item.page === 'notifications';
         return (
-            <button
-                onClick={() => handleNavClick(item.page)}
-                title={isCollapsed ? item.label : undefined}
-                className={`relative w-full flex items-center rounded-lg px-2 py-2 text-sm font-medium transition-colors duration-150 ${
-                    isCollapsed ? 'justify-center' : 'justify-start space-x-3'
-                } ${
-                    isActive
-                        ? 'bg-blue-600 text-white'
-                        : theme.inactiveNav
-                }`}
-            >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                {!isCollapsed && <span>{item.label}</span>}
-                {isAlerts && newAlertCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                        <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 animate-ping"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
-                    </span>
-                )}
-            </button>
+            <div>
+                <button
+                    onClick={() => handleNavClick(item.page)}
+                    title={isCollapsed ? item.label : undefined}
+                    className={`relative w-full flex items-center rounded-lg px-2 py-2 text-sm font-medium transition-colors duration-150 ${
+                        isCollapsed ? 'justify-center' : 'justify-start space-x-3'
+                    } ${
+                        isActive
+                            ? 'bg-blue-600 text-white'
+                            : theme.inactiveNav
+                    }`}
+                >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    {!isCollapsed && <span>{item.label}</span>}
+                    {isAlerts && newAlertCount > 0 && (
+                        <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                            <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 animate-ping"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+                        </span>
+                    )}
+                </button>
+
+                {!isCollapsed && item.page === 'marketmindAI' && recentAiChats.length > 0 ? (
+                    <div className="mt-2 ml-4 space-y-1 border-l border-gray-200 pl-3 dark:border-gray-800">
+                        <p className={`px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${theme.sectionLabel}`}>
+                            Recent
+                        </p>
+                        {recentAiChats.map((chat) => {
+                            const isChatActive = activePage === 'marketmindAI' && chat.id === activeAiChatId;
+                            return (
+                                <div
+                                    key={chat.id}
+                                    className={`w-full rounded-lg px-2 py-2 text-left text-xs transition ${
+                                        isChatActive
+                                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
+                                            : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'
+                                    }`}
+                                >
+                                    <div className="flex items-start gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRecentAiChatClick(chat.id)}
+                                            className="min-w-0 flex-1 text-left"
+                                        >
+                                            <div className="truncate font-medium">{chat.title}</div>
+                                            {chat.attachedTicker ? (
+                                                <div className="mt-0.5 truncate uppercase tracking-[0.16em] text-[10px] opacity-70">
+                                                    {chat.attachedTicker}
+                                                </div>
+                                            ) : null}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={(event) => handleRecentAiChatDelete(event, chat.id)}
+                                            className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-200 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                                            aria-label={`Delete chat ${chat.title}`}
+                                            title="Delete chat"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : null}
+            </div>
         );
     };
 
