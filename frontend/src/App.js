@@ -23,8 +23,8 @@ import PredictionMarketsPage from './components/PredictionMarketsPage';
 import MarketCalendarPage from './components/MarketCalendarPage';
 import ScreenerPage from './components/ScreenerPage';
 import MacroPage from './components/MacroPage';
-import CheckoutPage from './components/CheckoutPage'
-
+import CheckoutPage from './components/CheckoutPage';
+import MarketMindAIPage from './components/MarketMindAIPage';
 
 const LANDING_VISIBILITY_KEY = 'marketmind.hideLanding';
 
@@ -104,21 +104,22 @@ function App() {
                         {activePage === 'dashboard' && <DashboardPage setActivePage={setActivePage} />}
                         {activePage === 'search' && <SearchPage initialTicker={sharedTicker} onClearInitialTicker={() => setSharedTicker(null)} />}
                         {activePage === 'screener' && <ScreenerPage onSearchTicker={handleScreenerNav} />}
-                        {activePage === 'plan' && 
-                        <PlanPage
-                        onNavigateToCheckout={(isAnnual) => {
-                            setCheckoutAnnual(isAnnual);
-                            setActivePage('checkout');
-                        }}
-                        />}
-                                        {activePage === 'checkout' && (
-                    <CheckoutPage
-                        isAnnual={checkoutAnnual}
-                        userEmail={user?.emailAddresses[0]?.emailAddress}   // pass from your auth context if available
-                        onBack={() => setActivePage('plans')}
-                        onSuccess={() => setActivePage('dashboard')}
-                    />
-)}
+                        {activePage === 'plan' && (
+                            <PlanPage
+                                onNavigateToCheckout={(isAnnual) => {
+                                    setCheckoutAnnual(isAnnual);
+                                    setActivePage('checkout');
+                                }}
+                            />
+                        )}
+                        {activePage === 'checkout' && (
+                            <CheckoutPage
+                                isAnnual={checkoutAnnual}
+                                userEmail={user?.emailAddresses[0]?.emailAddress}
+                                onBack={() => setActivePage('plans')}
+                                onSuccess={() => setActivePage('dashboard')}
+                            />
+                        )}
                         {activePage === 'macro' && <MacroPage />}
                         {activePage === 'watchlist' && <WatchlistPage />}
                         {activePage === 'portfolio' && <PaperTradingPage />}
@@ -132,6 +133,7 @@ function App() {
                         {activePage === 'news' && <NewsPage />}
                         {activePage === 'notifications' && <NotificationsPage />}
                         {activePage === 'predictionMarkets' && <PredictionMarketsPage />}
+                        {activePage === 'marketmindAI' && <MarketMindAIPage />}
                         {activePage === 'gettingStarted' && <GettingStartedPage />}
                         {activePage === 'calendar' && <MarketCalendarPage />}
                     </main>

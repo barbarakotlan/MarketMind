@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import uuid
@@ -14,6 +15,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -169,6 +171,122 @@ class PredictionMarketTrade(Base):
     total: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     profit: Mapped[Optional[Decimal]] = mapped_column(Numeric, nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Deliverable(Base):
+    __tablename__ = "deliverables"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    clerk_user_id: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    template_key: Mapped[str] = mapped_column(Text, nullable=False, default="investment_thesis_memo")
+    ticker: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    thesis_statement: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    time_horizon: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bull_case: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bear_case: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    invalidation_conditions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    catalysts: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="draft")
+    confidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    memo_audience: Mapped[str] = mapped_column(Text, nullable=False, default="personal investment review")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DeliverableAssumption(Base):
+    __tablename__ = "deliverable_assumptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    deliverable_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    confidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_type: Mapped[str] = mapped_column(Text, nullable=False, default="user")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DeliverableReview(Base):
+    __tablename__ = "deliverable_reviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    deliverable_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True, nullable=False)
+    review_type: Mapped[str] = mapped_column(Text, nullable=False, default="checkpoint")
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    what_changed: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    outcome_rating: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DeliverablePreflight(Base):
+    __tablename__ = "deliverable_preflights"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    deliverable_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True, nullable=False)
+    input_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    required_questions_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSON_VARIANT, nullable=False, default=list)
+    assumptions_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSON_VARIANT, nullable=False, default=list)
+    sources_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSON_VARIANT, nullable=False, default=list)
+    blocking_reasons_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSON_VARIANT, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DeliverableMemo(Base):
+    __tablename__ = "deliverable_memos"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    deliverable_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    model_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    generation_status: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_snapshot_json: Mapped[Dict[str, Any]] = mapped_column(JSON_VARIANT, nullable=False, default=dict)
+    context_snapshot_json: Mapped[Dict[str, Any]] = mapped_column(JSON_VARIANT, nullable=False, default=dict)
+    structured_content_json: Mapped[Dict[str, Any]] = mapped_column(JSON_VARIANT, nullable=False, default=dict)
+    docx_blob: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class DeliverableLink(Base):
+    __tablename__ = "deliverable_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    deliverable_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True, nullable=False)
+    link_type: Mapped[str] = mapped_column(Text, nullable=False)
+    link_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[Dict[str, Any]] = mapped_column(JSON_VARIANT, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MarketMindAiChat(Base):
+    __tablename__ = "marketmind_ai_chats"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    clerk_user_id: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    attached_ticker: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_message_preview: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    latest_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MarketMindAiChatMessage(Base):
+    __tablename__ = "marketmind_ai_chat_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    chat_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True, nullable=False)
+    clerk_user_id: Mapped[str] = mapped_column(Text, index=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 _ENGINES: Dict[str, Any] = {}
@@ -737,6 +855,23 @@ def _serialize_datetime(value: Optional[datetime]) -> Optional[str]:
     return _coerce_datetime(value).isoformat()
 
 
+def _serialize_binary(value: Optional[bytes]) -> Optional[str]:
+    if value is None:
+        return None
+    return base64.b64encode(value).decode("ascii")
+
+
+def _deserialize_binary(value: Any) -> Optional[bytes]:
+    if not value:
+        return None
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value)
+    try:
+        return base64.b64decode(str(value))
+    except Exception:
+        return None
+
+
 def export_user_state(session: Session, clerk_user_id: str) -> Dict[str, Any]:
     app_user = session.get(AppUser, clerk_user_id)
     watchlist_items = session.scalars(
@@ -785,6 +920,37 @@ def export_user_state(session: Session, clerk_user_id: str) -> Dict[str, Any]:
         select(PredictionMarketTrade)
         .where(PredictionMarketTrade.clerk_user_id == clerk_user_id)
         .order_by(PredictionMarketTrade.occurred_at.asc(), PredictionMarketTrade.id.asc())
+    ).all()
+    deliverables = session.scalars(
+        select(Deliverable)
+        .where(Deliverable.clerk_user_id == clerk_user_id)
+        .order_by(Deliverable.created_at.asc(), Deliverable.id.asc())
+    ).all()
+    deliverable_ids = [row.id for row in deliverables]
+    deliverable_assumptions = session.scalars(
+        select(DeliverableAssumption)
+        .where(DeliverableAssumption.deliverable_id.in_(deliverable_ids) if deliverable_ids else False)
+        .order_by(DeliverableAssumption.deliverable_id.asc(), DeliverableAssumption.sort_order.asc(), DeliverableAssumption.id.asc())
+    ).all()
+    deliverable_reviews = session.scalars(
+        select(DeliverableReview)
+        .where(DeliverableReview.deliverable_id.in_(deliverable_ids) if deliverable_ids else False)
+        .order_by(DeliverableReview.deliverable_id.asc(), DeliverableReview.created_at.asc(), DeliverableReview.id.asc())
+    ).all()
+    deliverable_preflights = session.scalars(
+        select(DeliverablePreflight)
+        .where(DeliverablePreflight.deliverable_id.in_(deliverable_ids) if deliverable_ids else False)
+        .order_by(DeliverablePreflight.deliverable_id.asc(), DeliverablePreflight.created_at.asc(), DeliverablePreflight.id.asc())
+    ).all()
+    deliverable_memos = session.scalars(
+        select(DeliverableMemo)
+        .where(DeliverableMemo.deliverable_id.in_(deliverable_ids) if deliverable_ids else False)
+        .order_by(DeliverableMemo.deliverable_id.asc(), DeliverableMemo.version.asc(), DeliverableMemo.id.asc())
+    ).all()
+    deliverable_links = session.scalars(
+        select(DeliverableLink)
+        .where(DeliverableLink.deliverable_id.in_(deliverable_ids) if deliverable_ids else False)
+        .order_by(DeliverableLink.deliverable_id.asc(), DeliverableLink.created_at.asc(), DeliverableLink.id.asc())
     ).all()
 
     return {
@@ -916,11 +1082,126 @@ def export_user_state(session: Session, clerk_user_id: str) -> Dict[str, Any]:
             }
             for row in prediction_trades
         ],
+        "deliverables": [
+            {
+                "id": str(row.id),
+                "template_key": row.template_key,
+                "ticker": row.ticker,
+                "title": row.title,
+                "thesis_statement": row.thesis_statement,
+                "time_horizon": row.time_horizon,
+                "bull_case": row.bull_case,
+                "bear_case": row.bear_case,
+                "invalidation_conditions": row.invalidation_conditions,
+                "catalysts": row.catalysts,
+                "status": row.status,
+                "confidence": row.confidence,
+                "memo_audience": row.memo_audience,
+                "created_at": _serialize_datetime(row.created_at),
+                "updated_at": _serialize_datetime(row.updated_at),
+                "closed_at": _serialize_datetime(row.closed_at),
+            }
+            for row in deliverables
+        ],
+        "deliverable_assumptions": [
+            {
+                "id": str(row.id),
+                "deliverable_id": str(row.deliverable_id),
+                "label": row.label,
+                "value": row.value,
+                "reason": row.reason,
+                "confidence": row.confidence,
+                "source_type": row.source_type,
+                "sort_order": row.sort_order,
+                "created_at": _serialize_datetime(row.created_at),
+                "updated_at": _serialize_datetime(row.updated_at),
+            }
+            for row in deliverable_assumptions
+        ],
+        "deliverable_reviews": [
+            {
+                "id": str(row.id),
+                "deliverable_id": str(row.deliverable_id),
+                "review_type": row.review_type,
+                "summary": row.summary,
+                "what_changed": row.what_changed,
+                "outcome_rating": row.outcome_rating,
+                "created_at": _serialize_datetime(row.created_at),
+            }
+            for row in deliverable_reviews
+        ],
+        "deliverable_preflights": [
+            {
+                "id": str(row.id),
+                "deliverable_id": str(row.deliverable_id),
+                "input_version": row.input_version,
+                "status": row.status,
+                "required_questions_json": list(row.required_questions_json or []),
+                "assumptions_json": list(row.assumptions_json or []),
+                "sources_json": list(row.sources_json or []),
+                "blocking_reasons_json": list(row.blocking_reasons_json or []),
+                "created_at": _serialize_datetime(row.created_at),
+            }
+            for row in deliverable_preflights
+        ],
+        "deliverable_memos": [
+            {
+                "id": str(row.id),
+                "deliverable_id": str(row.deliverable_id),
+                "version": row.version,
+                "model_slug": row.model_slug,
+                "generation_status": row.generation_status,
+                "prompt_snapshot_json": dict(row.prompt_snapshot_json or {}),
+                "context_snapshot_json": dict(row.context_snapshot_json or {}),
+                "structured_content_json": dict(row.structured_content_json or {}),
+                "docx_blob": _serialize_binary(row.docx_blob),
+                "mime_type": row.mime_type,
+                "created_at": _serialize_datetime(row.created_at),
+                "error_message": row.error_message,
+            }
+            for row in deliverable_memos
+        ],
+        "deliverable_links": [
+            {
+                "id": str(row.id),
+                "deliverable_id": str(row.deliverable_id),
+                "link_type": row.link_type,
+                "link_ref": row.link_ref,
+                "metadata_json": dict(row.metadata_json or {}),
+                "created_at": _serialize_datetime(row.created_at),
+            }
+            for row in deliverable_links
+        ],
     }
 
 
 def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
     state = dict(state or {})
+
+    deliverable_ids = [
+        _coerce_uuid(row.get("id"))
+        for row in (state.get("deliverables", []) or [])
+        if row.get("id")
+    ]
+
+    if deliverable_ids:
+        session.execute(delete(DeliverableLink).where(DeliverableLink.deliverable_id.in_(deliverable_ids)))
+        session.execute(delete(DeliverableMemo).where(DeliverableMemo.deliverable_id.in_(deliverable_ids)))
+        session.execute(delete(DeliverablePreflight).where(DeliverablePreflight.deliverable_id.in_(deliverable_ids)))
+        session.execute(delete(DeliverableReview).where(DeliverableReview.deliverable_id.in_(deliverable_ids)))
+        session.execute(delete(DeliverableAssumption).where(DeliverableAssumption.deliverable_id.in_(deliverable_ids)))
+        session.execute(delete(Deliverable).where(Deliverable.id.in_(deliverable_ids)))
+
+    existing_deliverable_ids = session.scalars(
+        select(Deliverable.id).where(Deliverable.clerk_user_id == clerk_user_id)
+    ).all()
+    if existing_deliverable_ids:
+        session.execute(delete(DeliverableLink).where(DeliverableLink.deliverable_id.in_(existing_deliverable_ids)))
+        session.execute(delete(DeliverableMemo).where(DeliverableMemo.deliverable_id.in_(existing_deliverable_ids)))
+        session.execute(delete(DeliverablePreflight).where(DeliverablePreflight.deliverable_id.in_(existing_deliverable_ids)))
+        session.execute(delete(DeliverableReview).where(DeliverableReview.deliverable_id.in_(existing_deliverable_ids)))
+        session.execute(delete(DeliverableAssumption).where(DeliverableAssumption.deliverable_id.in_(existing_deliverable_ids)))
+        session.execute(delete(Deliverable).where(Deliverable.id.in_(existing_deliverable_ids)))
 
     session.execute(
         delete(PredictionMarketTrade).where(PredictionMarketTrade.clerk_user_id == clerk_user_id)
@@ -1096,6 +1377,103 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
             )
         )
 
+    for row in state.get("deliverables", []) or []:
+        session.add(
+            Deliverable(
+                id=_coerce_uuid(row.get("id")),
+                clerk_user_id=clerk_user_id,
+                template_key=str(row.get("template_key") or "investment_thesis_memo"),
+                ticker=str(row.get("ticker", "")).upper(),
+                title=str(row.get("title", "")),
+                thesis_statement=row.get("thesis_statement"),
+                time_horizon=row.get("time_horizon"),
+                bull_case=row.get("bull_case"),
+                bear_case=row.get("bear_case"),
+                invalidation_conditions=row.get("invalidation_conditions"),
+                catalysts=row.get("catalysts"),
+                status=str(row.get("status") or "draft"),
+                confidence=row.get("confidence"),
+                memo_audience=str(row.get("memo_audience") or "personal investment review"),
+                created_at=_coerce_datetime(row.get("created_at")),
+                updated_at=_coerce_datetime(row.get("updated_at")),
+                closed_at=_coerce_datetime(row.get("closed_at")) if row.get("closed_at") else None,
+            )
+        )
+
+    for row in state.get("deliverable_assumptions", []) or []:
+        session.add(
+            DeliverableAssumption(
+                id=_coerce_uuid(row.get("id")),
+                deliverable_id=_coerce_uuid(row.get("deliverable_id")),
+                label=str(row.get("label", "")),
+                value=str(row.get("value", "")),
+                reason=row.get("reason"),
+                confidence=row.get("confidence"),
+                source_type=str(row.get("source_type") or "user"),
+                sort_order=int(row.get("sort_order", 0)),
+                created_at=_coerce_datetime(row.get("created_at")),
+                updated_at=_coerce_datetime(row.get("updated_at")),
+            )
+        )
+
+    for row in state.get("deliverable_reviews", []) or []:
+        session.add(
+            DeliverableReview(
+                id=_coerce_uuid(row.get("id")),
+                deliverable_id=_coerce_uuid(row.get("deliverable_id")),
+                review_type=str(row.get("review_type") or "checkpoint"),
+                summary=str(row.get("summary", "")),
+                what_changed=row.get("what_changed"),
+                outcome_rating=row.get("outcome_rating"),
+                created_at=_coerce_datetime(row.get("created_at")),
+            )
+        )
+
+    for row in state.get("deliverable_preflights", []) or []:
+        session.add(
+            DeliverablePreflight(
+                id=_coerce_uuid(row.get("id")),
+                deliverable_id=_coerce_uuid(row.get("deliverable_id")),
+                input_version=int(row.get("input_version", 1)),
+                status=str(row.get("status") or "red"),
+                required_questions_json=list(row.get("required_questions_json", []) or []),
+                assumptions_json=list(row.get("assumptions_json", []) or []),
+                sources_json=list(row.get("sources_json", []) or []),
+                blocking_reasons_json=list(row.get("blocking_reasons_json", []) or []),
+                created_at=_coerce_datetime(row.get("created_at")),
+            )
+        )
+
+    for row in state.get("deliverable_memos", []) or []:
+        session.add(
+            DeliverableMemo(
+                id=_coerce_uuid(row.get("id")),
+                deliverable_id=_coerce_uuid(row.get("deliverable_id")),
+                version=int(row.get("version", 1)),
+                model_slug=str(row.get("model_slug") or ""),
+                generation_status=str(row.get("generation_status") or "completed"),
+                prompt_snapshot_json=dict(row.get("prompt_snapshot_json", {}) or {}),
+                context_snapshot_json=dict(row.get("context_snapshot_json", {}) or {}),
+                structured_content_json=dict(row.get("structured_content_json", {}) or {}),
+                docx_blob=_deserialize_binary(row.get("docx_blob")),
+                mime_type=row.get("mime_type"),
+                created_at=_coerce_datetime(row.get("created_at")),
+                error_message=row.get("error_message"),
+            )
+        )
+
+    for row in state.get("deliverable_links", []) or []:
+        session.add(
+            DeliverableLink(
+                id=_coerce_uuid(row.get("id")),
+                deliverable_id=_coerce_uuid(row.get("deliverable_id")),
+                link_type=str(row.get("link_type") or ""),
+                link_ref=str(row.get("link_ref") or ""),
+                metadata_json=dict(row.get("metadata_json", {}) or {}),
+                created_at=_coerce_datetime(row.get("created_at")),
+            )
+        )
+
     session.flush()
     return export_user_state(session, clerk_user_id)
 
@@ -1118,4 +1496,6 @@ def summarize_user_state(state: Dict[str, Any]) -> Dict[str, Any]:
         "prediction_position_count": len(state.get("prediction_market_positions", []) or []),
         "prediction_trade_count": len(state.get("prediction_market_trades", []) or []),
         "prediction_cash": prediction_portfolio.get("cash"),
+        "deliverable_count": len(state.get("deliverables", []) or []),
+        "deliverable_memo_count": len(state.get("deliverable_memos", []) or []),
     }

@@ -3,6 +3,7 @@ import { Search, TrendingUp, TrendingDown, Activity, Building, ChevronDown, Chev
 import StockDataCard from './ui/StockDataCard';
 import StockChart from './charts/StockChart';
 import PredictionPreviewCard from './ui/PredictionPreviewCard';
+import AssetCompareCard from './ui/AssetCompareCard';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 // --- Helpers for Jimmy's cards ---
@@ -18,6 +19,62 @@ const formatNum = (num, isPercent = false) => {
     if (num === null || num === undefined || isNaN(num)) return 'N/A';
     const val = Number(num);
     return isPercent ? `${val.toFixed(2)}%` : val.toFixed(2);
+};
+
+const formatCurrency = (num) => {
+    if (num === null || num === undefined || isNaN(num)) return 'N/A';
+    return `$${Number(num).toFixed(2)}`;
+};
+
+const formatSignedPercent = (num) => {
+    if (num === null || num === undefined || isNaN(num)) return 'N/A';
+    const value = Number(num);
+    return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+};
+
+const summarizePredictionEdge = (predictionData) => {
+    if (!predictionData) {
+        return { value: 'No forecast', caption: 'Prediction preview unavailable.' };
+    }
+    const recentClose = Number(predictionData.recentClose);
+    const target = Number(predictionData.recentPredicted ?? predictionData.predictions?.[0]?.predictedClose);
+    if (!Number.isFinite(recentClose) || !Number.isFinite(target) || recentClose === 0) {
+        return { value: 'No forecast', caption: 'Prediction preview unavailable.' };
+    }
+    const spread = ((target - recentClose) / recentClose) * 100;
+    return {
+        value: `${spread >= 0 ? '+' : ''}${spread.toFixed(2)}%`,
+        caption: `${formatCurrency(target)} predicted vs ${formatCurrency(recentClose)} close`,
+    };
+};
+
+const buildCompareMetrics = ({ stockData, predictionData, newsData }) => {
+    const predictionSummary = summarizePredictionEdge(predictionData);
+    return [
+        {
+            label: 'Price',
+            value: formatCurrency(stockData?.price),
+            caption:
+                stockData?.changePercent !== undefined && stockData?.changePercent !== null
+                    ? `${formatSignedPercent(stockData.changePercent)} on the day`
+                    : 'Daily change unavailable',
+        },
+        {
+            label: 'Prediction edge',
+            value: predictionSummary.value,
+            caption: predictionSummary.caption,
+        },
+        {
+            label: 'Sector',
+            value: stockData?.fundamentals?.sector || 'N/A',
+            caption: stockData?.fundamentals?.industry || 'Industry unavailable',
+        },
+        {
+            label: 'Analyst target',
+            value: formatCurrency(stockData?.fundamentals?.analystTargetPrice),
+            caption: `${Array.isArray(newsData) ? newsData.length : 0} recent headline(s)`,
+        },
+    ];
 };
 
 // Expandable company overview + quarterly financials
@@ -350,16 +407,33 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         }
     };
 
-    const fetchComparisonChartData = async (symbol, timeFrame) => {
+    const fetchComparisonBundle = async (symbol, timeFrame) => {
         const comparisonRequestId = latestComparisonRequestIdRef.current + 1;
         latestComparisonRequestIdRef.current = comparisonRequestId;
 
         try {
-            const chartJson = await apiRequest(API_ENDPOINTS.CHART(symbol, timeFrame.value));
+            const stockJson = await apiRequest(API_ENDPOINTS.STOCK(symbol));
             if (!isCurrentComparisonRequest(comparisonRequestId)) {
                 return false;
             }
-            setComparisonData({ ticker: symbol, data: chartJson });
+            const [chartResult, predictionResult, newsResult] = await Promise.allSettled([
+                apiRequest(API_ENDPOINTS.CHART(symbol, timeFrame.value)),
+                apiRequest(API_ENDPOINTS.PREDICT_ENSEMBLE(symbol)),
+                stockJson.companyName ? apiRequest(API_ENDPOINTS.NEWS(stockJson.companyName)) : Promise.resolve([]),
+            ]);
+            if (!isCurrentComparisonRequest(comparisonRequestId)) {
+                return false;
+            }
+            setComparisonData({
+                ticker: symbol,
+                stockData: stockJson,
+                chartData: chartResult.status === 'fulfilled' ? chartResult.value : null,
+                predictionData: predictionResult.status === 'fulfilled' ? predictionResult.value : null,
+                newsData:
+                    newsResult.status === 'fulfilled' && Array.isArray(newsResult.value)
+                        ? newsResult.value
+                        : [],
+            });
             return true;
         } catch (err) {
             if (!isCurrentComparisonRequest(comparisonRequestId)) {
@@ -453,9 +527,13 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         e.preventDefault();
         if (!compareTicker || !activeTimeFrame) return;
         const normalizedTicker = compareTicker.trim().toUpperCase();
+        if (normalizedTicker === searchedTicker) {
+            alert('Choose a different ticker to compare.');
+            return;
+        }
         
         try {
-            await fetchComparisonChartData(normalizedTicker, activeTimeFrame);
+            await fetchComparisonBundle(normalizedTicker, activeTimeFrame);
             setCompareTicker(''); 
         } catch (err) {
             alert(err.message);
@@ -473,7 +551,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
             if (comparisonData) {
                 (async () => {
                     try {
-                        await fetchComparisonChartData(comparisonData.ticker, timeFrame);
+                        await fetchComparisonBundle(comparisonData.ticker, timeFrame);
                     } catch {
                         setComparisonData(null);
                     }
@@ -737,6 +815,56 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                     />
                 )}
 
+                {stockData && comparisonData && (
+                    <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-lg dark:border-slate-700 dark:bg-gray-800">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Compare mode</p>
+                                <h2 className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+                                    {searchedTicker} vs {comparisonData.ticker}
+                                </h2>
+                                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    Side-by-side context for price, predictions, fundamentals, and news.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setComparisonData(null)}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                            >
+                                Clear comparison
+                            </button>
+                        </div>
+
+                        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+                            <AssetCompareCard
+                                eyebrow="Primary"
+                                accent="blue"
+                                ticker={searchedTicker}
+                                title={stockData.companyName}
+                                subtitle={stockData.fundamentals?.industry || 'Current search result'}
+                                metrics={buildCompareMetrics({
+                                    stockData,
+                                    predictionData,
+                                    newsData,
+                                })}
+                            />
+                            <AssetCompareCard
+                                eyebrow="Comparison"
+                                accent="violet"
+                                ticker={comparisonData.ticker}
+                                title={comparisonData.stockData?.companyName}
+                                subtitle={comparisonData.stockData?.fundamentals?.industry || 'Comparison asset'}
+                                metrics={buildCompareMetrics({
+                                    stockData: comparisonData.stockData,
+                                    predictionData: comparisonData.predictionData,
+                                    newsData: comparisonData.newsData,
+                                })}
+                            />
+                        </div>
+                    </div>
+                )}
+
                 {stockData && (
                     <>
                         <StockOverviewCard
@@ -774,7 +902,11 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                             ticker={searchedTicker}
                             onTimeFrameChange={handleTimeFrameChange}
                             activeTimeFrame={activeTimeFrame}
-                            comparisonData={comparisonData}
+                            comparisonData={
+                                comparisonData?.chartData
+                                    ? { ticker: comparisonData.ticker, data: comparisonData.chartData }
+                                    : null
+                            }
                         />
                     </div>
                 )}
