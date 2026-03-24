@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, useAuth, useUser} from '@clerk/clerk-react';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import AuthFetchBridge from './components/AuthFetchBridge';
@@ -23,6 +23,8 @@ import PredictionMarketsPage from './components/PredictionMarketsPage';
 import MarketCalendarPage from './components/MarketCalendarPage';
 import ScreenerPage from './components/ScreenerPage';
 import MacroPage from './components/MacroPage';
+import CheckoutPage from './components/CheckoutPage'
+
 
 const LANDING_VISIBILITY_KEY = 'marketmind.hideLanding';
 
@@ -36,11 +38,12 @@ const shouldHideLandingByDefault = () => {
 
 function App() {
     const { isLoaded, isSignedIn } = useAuth();
+    const { user } = useUser();
     const [showLanding, setShowLanding] = useState(() => !shouldHideLandingByDefault());
     const [activePage, setActivePage] = useState('dashboard');
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [sharedTicker, setSharedTicker] = useState(null);
-
+    const [checkoutAnnual, setCheckoutAnnual] = useState(false);
     useEffect(() => {
         if (!isLoaded || !isSignedIn || typeof window === 'undefined') {
             return;
@@ -101,7 +104,21 @@ function App() {
                         {activePage === 'dashboard' && <DashboardPage setActivePage={setActivePage} />}
                         {activePage === 'search' && <SearchPage initialTicker={sharedTicker} onClearInitialTicker={() => setSharedTicker(null)} />}
                         {activePage === 'screener' && <ScreenerPage onSearchTicker={handleScreenerNav} />}
-                        {activePage === 'plan' && <PlanPage/>}
+                        {activePage === 'plan' && 
+                        <PlanPage
+                        onNavigateToCheckout={(isAnnual) => {
+                            setCheckoutAnnual(isAnnual);
+                            setActivePage('checkout');
+                        }}
+                        />}
+                                        {activePage === 'checkout' && (
+                    <CheckoutPage
+                        isAnnual={checkoutAnnual}
+                        userEmail={user?.emailAddresses[0]?.emailAddress}   // pass from your auth context if available
+                        onBack={() => setActivePage('plans')}
+                        onSuccess={() => setActivePage('dashboard')}
+                    />
+)}
                         {activePage === 'macro' && <MacroPage />}
                         {activePage === 'watchlist' && <WatchlistPage />}
                         {activePage === 'portfolio' && <PaperTradingPage />}
