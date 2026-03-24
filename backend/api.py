@@ -37,7 +37,7 @@ except ImportError:
 
 # --- Imports ---
 from news_fetcher import get_general_news
-from models import create_dataset, ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict
+from models import create_dataset, ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict, gru_train, gru_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
@@ -987,6 +987,9 @@ def predict_stock(model, ticker):
         elif model == "LSTM":
             period = "1y"
             min_rows = 120
+        elif model == "GRU":
+            period = "2y"
+            min_rows = 150
         else:
             return jsonify({"error": "Unknown model"}), 400
 
@@ -1005,6 +1008,9 @@ def predict_stock(model, ticker):
         elif model == "LSTM":
             lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
             preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device, days_ahead=7)
+        elif model == "GRU":
+            gru_model, scaler_X, scaler_y, device = gru_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+            preds = gru_predict(df, gru_model, scaler_X, scaler_y, device, days_ahead=7)
         else:
             return jsonify({"error": "Unknown model"}), 400
         
