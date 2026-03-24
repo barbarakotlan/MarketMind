@@ -55,14 +55,21 @@ def create_subscription():
             items=[{"price": price_id}],
             payment_behavior="default_incomplete",
             payment_settings={"save_default_payment_method": "on_subscription"},
-            expand=["latest_invoice.payment_intent"],
+            expand=["latest_invoice"],
+        )
+
+        invoice = stripe.Invoice.retrieve(
+            subscription.latest_invoice.id,
+            expand=["confirmation_secret"],
         )
 
         return jsonify({
-            "clientSecret":   subscription.latest_invoice.payment_intent.client_secret,
+            "clientSecret":   invoice.confirmation_secret.client_secret,
             "subscriptionId": subscription.id,
             "customerId":     customer.id,
         })
+
+       
 
     except stripe.error.StripeError as e:
         return jsonify({"error": e.user_message}), 400
