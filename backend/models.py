@@ -495,6 +495,142 @@ def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30,
         print(f"LSTM error: {e}")
         return None
 
+# GRU Class
+class GRU(nn.Module):
+    '''
+    GRU model for time series forecasting.
+    Simpler than LSTM: only a hidden state (no cell state).
+    '''
+    def __init__(self, input_size, hidden_size, layer_size, output_size):
+        super(GRU, self).__init__()
+        self.hidden_size = hidden_size
+        self.layer_size = layer_size
+        self.gru = nn.GRU(input_size, hidden_size, layer_size, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x, device):
+        batch_size = x.size(0)
+        h0 = torch.zeros(self.layer_size, batch_size, self.hidden_size).to(device)
+        out, _ = self.gru(x, h0)
+        out = self.fc(out[:, -1, :])  # take last timestep → (batch, output_size)
+        return out
+
+
+def gru_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001, val_frac=0.15):
+    '''Train a GRU model for stock price prediction.
+
+    Leak-free data pipeline:
+      1. Compute features on the full dataset.
+         Every feature (lags, rolling means, volatility, momentum) is
+         backward-looking: the value at time t depends only on data at t
+         and earlier, so computing them before the split introduces no
+         future leakage.
+      2. Split the feature rows chronologically into train / val / test
+         BEFORE any normalization.  Default fractions: ~70% / 15% / 15%.
+      3. Fit MinMaxScaler exclusively on TRAINING sequences, then apply
+         that fitted scaler (no refit) to val and test sequences.
+    '''
+    # --- 1. Feature engineering on full dataset (no leakage: all backward-looking) ---
+    X_all, _, df_features = prepare_ml_data(df, lookback)
+    y_all = df_features[['Close']].values
+
+    # --- 2. Chronological train / val / test split (before any scaling) ---
+    n = len(X_all)
+    test_size = int(n * val_frac)
+    val_size  = int(n * val_frac)
+    val_end   = n - test_size
+    train_end = val_end - val_size
+
+    X_train, y_train = X_all[:train_end],        y_all[:train_end]
+    X_val,   y_val   = X_all[train_end:val_end], y_all[train_end:val_end]
+    X_test,  y_test  = X_all[val_end:],          y_all[val_end:]
+
+    # --- 3. Sliding-window sequences for each split ---
+    X_train_raw, y_train_raw = create_sequences(X_train, y_train, seq_len, days_ahead)
+    X_val_raw,   y_val_raw   = create_sequences(X_val,   y_val,   seq_len, days_ahead)
+    X_test_raw,  y_test_raw  = create_sequences(X_test,  y_test,  seq_len, days_ahead)
+
+    if len(X_train_raw) == 0:
+        raise ValueError("Not enough training data to form sequences.")
+
+    n_train, seq_len_, n_features = X_train_raw.shape
+
+    # --- 4. Fit scalers on TRAINING data only; transform val and test ---
+    scaler_X = MinMaxScaler()
+    scaler_y = MinMaxScaler()
+
+    X_train_scaled = scaler_X.fit_transform(X_train_raw.reshape(-1, n_features)).reshape(n_train, seq_len_, n_features)
+    y_train_scaled = scaler_y.fit_transform(y_train_raw.reshape(-1, 1)).reshape(y_train_raw.shape)
+
+    X_val_scaled = scaler_X.transform(X_val_raw.reshape(-1, n_features)).reshape(X_val_raw.shape)
+    y_val_scaled = scaler_y.transform(y_val_raw.reshape(-1, 1)).reshape(y_val_raw.shape)
+
+    X_test_scaled = scaler_X.transform(X_test_raw.reshape(-1, n_features)).reshape(X_test_raw.shape)
+    y_test_scaled = scaler_y.transform(y_test_raw.reshape(-1, 1)).reshape(y_test_raw.shape)
+
+    # --- 5. Build and train model ---
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    X_train_t = torch.FloatTensor(X_train_scaled)
+    y_train_t = torch.FloatTensor(y_train_scaled)
+    X_val_t   = torch.FloatTensor(X_val_scaled)
+    y_val_t   = torch.FloatTensor(y_val_scaled)
+
+    model = GRU(n_features, hidden_size, layer_size, days_ahead).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.MSELoss()
+    loader = DataLoader(TensorDataset(X_train_t, y_train_t), batch_size=batch_size, shuffle=True)
+
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            pred = model(xb, device)
+            loss = criterion(pred, yb)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        if (epoch + 1) % 10 == 0 and len(X_val_raw) > 0:
+            model.eval()
+            with torch.no_grad():
+                val_pred = model(X_val_t.to(device), device)
+                val_loss = criterion(val_pred, y_val_t.to(device))
+            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f} | Val Loss: {val_loss:.6f}")
+
+    return model, scaler_X, scaler_y, device
+
+
+def gru_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30, days_ahead=7):
+    '''Predict future stock prices using the trained GRU model.
+
+    Uses the same scaler that was fitted on training data only during
+    gru_train — no refitting here.
+    '''
+    try:
+        model.eval()
+
+        X_features, _, _ = prepare_ml_data(df, lookback)
+
+        last_window_raw = X_features[-seq_len:]
+        n_features = last_window_raw.shape[1]
+        last_window_scaled = scaler_X.transform(last_window_raw.reshape(-1, n_features)).reshape(1, seq_len, n_features)
+        last_window_tensor = torch.FloatTensor(last_window_scaled).to(device)
+
+        with torch.no_grad():
+            pred_scaled = model(last_window_tensor, device).cpu().numpy()
+
+        pred_prices = scaler_y.inverse_transform(pred_scaled.reshape(-1, 1)).flatten()
+
+        return np.array(pred_prices)
+
+    except Exception as e:
+        print(f"GRU error: {e}")
+        return None
+
+
 # Transformer Class
 class TransformerModel(nn.Module):
     '''
