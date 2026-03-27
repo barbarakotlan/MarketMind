@@ -258,4 +258,48 @@ describe('SearchPage', () => {
         expect(await screen.findByTestId('stock-data')).toHaveTextContent('Microsoft (MSFT)');
         expect(await screen.findByText('Microsoft latest')).toBeInTheDocument();
     });
+
+    test('adds a side-by-side comparison bundle on the search page', async () => {
+        apiRequest.mockImplementation((url) => {
+            switch (url) {
+                case API_ENDPOINTS.SCREENER():
+                    return Promise.resolve({ gainers: [], losers: [], active: [] });
+                case API_ENDPOINTS.STOCK('NVDA'):
+                    return Promise.resolve(buildStock('NVDA', 'NVIDIA'));
+                case API_ENDPOINTS.CHART('NVDA', '14d'):
+                    return Promise.resolve({ label: 'NVDA chart' });
+                case API_ENDPOINTS.PREDICT_ENSEMBLE('NVDA'):
+                    return Promise.resolve({ label: 'NVDA prediction', recentClose: 100, recentPredicted: 110, predictions: [] });
+                case API_ENDPOINTS.NEWS('NVIDIA'):
+                    return Promise.resolve(buildNews('NVIDIA news'));
+                case API_ENDPOINTS.STOCK('AMD'):
+                    return Promise.resolve(buildStock('AMD', 'Advanced Micro Devices'));
+                case API_ENDPOINTS.CHART('AMD', '14d'):
+                    return Promise.resolve({ label: 'AMD chart' });
+                case API_ENDPOINTS.PREDICT_ENSEMBLE('AMD'):
+                    return Promise.resolve({ label: 'AMD prediction', recentClose: 100, recentPredicted: 108, predictions: [] });
+                case API_ENDPOINTS.NEWS('Advanced Micro Devices'):
+                    return Promise.resolve(buildNews('AMD news'));
+                default:
+                    if (url === API_ENDPOINTS.SEARCH_SYMBOLS('NV') || url === API_ENDPOINTS.SEARCH_SYMBOLS('NVD') || url === API_ENDPOINTS.SEARCH_SYMBOLS('NVDA') || url === API_ENDPOINTS.SEARCH_SYMBOLS('AM') || url === API_ENDPOINTS.SEARCH_SYMBOLS('AMD')) {
+                        return Promise.resolve([]);
+                    }
+                    throw new Error(`Unhandled API request: ${url}`);
+            }
+        });
+
+        render(<SearchPage />);
+
+        fireEvent.change(screen.getByPlaceholderText('e.g., AAPL or Apple'), { target: { value: 'NVDA' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+        expect(await screen.findByTestId('stock-data')).toHaveTextContent('NVIDIA (NVDA)');
+
+        fireEvent.change(screen.getByPlaceholderText('Compare (e.g., MSFT)'), { target: { value: 'AMD' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+        expect(await screen.findByText(/NVDA vs AMD/i)).toBeInTheDocument();
+        expect(await screen.findByText(/Advanced Micro Devices/i)).toBeInTheDocument();
+        expect(screen.getByTestId('stock-chart')).toHaveTextContent('AMD');
+    });
 });

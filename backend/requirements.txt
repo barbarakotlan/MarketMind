@@ -44,6 +44,7 @@ pycparser==2.23
 pydantic==2.12.4
 pydantic_core==2.41.5
 python-dateutil==2.9.0.post0
+python-docx==1.1.2
 python-dotenv==1.2.1
 PyJWT==2.10.1
 psycopg[binary]==3.2.12
@@ -77,4 +78,3 @@ yarl==1.22.0
 yfinance==0.2.66
 zipp==3.23.0
 dr-manhattan
-openbb
