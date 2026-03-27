@@ -5,6 +5,7 @@ const LEGACY_API_ORIGINS = new Set(['http://127.0.0.1:5001', 'http://localhost:5
 let tokenGetter = null;
 let originalFetch = null;
 let interceptorInstalled = false;
+let authSessionState = 'unknown';
 
 const getOrigin = (url) => {
     try {
@@ -44,6 +45,26 @@ export const clearAuthTokenGetter = () => {
     tokenGetter = null;
 };
 
+export const setAuthSessionState = (nextState) => {
+    authSessionState = nextState || 'unknown';
+};
+
+const waitForTokenGetter = async (timeoutMs = 1500) => {
+    if (tokenGetter) {
+        return tokenGetter;
+    }
+
+    const startedAt = Date.now();
+    while (!tokenGetter && Date.now() - startedAt < timeoutMs) {
+        if (authSessionState === 'signedOut') {
+            break;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 25));
+    }
+
+    return tokenGetter;
+};
+
 export const installAuthFetchInterceptor = () => {
     if (interceptorInstalled || typeof window === 'undefined') return;
     originalFetch = window.fetch.bind(window);
@@ -60,21 +81,37 @@ export const installAuthFetchInterceptor = () => {
                 ? normalizedUrl
                 : (normalizedUrl !== requestUrl ? new Request(normalizedUrl, input) : input);
 
-        if (!tokenGetter) {
+        const buildHeaders = (sourceHeaders, tokenValue) => {
+            const headers = new Headers(
+                sourceHeaders || (normalizedInput instanceof Request ? normalizedInput.headers : undefined)
+            );
+            if (tokenValue && !headers.has('Authorization')) {
+                headers.set('Authorization', `Bearer ${tokenValue}`);
+            }
+            return headers;
+        };
+
+        const activeTokenGetter = tokenGetter || (authSessionState !== 'signedOut' ? await waitForTokenGetter() : null);
+
+        if (!activeTokenGetter) {
             return originalFetch(normalizedInput, init);
         }
 
-        const token = await tokenGetter();
-        if (!token) {
-            return originalFetch(normalizedInput, init);
+        let token = await activeTokenGetter({ skipCache: false });
+        let headers = buildHeaders(init.headers, token);
+        let response = await originalFetch(normalizedInput, { ...init, headers });
+
+        // If token is stale/expired, retry once with a fresh token.
+        if (response.status === 401) {
+            const latestTokenGetter = tokenGetter || activeTokenGetter;
+            const freshToken = latestTokenGetter ? await latestTokenGetter({ skipCache: true }) : null;
+            if (freshToken && freshToken !== token) {
+                headers = buildHeaders(init.headers, freshToken);
+                response = await originalFetch(normalizedInput, { ...init, headers });
+            }
         }
 
-        const headers = new Headers(init.headers || (normalizedInput instanceof Request ? normalizedInput.headers : undefined));
-        if (!headers.has('Authorization')) {
-            headers.set('Authorization', `Bearer ${token}`);
-        }
-
-        return originalFetch(normalizedInput, { ...init, headers });
+        return response;
     };
 
     interceptorInstalled = true;

@@ -8,8 +8,36 @@
  *   - .env.production (for production builds)
  */
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1']);
+
+const resolveApiBaseUrl = () => {
+    const configuredBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+
+    if (typeof window === 'undefined') {
+        return configuredBase;
+    }
+
+    try {
+        const parsed = new URL(configuredBase, window.location.origin);
+        const currentHost = window.location.hostname;
+
+        if (
+            LOOPBACK_HOSTS.has(parsed.hostname) &&
+            LOOPBACK_HOSTS.has(currentHost) &&
+            parsed.hostname !== currentHost
+        ) {
+            parsed.hostname = currentHost;
+            return parsed.toString().replace(/\/$/, '');
+        }
+
+        return parsed.toString().replace(/\/$/, '');
+    } catch (error) {
+        return configuredBase;
+    }
+};
+
 // API Base URL from environment variable or default to localhost
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+const API_BASE_URL = resolveApiBaseUrl();
 
 const buildApiUrl = (path, params = {}) => {
     const query = new URLSearchParams();
@@ -74,6 +102,19 @@ export const API_ENDPOINTS = {
     // Watchlist
     WATCHLIST: `${API_BASE_URL}/watchlist`,
     WATCHLIST_ITEM: (ticker) => `${API_BASE_URL}/watchlist/${ticker}`,
+
+    // MarketMindAI
+    MARKETMIND_AI_BOOTSTRAP: `${API_BASE_URL}/marketmind-ai/bootstrap`,
+    MARKETMIND_AI_CHATS: `${API_BASE_URL}/marketmind-ai/chats`,
+    MARKETMIND_AI_CHAT_DETAIL: (chatId) => `${API_BASE_URL}/marketmind-ai/chats/${chatId}`,
+    MARKETMIND_AI_CHAT_DELETE: (chatId) => `${API_BASE_URL}/marketmind-ai/chats/${chatId}`,
+    MARKETMIND_AI_CONTEXT: (ticker) => buildApiUrl('/marketmind-ai/context', { ticker }),
+    MARKETMIND_AI_CHAT: `${API_BASE_URL}/marketmind-ai/chat`,
+    MARKETMIND_AI_ARTIFACT_PREFLIGHT: `${API_BASE_URL}/marketmind-ai/artifacts/preflight`,
+    MARKETMIND_AI_ARTIFACTS: `${API_BASE_URL}/marketmind-ai/artifacts`,
+    MARKETMIND_AI_ARTIFACT: (artifactId) => `${API_BASE_URL}/marketmind-ai/artifacts/${artifactId}`,
+    MARKETMIND_AI_ARTIFACT_DOWNLOAD: (artifactId, versionId) =>
+        `${API_BASE_URL}/marketmind-ai/artifacts/${artifactId}/versions/${versionId}/download`,
     
     // Notifications
     NOTIFICATIONS: `${API_BASE_URL}/notifications`,
