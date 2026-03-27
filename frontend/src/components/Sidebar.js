@@ -60,7 +60,7 @@ const NAV_GROUPS = [
 const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) => {
     const { isDarkMode, toggleDarkMode } = useDarkMode();
     const [newAlertCount, setNewAlertCount] = useState(0);
-
+    const [plan, setPlan] = useState(null);
     const theme = isDarkMode
         ? {
             aside: 'bg-gray-950 text-gray-100 border-r border-gray-800',
@@ -92,6 +92,11 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
         const interval = setInterval(checkAlerts, 15000);
         return () => clearInterval(interval);
     }, []);
+    useEffect(() => {
+    apiRequest(API_ENDPOINTS.CHECKOUT_PLAN_STATUS)
+        .then(data => setPlan(data.plan))
+        .catch(() => {});
+}, []);
 
     const handleNavClick = (pageName) => {
         if (pageName === 'notifications') {
@@ -179,6 +184,16 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             <div className={`flex-shrink-0 border-t p-2 ${theme.divider}`}>
                 <div className={`w-full flex items-center ${isCollapsed ? 'justify-center gap-2' : 'justify-between px-1'}`}>
                     <UserButton afterSignOutUrl="/" />
+                  
+{plan && (
+    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+        plan === 'pro' 
+            ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' 
+            : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+    }`}>
+        {plan === 'pro' ? '⚡ Pro' : 'Free'}
+    </span>
+)}
                     <button
                         onClick={toggleDarkMode}
                         className={`h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors duration-150 ${theme.iconButton}`}
