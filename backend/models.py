@@ -260,107 +260,6 @@ def calculate_metrics(actual, predicted):
         'mape': round(float(mape), 2)
     }
 
-# Neural Network Class (Unused)
-class NeuralNetwork(nn.Module):
-    """
-    Neural Network
-    """
-    def __init__(self, input_size, hidden_sizes):
-        super().__init__()
-        layers = []
-        prev_size = input_size
-
-        # Create hidden layers
-        for h in hidden_sizes:
-            layers.append(nn.Linear(prev_size, h))
-            layers.append(nn.ReLU())
-            prev_size = h
-
-        layers.append(nn.Linear(prev_size, 1))  # output layer
-        self.net = nn.Sequential(*layers)
-
-    def forward(self, x):
-        """
-        Forward pass
-        """
-        return self.net(x)
-
-# Artificial Neural Network prediction function (Unused)
-def ann_predict(df, days_ahead=7):
-    """
-    Neural Network prediction
-    """
-    # Setup data
-    df = df.copy()
-    df['H-L'] = df["High"] - df["Low"]
-    df['O-C'] = df["Open"] - df["Close"]
-    df['ma_7'] = df["Close"].rolling(window=7).mean()
-    df['ma_14'] = df["Close"].rolling(window=14).mean()
-    df['ma_21'] = df["Close"].rolling(window=21).mean()
-    df['std_7'] = df["Close"].rolling(window=7).std()
-
-    # Drop Today's data 
-    df = df[df.index < pd.Timestamp.today().normalize()]
-
-    # Data for forcasting
-    df["Target"] = df["Close"].shift(-days_ahead)
-
-    # Drop rows with NaN values
-    df = df.dropna()
-
-    # Setup df for ML
-    features = ['H-L','O-C','ma_7', 'ma_14', 'ma_21', 'std_7']
-    x = df[features].values
-    y = df["Target"].values
-
-    # Scale features
-    x_scaler = StandardScaler()
-    y_scaler = StandardScaler()
-    x = x_scaler.fit_transform(x)
-    y = y_scaler.fit_transform(y.reshape(-1, 1))
-
-    # Convert to tensors
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    x = torch.tensor(x, dtype=torch.float32).to(device)
-    y = torch.tensor(y, dtype=torch.float32).to(device)
-
-    # Model setup
-    hidden_sizes = [3]
-    model = NeuralNetwork(6, hidden_sizes).to(device)
-
-    # Create DataLoader for batching
-    train_loader = DataLoader(TensorDataset(x, y), batch_size=32, shuffle=False)
-    criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
-    # Train the model
-    for epoch in range(1000):
-        model.train()
-        total_loss = 0
-
-        for xb, yb in train_loader:
-            preds = model(xb)
-            loss = criterion(preds, yb)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item()
-
-    print(f"Epoch {epoch+1}, Loss: {total_loss/len(train_loader):.6f}")
-    
-    # Run ANN
-    # try:
-
-    #     df["Predicted_ANN"] = np.nan
-    #     # Get the last available date
-    #     last_date = df.index[-1]
-
-    # except Exception as e:
-    #     print(f"ANN error: {e}")
-    #     return None
-
 # LSTM Class
 class LSTM(nn.Module):
     '''
@@ -447,7 +346,7 @@ def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_
     return model, scaler_X, scaler_y, device
 
 # Long Short-Term Memory (LSTM) prediction function
-def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30, days_ahead=7):
+def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30):
     '''Predict future stock prices using the trained LSTM model'''
     try:
         model.eval()
@@ -522,31 +421,29 @@ class PositionalEncoding(nn.Module):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
-        # Build positional encoding matrix
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len).unsqueeze(1).float()
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
 
-        pe[:, 0::2] = torch.sin(position * div_term)   # even indices
-        pe[:, 1::2] = torch.cos(position * div_term)   # odd indices
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)                            # (1, max_len, d_model)
 
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        # x: (batch, seq_len, d_model)
         x = x + self.pe[:, :x.size(1), :]
         return self.dropout(x)
 
 # Train Transformer model
-def transformer_train(df, lookback=14, seq_len=60, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=50, batch_size=32, lr=0.001):
+def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=50, batch_size=32, lr=0.001):
     '''Train a Transformer model for stock price prediction'''
    # Prepare data
     X, y, _ = prepare_ml_data(df, lookback)
     y = y.reshape(-1, 1)
-    
+
     X_seq, y_seq = create_sequences(X, y, seq_len, days_ahead)
-    
+
     n_samples, seq_len_, n_features = X_seq.shape
     scaler_X = MinMaxScaler()
     scaler_y = MinMaxScaler()
@@ -589,7 +486,7 @@ def transformer_train(df, lookback=14, seq_len=60, days_ahead=7, d_model=64, nhe
 
     return model, scaler_X, scaler_y, device
 
-def transformer_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=60, days_ahead=7):
+def transformer_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30):
     '''Predict future stock prices using the trained Transformer model'''
     try:
         model.eval()
@@ -610,7 +507,7 @@ def transformer_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_
         # Inverse transform
         pred_prices = scaler_y.inverse_transform(pred_scaled.reshape(-1, 1)).flatten()
 
-        return pred_prices
+        return np.array(pred_prices)
 
     except Exception as e:
         print(f"Transformer error: {e}")
@@ -646,7 +543,7 @@ if __name__ == "__main__":
     model, scaler_X, scaler_y, device = lstm_train(df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
 
     # Predict
-    predictions = lstm_predict(df, model, scaler_X, scaler_y, device, lookback=lookback,seq_len=seq_len, days_ahead=days_ahead)
+    predictions = lstm_predict(df, model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
 
     # Output
     if predictions is not None:
@@ -660,7 +557,7 @@ if __name__ == "__main__":
     model, scaler_X, scaler_y, device = transformer_train(df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
 
     # Transformer Predict
-    predictions = transformer_predict(df, model, scaler_X, scaler_y, device, lookback=lookback,seq_len=seq_len, days_ahead=days_ahead)
+    predictions = transformer_predict(df, model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
 
     # Output 
     if predictions is not None:
