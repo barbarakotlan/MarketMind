@@ -44,7 +44,10 @@ class AppUser(Base):
     username: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
+    # Subscription fields
+    plan: Mapped[str] = mapped_column(Text, nullable=False, default="free", server_default="free")
+    subscription_status: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True, index=True)
 
 class WatchlistItem(Base):
     __tablename__ = "watchlist_items"
