@@ -228,6 +228,16 @@ def ensemble_predict(df, days_ahead=7):
     rf_pred = random_forest_predict(df, days_ahead)
     xgb_pred = xgboost_predict(df, days_ahead)
 
+    # LSTM Train and Predict
+    lstm_trained, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=30, days_ahead=days_ahead, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+    lstm_pred = lstm_predict(df, lstm_trained, scaler_X, scaler_y, device, lookback=14, seq_len=30)
+
+    # Transformer Train and Predict
+    transformer_trained, scaler_X, scaler_y, device = transformer_train(df, lookback=14, seq_len=30, days_ahead=days_ahead, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
+    transformer_pred = transformer_predict(df, transformer_trained, scaler_X, scaler_y, device, lookback=14, seq_len=30)
+
+
+
     # Store individual predictions
     if lr_pred is not None:
         predictions['linear_regression'] = lr_pred
@@ -235,6 +245,10 @@ def ensemble_predict(df, days_ahead=7):
         predictions['random_forest'] = rf_pred
     if xgb_pred is not None:
         predictions['xgboost'] = xgb_pred
+    if lstm_pred is not None:
+        predictions['lstm'] = lstm_pred
+    if transformer_pred is not None:
+        predictions['transformer'] = transformer_pred
 
     # Calculate ensemble (weighted average)
     if len(predictions) == 0:
@@ -528,7 +542,6 @@ if __name__ == "__main__":
     linear_reg = linear_regression_predict(df, days_ahead=7)
     random_forest = random_forest_predict(df, days_ahead=7)
     xgboost = xgboost_predict(df, days_ahead=7)
-    ensemble = ensemble_predict(df, days_ahead=7)
     print(f"Linear Regression: {linear_reg}")
     print(f"Random Forest: {random_forest}")
     if XGBOOST_AVAILABLE:
@@ -543,12 +556,12 @@ if __name__ == "__main__":
     model, scaler_X, scaler_y, device = lstm_train(df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
 
     # Predict
-    predictions = lstm_predict(df, model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
+    lstm_pred = lstm_predict(df, model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
 
     # Output
-    if predictions is not None:
+    if lstm_pred is not None:
         print("\nPredicted prices:")
-        for i, price in enumerate(predictions):
+        for i, price in enumerate(lstm_pred):
             print(f"Day {i+1} → ${price:.2f}")
 
 
@@ -557,10 +570,25 @@ if __name__ == "__main__":
     model, scaler_X, scaler_y, device = transformer_train(df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
 
     # Transformer Predict
-    predictions = transformer_predict(df, model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
+    transformer_pred = transformer_predict(df, model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
 
     # Output 
-    if predictions is not None:
+    if transformer_pred is not None:
         print("\nPredicted prices:")
-        for i, price in enumerate(predictions):
+        for i, price in enumerate(transformer_pred):
             print(f"Day {i+1} → ${price:.2f}")
+
+
+    ensemble, ensemble_pred = ensemble_predict(df, days_ahead=days_ahead)
+    if ensemble is not None:
+        print(f"\nEnsemble Predictions (Next {days_ahead} Days)")
+        for i, val in enumerate(ensemble, start=1):
+            print(f"Day {i}: {val:.2f}")
+
+        print(f"\nIndividual Model Predictions")
+        for model_name, preds in ensemble_pred.items():
+            print(f"\n{model_name}:")
+            for i, val in enumerate(preds, start=1):
+                print(f"Day {i}: {val:.2f}")
+    else:
+        print("No predictions available.")

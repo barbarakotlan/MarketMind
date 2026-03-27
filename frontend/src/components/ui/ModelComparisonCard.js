@@ -6,13 +6,9 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
     const modelLabels = {
         'linear_regression': 'Linear Regression',
         'random_forest': 'Random Forest',
-        'xgboost': 'XGBoost'
-    };
-
-    const modelIcons = {
-        'linear_regression': '📈',
-        'random_forest': '🌲',
-        'xgboost': '🚀'
+        'xgboost': 'XGBoost',
+        'lstm': 'LSTM',
+        'transformer': 'Transformer'
     };
 
     // Calculate average prediction for each model
@@ -49,7 +45,6 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
                     <div key={model} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center">
-                                <span className="text-2xl mr-2">{modelIcons[model]}</span>
                                 <div>
                                     <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
                                         {modelLabels[model]}
