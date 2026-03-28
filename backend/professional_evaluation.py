@@ -17,6 +17,17 @@ try:
 except:
     XGBOOST_AVAILABLE = False
 
+# Try deep models (PyTorch-based GRU/LSTM)
+try:
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader, TensorDataset
+    from sklearn.preprocessing import MinMaxScaler
+    from models import prepare_ml_data, create_sequences, LSTM as LSTMModel, GRU as GRUModel
+    DEEP_MODELS_AVAILABLE = True
+except Exception:
+    DEEP_MODELS_AVAILABLE = False
+
 from data_fetcher import prepare_data_for_ml
 
 
@@ -69,7 +80,7 @@ def create_fixed_features(df, lookback=30):
         features.append(col_name)
     
     # Fill NaN values
-    df[features] = df[features].fillna(method='ffill').fillna(method='bfill').fillna(0)
+    df[features] = df[features].ffill().bfill().fillna(0)
     
     assert len(features) == 42, f"Expected 42 features, got {len(features)}"
     
@@ -118,6 +129,118 @@ def train_models(X_train, y_train):
     return models
 
 
+DEEP_SEED = 42        # fixed seed → reproducible metrics every run
+FINETUNE_WINDOW = 60  # fine-tune on most recent N rows only, not full history
+FINETUNE_LR = 0.0001  # lower lr than initial training to avoid disrupting weights
+
+
+def _train_deep_for_backtest(X_train, y_train, model_type, seq_len=30,
+                              hidden_size=64, layer_size=2, batch_size=32, lr=0.001):
+    """
+    Train GRU or LSTM for 1-step-ahead backtest evaluation.
+
+    Fixed seed (DEEP_SEED) → same results every run, no metric variance from randomness.
+    Trains on all available training data — no val split holdout, which would remove
+    the most recent and most relevant sequences from training.
+    """
+    # Fixed seed: deterministic weight init and data shuffling every run
+    torch.manual_seed(DEEP_SEED)
+    np.random.seed(DEEP_SEED)
+
+    days_ahead = 1
+    X_seq, y_seq = create_sequences(X_train, y_train, seq_len, days_ahead)
+    if len(X_seq) == 0:
+        return None, None, None, None
+
+    n, sl, n_feat = X_seq.shape
+
+    scaler_X = MinMaxScaler()
+    scaler_y = MinMaxScaler()
+    X_sc = scaler_X.fit_transform(X_seq.reshape(-1, n_feat)).reshape(n, sl, n_feat)
+    y_sc = scaler_y.fit_transform(y_seq.reshape(-1, 1)).reshape(y_seq.shape)
+
+    # Match epochs to prediction pipeline: GRU converges faster (2 gates) vs LSTM (4 gates)
+    epochs = 50 if model_type == 'gru' else 100
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ModelClass = GRUModel if model_type == 'gru' else LSTMModel
+    model = ModelClass(n_feat, hidden_size, layer_size, days_ahead).to(device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.MSELoss()
+    loader = DataLoader(
+        TensorDataset(torch.FloatTensor(X_sc), torch.FloatTensor(y_sc)),
+        batch_size=batch_size, shuffle=True
+    )
+
+    for epoch in range(epochs):
+        model.train()
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            pred = model(xb, device)
+            loss = criterion(pred, yb)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+    return model, scaler_X, scaler_y, device
+
+def _finetune_deep_model(model, scaler_X, scaler_y, device, X_train, y_train,
+                          model_type, seq_len=30, batch_size=32):
+    """
+    Fine-tune an already-trained deep model on recent data only.
+
+    - Uses last FINETUNE_WINDOW rows (not full history) for targeted updates
+    - Lower learning rate (FINETUNE_LR) to make small, stable weight updates
+    - Scalers are NOT refit: refitting would invalidate the learned weight scale
+    - GRU=5 epochs, LSTM=10 epochs — preserving the 2:1 ratio
+    """
+    finetune_epochs = 5 if model_type == 'gru' else 10
+    days_ahead = 1
+
+    # Only use recent window — avoids large destabilising updates over full history
+    X_recent = X_train[-FINETUNE_WINDOW:]
+    y_recent = y_train[-FINETUNE_WINDOW:]
+
+    X_seq, y_seq = create_sequences(X_recent, y_recent, seq_len, days_ahead)
+    if len(X_seq) == 0:
+        return
+
+    n, sl, n_feat = X_seq.shape
+    X_sc = scaler_X.transform(X_seq.reshape(-1, n_feat)).reshape(n, sl, n_feat)
+    y_sc = scaler_y.transform(y_seq.reshape(-1, 1)).reshape(y_seq.shape)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=FINETUNE_LR)
+    criterion = nn.MSELoss()
+    loader = DataLoader(
+        TensorDataset(torch.FloatTensor(X_sc), torch.FloatTensor(y_sc)),
+        batch_size=batch_size, shuffle=True
+    )
+
+    model.train()
+    for _ in range(finetune_epochs):
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            pred = model(xb, device)
+            loss = criterion(pred, yb)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+
+def _predict_next_day_deep(model, scaler_X, scaler_y, device, window):
+    """
+    Given a (seq_len, n_features) numpy window, return the predicted next-day close price.
+    Scaler must be the one fitted on training data only (no refitting here).
+    """
+    seq_len, n_feat = window.shape
+    w_sc = scaler_X.transform(window.reshape(-1, n_feat)).reshape(1, seq_len, n_feat)
+    tensor = torch.FloatTensor(w_sc).to(device)
+    with torch.no_grad():
+        pred_sc = model(tensor, device).cpu().numpy()   # shape (1, 1)
+    return float(scaler_y.inverse_transform(pred_sc.reshape(-1, 1))[0, 0])
+
+
 def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
     """
     Professional rolling window backtesting
@@ -161,58 +284,123 @@ def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
     print(f"  ✓ Train: days 1-{test_start_idx} ({test_start_idx} days)")
     print(f"  ✓ Test: days {test_start_idx}-{len(df)} ({test_days} days)")
     
-    # 4. Rolling window predictions
+    # 4a. Optionally train deep models (GRU/LSTM) once on the training split
+    #     Deep models are trained once and use a sliding window over the test period.
+    #     They use prepare_ml_data features (different from the 42 sklearn features)
+    #     so we run the feature pipeline independently and align by date index.
+    deep_trained = {}   # mtype -> (model, scaler_X, scaler_y, device)
+    X_deep_all = None
+    df_deep = None
+    DEEP_SEQ_LEN = 30
+
+    if DEEP_MODELS_AVAILABLE:
+        print(f"[deep] Engineering features for GRU/LSTM...")
+        X_deep_all, _, df_deep = prepare_ml_data(df_raw, lookback=14)
+        y_deep_all = df_deep['Close'].values.reshape(-1, 1)
+
+        # Align training boundary: all deep rows whose date < test period start
+        test_start_date = df.index[test_start_idx]
+        deep_train_end = int(np.searchsorted(df_deep.index, test_start_date))
+
+        print(f"  ✓ Deep train rows: {deep_train_end}, features: {X_deep_all.shape[1]}")
+
+        for mtype in ('gru', 'lstm'):
+            epochs_for_type = 50 if mtype == 'gru' else 100
+            print(f"  → Training {mtype.upper()} ({epochs_for_type} epochs)...")
+            result = _train_deep_for_backtest(
+                X_deep_all[:deep_train_end],
+                y_deep_all[:deep_train_end],
+                model_type=mtype,
+                seq_len=DEEP_SEQ_LEN,
+            )
+            if result[0] is not None:
+                deep_trained[mtype] = result
+                print(f"  ✓ {mtype.upper()} trained")
+            else:
+                print(f"  ✗ {mtype.upper()} skipped (not enough data)")
+
+    # 4b. Rolling window predictions
     print(f"[3/6] Running rolling window backtest...")
-    
+
     predictions = {
         'random_forest': [],
         'xgboost': [] if XGBOOST_AVAILABLE else None,
         'linear_regression': [],
         'ensemble': []
     }
+    if 'gru' in deep_trained:
+        predictions['gru'] = []
+    if 'lstm' in deep_trained:
+        predictions['lstm'] = []
+
     actuals = []
     dates = []
-    
+
     models = None
     last_train_idx = None
-    
+
     for i in range(test_start_idx, len(df) - 1):
-        # Retrain models every retrain_frequency days or first iteration
-        if models is None or (i - test_start_idx) % retrain_frequency == 0:
+        step = i - test_start_idx
+        current_date = df.index[i]
+        deep_end = int(np.searchsorted(df_deep.index, current_date, side='right')) if df_deep is not None else 0
+
+        # Retrain sklearn models every retrain_frequency days or first iteration
+        if models is None or step % retrain_frequency == 0:
             train_data = df.iloc[:i]
             X_train = train_data[feature_cols].values
             y_train = train_data['Close'].values
-            
+
             print(f"  → Training at day {i} ({len(X_train)} samples)...")
             models = train_models(X_train, y_train)
             last_train_idx = i
-        
+
+        # Fine-tune deep models every retrain_frequency days (skip first iteration)
+        if deep_trained and step > 0 and step % retrain_frequency == 0:
+            for mtype, (d_model, sc_X, sc_y, dev) in deep_trained.items():
+                _finetune_deep_model(
+                    d_model, sc_X, sc_y, dev,
+                    X_deep_all[:deep_end],
+                    df_deep['Close'].values[:deep_end].reshape(-1, 1),
+                    model_type=mtype,
+                    seq_len=DEEP_SEQ_LEN,
+                )
+
         # Prepare test sample (1-day ahead prediction)
         X_test = df.iloc[i][feature_cols].values.reshape(1, -1)
         y_actual = df.iloc[i + 1]['Close']
-        
-        # Predict with each model
+
+        # Predict with each sklearn model
         pred_rf = models['random_forest'].predict(X_test)[0]
         predictions['random_forest'].append(pred_rf)
-        
+
         if XGBOOST_AVAILABLE and 'xgboost' in models:
             pred_xgb = models['xgboost'].predict(X_test)[0]
             predictions['xgboost'].append(pred_xgb)
-        
+
         pred_lr = models['linear_regression'].predict(X_test)[0]
         predictions['linear_regression'].append(pred_lr)
-        
-        # Ensemble (average)
+
+        # Ensemble (average of sklearn models)
         ensemble_preds = [pred_rf, pred_lr]
         if XGBOOST_AVAILABLE and 'xgboost' in models:
             ensemble_preds.append(pred_xgb)
         pred_ensemble = np.mean(ensemble_preds)
         predictions['ensemble'].append(pred_ensemble)
-        
+
+        # Deep model sliding-window predictions
+        for mtype, (d_model, sc_X, sc_y, dev) in deep_trained.items():
+            deep_i = deep_end - 1  # last deep feature row at or before current_date
+            if deep_i >= DEEP_SEQ_LEN - 1:
+                window = X_deep_all[deep_i - DEEP_SEQ_LEN + 1: deep_i + 1]
+                pred_deep = _predict_next_day_deep(d_model, sc_X, sc_y, dev, window)
+            else:
+                pred_deep = float(np.nan)
+            predictions[mtype].append(pred_deep)
+
         # Store actual
         actuals.append(y_actual)
         dates.append(df.index[i + 1])
-    
+
     print(f"  ✓ Generated {len(actuals)} predictions")
     
     # 5. Calculate metrics
@@ -234,25 +422,32 @@ def rolling_window_backtest(ticker, test_days=60, retrain_frequency=5):
     for model_name, preds in predictions.items():
         if preds is None or len(preds) == 0:
             continue
-        
-        preds_array = np.array(preds)
-        
+
+        preds_array = np.array(preds, dtype=float)
+
+        # For deep models some early rows may be NaN — filter them out
+        valid_mask = ~np.isnan(preds_array)
+        if valid_mask.sum() < 2:
+            continue
+        preds_valid = preds_array[valid_mask]
+        actuals_valid = actuals_array[valid_mask]
+
         # Accuracy metrics
-        mae = mean_absolute_error(actuals_array, preds_array)
-        rmse = np.sqrt(mean_squared_error(actuals_array, preds_array))
-        mape = mean_absolute_percentage_error(actuals_array, preds_array) * 100
-        r2 = r2_score(actuals_array, preds_array)
-        
+        mae = mean_absolute_error(actuals_valid, preds_valid)
+        rmse = np.sqrt(mean_squared_error(actuals_valid, preds_valid))
+        mape = mean_absolute_percentage_error(actuals_valid, preds_valid) * 100
+        r2 = r2_score(actuals_valid, preds_valid)
+
         # Directional accuracy
-        if len(preds_array) > 1:
-            pred_direction = np.diff(preds_array) > 0
-            actual_direction = np.diff(actuals_array) > 0
+        if len(preds_valid) > 1:
+            pred_direction = np.diff(preds_valid) > 0
+            actual_direction = np.diff(actuals_valid) > 0
             dir_acc = np.mean(pred_direction == actual_direction) * 100
         else:
             dir_acc = 0
-        
+
         results['models'][model_name] = {
-            'predictions': [float(p) for p in preds],
+            'predictions': [None if np.isnan(p) else float(p) for p in preds_array],
             'metrics': {
                 'mae': round(float(mae), 2),
                 'rmse': round(float(rmse), 2),

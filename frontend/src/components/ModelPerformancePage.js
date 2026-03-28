@@ -100,7 +100,7 @@ const ModelPerformancePage = () => {
                     </div>
                     
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        <strong>Note:</strong> Evaluation runs rolling window backtesting with 3 ML models. Takes 10-30 seconds.
+                        <strong>Note:</strong> Backtesting with 5 ML models (RF, XGBoost, LinReg, GRU, LSTM). Takes 10–30 seconds.
                     </p>
                 </form>
             </div>
@@ -117,7 +117,7 @@ const ModelPerformancePage = () => {
                 <div className="text-center py-12 animate-fade-in">
                     <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
                     <p className="mt-4 text-gray-600 dark:text-gray-400">Running professional evaluation...</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">Training 3 ML models and backtesting...</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">Training RF, XGBoost, LinReg, GRU, LSTM and backtesting...</p>
                 </div>
             )}
 
@@ -263,9 +263,10 @@ const ModelPerformancePage = () => {
                     <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                         <h3 className="font-semibold text-yellow-900 dark:text-yellow-300 mb-2">About This Evaluation</h3>
                         <ul className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
-                            <li>• Rolling window backtesting with model retraining every 5 days</li>
+                            <li>• Rolling window backtesting with sklearn model retraining every 5 days</li>
                             <li>• 42 engineered features (lagged prices, MAs, volatility, momentum, volume)</li>
-                            <li>• Models: Random Forest, XGBoost, Linear Regression, Ensemble</li>
+                            <li>• Models: Random Forest, XGBoost, Linear Regression, Ensemble, GRU, LSTM</li>
+                            <li>• GRU &amp; LSTM trained once on the training split, evaluated with a sliding 30-day window (1-step-ahead)</li>
                             <li>• Metrics: MAE (avg error), MAPE (% error), R² (accuracy), Directional (up/down correct)</li>
                             <li>• Past performance does not guarantee future results</li>
                         </ul>
