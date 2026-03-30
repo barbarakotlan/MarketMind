@@ -60,6 +60,7 @@ sseclient-py==1.8.0
 statsmodels==0.14.5
 schedule==1.2.2
 SQLAlchemy==2.0.44
+stripe==15.0.0
 alembic==1.14.1
 threadpoolctl==3.6.0
 torch>=2.0
