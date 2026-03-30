@@ -2474,6 +2474,19 @@ def public_api_v2_calendar_economic():
     )
 
 
+@app.route('/healthz', methods=['GET'])
+def healthz():
+    return jsonify(
+        {
+            "status": "ok",
+            "service": "marketmind-backend",
+            "environment": FLASK_ENV,
+            "persistence_mode": PERSISTENCE_MODE,
+            "public_api_enabled": _public_api_enabled(),
+        }
+    ), 200
+
+
 # --- Main execution ---
 if __name__ == '__main__':
     init_db()  # Initialize the SQLite history table

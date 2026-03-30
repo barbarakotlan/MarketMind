@@ -47,6 +47,7 @@ class RouteRegistrationSmokeTests(unittest.TestCase):
             "/search-symbols": {"GET"},
             "/calendar/economic": {"GET"},
             "/macro/overview": {"GET"},
+            "/healthz": {"GET"},
             "/api/public/docs": {"GET"},
             "/api/public/openapi/v1.yaml": {"GET"},
             "/api/public/v1/health": {"GET"},
