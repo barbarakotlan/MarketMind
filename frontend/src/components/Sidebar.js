@@ -70,24 +70,6 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
     const [recentAiChats, setRecentAiChats] = useState([]);
     const [activeAiChatId, setActiveAiChatId] = useState(null);
 
-    const theme = isDarkMode
-        ? {
-            aside: 'bg-gray-950 text-gray-100 border-r border-gray-800',
-            divider: 'border-gray-800',
-            inactiveNav: 'text-gray-400 hover:bg-gray-800 hover:text-white',
-            iconButton: 'text-gray-400 hover:bg-gray-800 hover:text-white',
-            sectionLabel: 'text-gray-500',
-            collapsedMark: 'text-gray-200',
-        }
-        : {
-            aside: 'bg-white text-gray-900 border-r border-gray-200 shadow-sm',
-            divider: 'border-gray-200',
-            inactiveNav: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
-            iconButton: 'text-gray-500 hover:bg-gray-100 hover:text-gray-900',
-            sectionLabel: 'text-gray-500',
-            collapsedMark: 'text-gray-900',
-        };
-
     const checkAlerts = () => {
         apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true))
             .then(data => {
@@ -176,8 +158,8 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                         isCollapsed ? 'justify-center' : 'justify-start space-x-3'
                     } ${
                         isActive
-                            ? 'bg-blue-600 text-white'
-                            : theme.inactiveNav
+                            ? 'bg-mm-accent-primary text-white shadow-card'
+                            : 'text-mm-text-secondary hover:bg-mm-surface-subtle hover:text-mm-text-primary'
                     }`}
                 >
                     <Icon className="w-5 h-5 flex-shrink-0" />
@@ -185,14 +167,14 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                     {isAlerts && newAlertCount > 0 && (
                         <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
                             <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 animate-ping"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-mm-negative"></span>
                         </span>
                     )}
                 </button>
 
                 {!isCollapsed && item.page === 'marketmindAI' && recentAiChats.length > 0 ? (
-                    <div className="mt-2 ml-4 space-y-1 border-l border-gray-200 pl-3 dark:border-gray-800">
-                        <p className={`px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${theme.sectionLabel}`}>
+                    <div className="mt-2 ml-4 space-y-1 border-l border-mm-border pl-3">
+                        <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-mm-text-tertiary">
                             Recent
                         </p>
                         {recentAiChats.map((chat) => {
@@ -202,8 +184,8 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                                     key={chat.id}
                                     className={`w-full rounded-lg px-2 py-2 text-left text-xs transition ${
                                         isChatActive
-                                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
-                                            : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'
+                                            ? 'border border-mm-accent-primary/20 bg-mm-accent-primary/10 text-mm-accent-primary'
+                                            : 'text-mm-text-secondary hover:bg-mm-surface-subtle hover:text-mm-text-primary'
                                     }`}
                                 >
                                     <div className="flex items-start gap-2">
@@ -222,7 +204,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                                         <button
                                             type="button"
                                             onClick={(event) => handleRecentAiChatDelete(event, chat.id)}
-                                            className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-200 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                                            className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-mm-text-tertiary transition hover:bg-mm-surface-subtle hover:text-mm-text-primary"
                                             aria-label={`Delete chat ${chat.title}`}
                                             title="Delete chat"
                                         >
@@ -240,12 +222,12 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
 
     return (
         <aside
-            className={`fixed left-0 top-0 h-screen z-40 flex flex-col transition-all duration-300 ${theme.aside} ${
+            className={`fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-mm-border bg-mm-surface text-mm-text-primary shadow-card transition-all duration-300 ${
                 isCollapsed ? 'w-16' : 'w-56'
             }`}
         >
             {/* Brand bar */}
-            <div className={`flex items-center justify-between h-14 px-3 border-b flex-shrink-0 ${theme.divider}`}>
+            <div className="flex h-14 flex-shrink-0 items-center justify-between border-b border-mm-border px-3">
                 {!isCollapsed && (
                     <img
                         src={isDarkMode ? 'marketmindtransparent.png' : 'marketmindtransparentdark.png'}
@@ -254,11 +236,11 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                     />
                 )}
                 {isCollapsed && (
-                    <span className={`text-lg font-bold mx-auto ${theme.collapsedMark}`}>M</span>
+                    <span className="mx-auto text-lg font-bold text-mm-text-primary">M</span>
                 )}
                 <button
                     onClick={onToggleCollapse}
-                    className={`p-1 rounded-md transition-colors flex-shrink-0 ${theme.iconButton}`}
+                    className="flex-shrink-0 rounded-md p-1 text-mm-text-secondary transition-colors hover:bg-mm-surface-subtle hover:text-mm-text-primary"
                     aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 >
                     {isCollapsed ? (
@@ -275,8 +257,8 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                     <div key={gi}>
                         {group.label && (
                             isCollapsed
-                                ? <hr className={`mx-1 my-2 ${theme.divider}`} />
-                                : <p className={`px-2 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider ${theme.sectionLabel}`}>{group.label}</p>
+                                ? <hr className="mx-1 my-2 border-mm-border" />
+                                : <p className="px-2 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-mm-text-tertiary">{group.label}</p>
                         )}
                         {group.items.map(item => (
                             <NavItem key={item.page} item={item} />
@@ -286,7 +268,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             </nav>
 
             {/* Footer: profile + dark mode toggle */}
-            <div className={`flex-shrink-0 border-t p-2 ${theme.divider}`}>
+            <div className="flex-shrink-0 border-t border-mm-border p-2">
                 <div className={`w-full flex items-center ${isCollapsed ? 'justify-center gap-2' : 'justify-between px-1'}`}>
                     <UserButton afterSignOutUrl="/" />
                   
@@ -301,7 +283,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
 )}
                     <button
                         onClick={toggleDarkMode}
-                        className={`h-8 w-8 inline-flex items-center justify-center rounded-md transition-colors duration-150 ${theme.iconButton}`}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-mm-text-secondary transition-colors duration-150 hover:bg-mm-surface-subtle hover:text-mm-text-primary"
                         aria-label="Toggle dark mode"
                         title={isDarkMode ? 'Light Mode' : 'Dark Mode'}
                     >

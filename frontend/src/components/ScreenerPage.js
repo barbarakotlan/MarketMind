@@ -53,23 +53,23 @@ const ScreenerPage = ({ onSearchTicker }) => {
         const active = sortConfig.key === sortKey;
         return (
             <th
-                className={`px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-800 dark:hover:text-white select-none ${className}`}
+                className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider cursor-pointer text-mm-text-secondary hover:text-mm-text-primary select-none ${className}`}
                 onClick={() => requestSort(sortKey)}
             >
                 <span className="flex items-center gap-1">
                     {label}
-                    <ArrowUpDown className={`w-3 h-3 ${active ? 'text-blue-500' : 'opacity-40'}`} />
+                    <ArrowUpDown className={`w-3 h-3 ${active ? 'text-mm-accent-primary' : 'opacity-40'}`} />
                 </span>
             </th>
         );
     };
 
     return (
-        <div className="p-6 animate-fade-in">
+        <div className="ui-page animate-fade-in">
             {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Stock Screener</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            <div className="ui-page-header">
+                <h1 className="ui-page-title">Stock Screener</h1>
+                <p className="ui-page-subtitle mt-1">
                     Live market movers — click any row to research the stock
                 </p>
             </div>
@@ -80,10 +80,10 @@ const ScreenerPage = ({ onSearchTicker }) => {
                     <button
                         key={key}
                         onClick={() => { setActiveTab(key); setSortConfig({ key: 'percent_change', dir: key === 'active' ? 'desc' : (key === 'losers' ? 'asc' : 'desc') }); }}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
                             activeTab === key
-                                ? 'bg-blue-600 text-white shadow'
-                                : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                ? 'ui-button-primary'
+                                : 'ui-button-secondary'
                         }`}
                     >
                         <Icon className={`w-4 h-4 ${activeTab === key ? 'text-white' : color}`} />
@@ -93,22 +93,22 @@ const ScreenerPage = ({ onSearchTicker }) => {
             </div>
 
             {/* Table */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+            <div className="ui-panel overflow-hidden">
                 {loading && (
                     <div className="p-12 text-center">
-                        <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent mb-3"></div>
-                        <p className="text-gray-500 dark:text-gray-400">Loading market data…</p>
+                        <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-mm-accent-primary border-t-transparent mb-3"></div>
+                        <p className="text-mm-text-secondary">Loading market data…</p>
                     </div>
                 )}
                 {error && !loading && (
-                    <div className="p-8 text-center text-red-500 dark:text-red-400">{error}</div>
+                    <div className="ui-banner ui-banner-error m-6 text-center">{error}</div>
                 )}
                 {!loading && !error && (
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                            <thead className="bg-mm-surface-subtle border-b border-mm-border">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol</th>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-mm-text-secondary uppercase tracking-wider">Symbol</th>
                                     <SortTh label="Price"    sortKey="price"          />
                                     <SortTh label="Change %"  sortKey="percent_change" />
                                     <SortTh label="Mkt Cap"  sortKey="market_cap"     />
@@ -119,34 +119,34 @@ const ScreenerPage = ({ onSearchTicker }) => {
                                     <th className="px-4 py-3"></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                            <tbody className="divide-y divide-mm-border">
                                 {rows.map((stock) => {
                                     const pos = (stock.percent_change ?? 0) >= 0;
                                     return (
                                         <tr
                                             key={stock.symbol}
-                                            className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors cursor-pointer"
+                                            className="hover:bg-mm-surface-subtle transition-colors cursor-pointer group"
                                             onClick={() => onSearchTicker && onSearchTicker(stock.symbol)}
                                         >
                                             <td className="px-4 py-3">
-                                                <div className="font-bold text-gray-900 dark:text-white">{stock.symbol}</div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[160px]">{stock.name}</div>
+                                                <div className="font-semibold text-mm-text-primary">{stock.symbol}</div>
+                                                <div className="text-xs text-mm-text-secondary truncate max-w-[160px]">{stock.name}</div>
                                             </td>
-                                            <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                                            <td className="px-4 py-3 font-medium text-mm-text-primary">
                                                 ${fmt(stock.price)}
                                             </td>
-                                            <td className={`px-4 py-3 font-semibold ${pos ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                            <td className={`px-4 py-3 font-semibold ${pos ? 'text-mm-positive' : 'text-mm-negative'}`}>
                                                 {pos ? '+' : ''}{stock.percent_change !== null ? (stock.percent_change * 100).toFixed(2) : '—'}%
                                             </td>
-                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmt(stock.market_cap, '$')}</td>
-                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmt(stock.volume)}</td>
-                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                                            <td className="px-4 py-3 text-mm-text-secondary">{fmt(stock.market_cap, '$')}</td>
+                                            <td className="px-4 py-3 text-mm-text-secondary">{fmt(stock.volume)}</td>
+                                            <td className="px-4 py-3 text-mm-text-secondary">
                                                 {stock.pe_forward !== null ? stock.pe_forward.toFixed(1) : '—'}
                                             </td>
-                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">${fmt(stock.year_high)}</td>
-                                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400">${fmt(stock.year_low)}</td>
+                                            <td className="px-4 py-3 text-mm-text-secondary">${fmt(stock.year_high)}</td>
+                                            <td className="px-4 py-3 text-mm-text-secondary">${fmt(stock.year_low)}</td>
                                             <td className="px-4 py-3">
-                                                <ExternalLink className="w-4 h-4 text-blue-500 opacity-0 group-hover:opacity-100" />
+                                                <ExternalLink className="w-4 h-4 text-mm-accent-primary opacity-0 group-hover:opacity-100" />
                                             </td>
                                         </tr>
                                     );
@@ -154,12 +154,12 @@ const ScreenerPage = ({ onSearchTicker }) => {
                             </tbody>
                         </table>
                         {rows.length === 0 && (
-                            <p className="text-center py-8 text-gray-500 dark:text-gray-400">No data available.</p>
+                            <p className="py-8 text-center text-mm-text-secondary">No data available.</p>
                         )}
                     </div>
                 )}
             </div>
-            <p className="text-xs text-gray-400 dark:text-gray-600 mt-3">
+            <p className="mt-3 text-xs text-mm-text-tertiary">
                 Data via Yahoo Finance · Click any row to open in Search
             </p>
         </div>

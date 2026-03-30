@@ -795,7 +795,7 @@ const LandingPage = ({ onEnterApp }) => {
     };
 
     return (
-        <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
+        <div className="app-shell min-h-screen">
 
             {/* ── Navbar ─────────────────────────────────────────────── */}
             <nav className={`fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b transition-shadow duration-300 ${
@@ -819,20 +819,20 @@ const LandingPage = ({ onEnterApp }) => {
                         transition={{ duration: 0.5, delay: 0.1 }}
                     >
                         <button onClick={() => scrollTo('features')}
-                            className="hidden md:block text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+                            className="hidden md:block text-sm text-mm-text-secondary hover:text-mm-text-primary transition-colors">
                             Features
                         </button>
                         <button onClick={() => scrollTo('how-it-works')}
-                            className="hidden md:block text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+                            className="hidden md:block text-sm text-mm-text-secondary hover:text-mm-text-primary transition-colors">
                             How it works
                         </button>
                         <button onClick={toggleDarkMode}
-                            className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                            className="rounded-control p-2 text-mm-text-secondary hover:bg-mm-surface-subtle transition-colors"
                             aria-label="Toggle dark mode">
                             {isDarkMode ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4" />}
                         </button>
                         <button onClick={onEnterApp}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors active:scale-95">
+                            className="ui-button-primary px-4 py-2 active:scale-95">
                             Launch App
                         </button>
                     </motion.div>
@@ -861,7 +861,7 @@ const LandingPage = ({ onEnterApp }) => {
                             animate="show"
                         >
                             <motion.div variants={blurUp}
-                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700/50 mb-6">
+                                className="ui-chip mb-6 inline-flex items-center gap-2 px-3 py-1.5">
                                 <Zap className="w-3.5 h-3.5 text-blue-500" />
                                 <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 tracking-wide uppercase">
                                     AI-Powered Market Intelligence
@@ -878,25 +878,25 @@ const LandingPage = ({ onEnterApp }) => {
                             </motion.h1>
 
                             <motion.p variants={blurUp}
-                                className="text-xl text-gray-500 dark:text-gray-400 leading-relaxed mb-8 max-w-lg">
+                                className="mb-8 max-w-lg text-xl leading-relaxed text-mm-text-secondary">
                                 MarketMind combines ensemble machine learning, live market data, and professional analytics
                                 into a single platform for smarter investment decisions.
                             </motion.p>
 
                             <motion.div variants={blurUp} className="flex flex-col sm:flex-row gap-3">
                                 <button onClick={onEnterApp}
-                                    className="group flex items-center justify-center gap-2 px-7 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all active:scale-95 shadow-lg shadow-blue-500/25">
+                                    className="ui-button-primary group flex items-center justify-center gap-2 px-7 py-3.5 active:scale-95">
                                     Launch App
                                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                                 </button>
                                 <button onClick={() => scrollTo('features')}
-                                    className="flex items-center justify-center gap-2 px-7 py-3.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold rounded-xl transition-colors">
+                                    className="ui-button-secondary flex items-center justify-center gap-2 px-7 py-3.5">
                                     Explore Features
                                     <ChevronDown className="w-4 h-4" />
                                 </button>
                             </motion.div>
 
-                            <motion.div variants={blurUp} className="mt-10 flex items-center gap-6 text-sm text-gray-500 dark:text-gray-400">
+                            <motion.div variants={blurUp} className="mt-10 flex items-center gap-6 text-sm text-mm-text-secondary">
                                 <div className="flex items-center gap-1.5">
                                     <Shield className="w-4 h-4 text-emerald-500" />
                                     <span>Risk-free paper trading</span>
@@ -926,8 +926,8 @@ const LandingPage = ({ onEnterApp }) => {
                     {STATS.map(({ value, label, sub }) => (
                         <motion.div key={label} variants={blurUp} className="text-center">
                             <p className="text-4xl font-extrabold text-blue-600 dark:text-blue-400">{value}</p>
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">{label}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{sub}</p>
+                            <p className="mt-1 text-sm font-semibold text-mm-text-primary">{label}</p>
+                            <p className="mt-0.5 text-xs text-mm-text-secondary">{sub}</p>
                         </motion.div>
                     ))}
                 </motion.div>
@@ -948,11 +948,11 @@ const LandingPage = ({ onEnterApp }) => {
                             Everything You Need
                         </motion.p>
                         <motion.h2 variants={blurUp}
-                            className="text-4xl font-extrabold text-gray-900 dark:text-white mb-4">
+                            className="mb-4 text-4xl font-extrabold text-mm-text-primary">
                             Built for serious investors
                         </motion.h2>
                         <motion.p variants={blurUp}
-                            className="text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
+                            className="mx-auto max-w-2xl text-lg text-mm-text-secondary">
                             From AI price predictions to SEC filings — all the tools a professional analyst uses,
                             packaged into a clean, fast interface.
                         </motion.p>
@@ -969,13 +969,13 @@ const LandingPage = ({ onEnterApp }) => {
                             <motion.div
                                 key={title}
                                 variants={blurUp}
-                                className={`group bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 hover:shadow-xl ${glow} hover:-translate-y-1 transition-all duration-300 cursor-default`}
+                                className={`ui-panel group p-6 hover:shadow-elevated ${glow} hover:-translate-y-1 transition-all duration-300 cursor-default`}
                             >
                                 <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${accent} mb-4`}>
                                     <Icon className="w-5 h-5 text-white" />
                                 </div>
-                                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">{title}</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{desc}</p>
+                                <h3 className="mb-2 text-base font-semibold text-mm-text-primary">{title}</h3>
+                                <p className="text-sm leading-relaxed text-mm-text-secondary">{desc}</p>
                             </motion.div>
                         ))}
                     </motion.div>
@@ -997,7 +997,7 @@ const LandingPage = ({ onEnterApp }) => {
                             $ ./run_workflow.sh
                         </motion.p>
                         <motion.h2 variants={blurUp}
-                            className="text-4xl font-extrabold text-gray-900 dark:text-white">
+                            className="text-4xl font-extrabold text-mm-text-primary">
                             Up and running in 3 steps
                         </motion.h2>
                     </motion.div>
@@ -1016,11 +1016,11 @@ const LandingPage = ({ onEnterApp }) => {
                         viewport={viewportOnce}
                     >
                         <motion.h2 variants={blurUp}
-                            className="text-3xl font-extrabold text-gray-900 dark:text-white mb-3">
+                            className="mb-3 text-3xl font-extrabold text-mm-text-primary">
                             6 asset classes, one platform
                         </motion.h2>
                         <motion.p variants={blurUp}
-                            className="text-gray-500 dark:text-gray-400 mb-10">
+                            className="mb-10 text-mm-text-secondary">
                             Stocks, Forex, Crypto, Commodities, Macro indicators, and Options — all connected.
                         </motion.p>
                         <motion.div variants={stagger(0.06)} className="flex flex-wrap justify-center gap-3">
@@ -1030,7 +1030,7 @@ const LandingPage = ({ onEnterApp }) => {
                                 { icon: Bitcoin,         label: 'Crypto',      color: 'text-orange-500 bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800' },
                                 { icon: Target,          label: 'Commodities', color: 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800' },
                                 { icon: Globe,           label: 'Macro',       color: 'text-cyan-500 bg-cyan-50 dark:bg-cyan-900/20 border-cyan-200 dark:border-cyan-800' },
-                                { icon: Activity,        label: 'Options',     color: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800' },
+                                { icon: Activity,        label: 'Options',     color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' },
                             ].map(({ icon: Icon, label, color }) => (
                                 <motion.div key={label} variants={blurUp}
                                     className={`flex items-center gap-2.5 px-5 py-2.5 rounded-full border text-sm font-semibold ${color}`}>
@@ -1062,7 +1062,7 @@ const LandingPage = ({ onEnterApp }) => {
                                 Create a free account to sync your portfolio, watchlist, and alerts across sessions.
                             </p>
                             <button onClick={onEnterApp}
-                                className="group inline-flex items-center gap-2 px-8 py-4 bg-white text-blue-700 font-bold rounded-xl hover:bg-blue-50 transition-colors active:scale-95 shadow-lg">
+                                className="group inline-flex items-center gap-2 rounded-control bg-white px-8 py-4 font-semibold text-blue-700 shadow-lg transition-colors hover:bg-blue-50 active:scale-95">
                                 Launch MarketMind
                                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                             </button>
@@ -1079,10 +1079,10 @@ const LandingPage = ({ onEnterApp }) => {
                         alt="MarketMind"
                         className="h-7 w-auto object-contain opacity-70"
                     />
-                    <p className="text-sm text-gray-400 dark:text-gray-500">
+                    <p className="text-sm text-mm-text-tertiary">
                         © {new Date().getFullYear()} MarketMind. All rights reserved.
                     </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-600">
+                    <p className="text-xs text-mm-text-tertiary">
                         For educational use only. Not financial advice.
                     </p>
                 </div>

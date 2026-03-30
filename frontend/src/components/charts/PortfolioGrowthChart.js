@@ -26,6 +26,9 @@ function PortfolioGrowthChart({ onDataFetched }) {
     const [history, setHistory] = useState(null);
     const [error, setError] = useState('');
     const [activePeriod, setActivePeriod] = useState('ytd');
+    const isDarkMode = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    const chartTextColor = isDarkMode ? '#CBD5E1' : '#64748B';
+    const chartGridColor = isDarkMode ? 'rgba(148, 163, 184, 0.18)' : 'rgba(148, 163, 184, 0.14)';
 
     const fetchHistory = (period) => {
         setHistory(null); // Clear old data, show loading
@@ -113,16 +116,16 @@ function PortfolioGrowthChart({ onDataFetched }) {
                     grid: { display: false },
                     ticks: {
                         display: true,
-                        color: '#6B7280',
+                        color: chartTextColor,
                         maxTicksLimit: 6, // Limit x-axis labels to prevent overcrowding
                         maxRotation: 0
                     }
                 },
                 y: {
-                    grid: { color: 'rgba(200, 200, 200, 0.1)' },
+                    grid: { color: chartGridColor },
                     ticks: {
                         display: true,
-                        color: '#6B7280',
+                        color: chartTextColor,
                         callback: function(value) {
                             return '$' + value.toLocaleString();
                         }
@@ -132,20 +135,21 @@ function PortfolioGrowthChart({ onDataFetched }) {
             interaction: { intersect: false, mode: 'nearest', axis: 'x' },
         };
         return { data, options };
-    }, [history]);
+    }, [chartGridColor, chartTextColor, history]);
 
     const summary = history?.summary;
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg animate-fade-in border border-gray-200 dark:border-gray-700">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Portfolio Performance</h2>
-            <div className="flex items-center space-x-1 bg-gray-100 dark:bg-gray-900 p-1 rounded-lg mb-4 max-w-max">
+        <div className="ui-panel animate-fade-in p-4 sm:p-6">
+            <p className="ui-section-label mb-3">Performance</p>
+            <h2 className="text-2xl font-semibold text-mm-text-primary mb-4">Portfolio Performance</h2>
+            <div className="flex items-center space-x-1 rounded-control border border-mm-border bg-mm-surface-subtle p-1 mb-4 max-w-max">
                 {portfolioTimeFrames.map((frame) => (
                     <button
                         key={frame.value}
                         onClick={() => fetchHistory(frame.value)}
                         className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors duration-200 ${
-                            activePeriod === frame.value ? 'bg-green-600 text-white shadow' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                            activePeriod === frame.value ? 'bg-mm-accent-primary text-white shadow-card' : 'text-mm-text-secondary hover:bg-mm-surface hover:text-mm-text-primary'
                         }`}
                     >
                         {frame.label}
@@ -153,39 +157,39 @@ function PortfolioGrowthChart({ onDataFetched }) {
                 ))}
             </div>
 
-            {error && <div className="text-center p-8 text-gray-500 dark:text-gray-400">{error}</div>}
+            {error && <div className="text-center p-8 text-mm-text-secondary">{error}</div>}
             {!history && !error && (
                 <div className="h-80 flex items-center justify-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-green-600 border-t-transparent"></div>
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-mm-accent-primary border-t-transparent"></div>
                 </div>
             )}
 
             {history && summary && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Summary Card */}
-                    <div className="md:col-span-1 p-4 border rounded-lg bg-gray-50 dark:bg-gray-800/50 dark:border-gray-700">
-                        <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">Summary ({summary.period.toUpperCase()})</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{summary.start_date} to {summary.end_date}</p>
+                    <div className="md:col-span-1 ui-panel-subtle p-4">
+                        <h3 className="text-lg font-semibold text-mm-text-primary">Summary ({summary.period.toUpperCase()})</h3>
+                        <p className="text-xs text-mm-text-tertiary">{summary.start_date} to {summary.end_date}</p>
                         <div className="mt-4 space-y-2">
                             <div className="flex justify-between">
-                                <span className="text-sm text-gray-600 dark:text-gray-400">Ending market value</span>
-                                <span className="text-sm font-semibold text-gray-900 dark:text-white">${summary.end_value.toLocaleString()}</span>
+                                <span className="text-sm text-mm-text-secondary">Ending market value</span>
+                                <span className="text-sm font-semibold text-mm-text-primary">${summary.end_value.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-sm text-gray-600 dark:text-gray-400">Wealth generated</span>
-                                <span className={`text-sm font-semibold ${summary.wealth_generated >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                <span className="text-sm text-mm-text-secondary">Wealth generated</span>
+                                <span className={`text-sm font-semibold ${summary.wealth_generated >= 0 ? 'text-mm-positive' : 'text-mm-negative'}`}>
                                     {summary.wealth_generated >= 0 ? '+' : ''}${summary.wealth_generated.toLocaleString()}
                                 </span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-sm text-gray-600 dark:text-gray-400">Return (cumulative)</span>
-                                <span className={`text-sm font-semibold ${summary.return_cumulative_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                <span className="text-sm text-mm-text-secondary">Return (cumulative)</span>
+                                <span className={`text-sm font-semibold ${summary.return_cumulative_pct >= 0 ? 'text-mm-positive' : 'text-mm-negative'}`}>
                                     {summary.return_cumulative_pct.toFixed(2)}%
                                 </span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-sm text-gray-600 dark:text-gray-400">Return (annualized)</span>
-                                <span className={`text-sm font-semibold ${summary.return_annualized_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                <span className="text-sm text-mm-text-secondary">Return (annualized)</span>
+                                <span className={`text-sm font-semibold ${summary.return_annualized_pct >= 0 ? 'text-mm-positive' : 'text-mm-negative'}`}>
                                     {summary.return_annualized_pct.toFixed(2)}%
                                 </span>
                             </div>

@@ -1,11 +1,21 @@
 import React, { useState } from 'react';
-import { Building2, Search, TrendingUp, DollarSign, BarChart3, Target, Calendar, FileText, ExternalLink } from 'lucide-react';
+import {
+    Building2,
+    Search,
+    TrendingUp,
+    DollarSign,
+    BarChart3,
+    Target,
+    Calendar,
+    FileText,
+    ExternalLink,
+} from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const TABS = [
-    { key: 'overview',   label: 'Overview' },
+    { key: 'overview', label: 'Overview' },
     { key: 'financials', label: 'Financials' },
-    { key: 'filings',    label: 'SEC Filings' },
+    { key: 'filings', label: 'SEC Filings' },
 ];
 
 const fmtBig = (val, prefix = '') => {
@@ -14,61 +24,73 @@ const fmtBig = (val, prefix = '') => {
     if (isNaN(num)) return '—';
     const abs = Math.abs(num);
     if (abs >= 1e12) return `${prefix}${(num / 1e12).toFixed(2)}T`;
-    if (abs >= 1e9)  return `${prefix}${(num / 1e9).toFixed(2)}B`;
-    if (abs >= 1e6)  return `${prefix}${(num / 1e6).toFixed(2)}M`;
+    if (abs >= 1e9) return `${prefix}${(num / 1e9).toFixed(2)}B`;
+    if (abs >= 1e6) return `${prefix}${(num / 1e6).toFixed(2)}M`;
     return `${prefix}${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 const INCOME_ROWS = [
-    { label: 'Revenue',          key: 'revenue' },
-    { label: 'Gross Profit',     key: 'gross_profit' },
+    { label: 'Revenue', key: 'revenue' },
+    { label: 'Gross Profit', key: 'gross_profit' },
     { label: 'Operating Income', key: 'operating_income' },
-    { label: 'Net Income',       key: 'net_income' },
-    { label: 'EBITDA',           key: 'ebitda' },
-    { label: 'EPS',              key: 'eps', raw: true },
+    { label: 'Net Income', key: 'net_income' },
+    { label: 'EBITDA', key: 'ebitda' },
+    { label: 'EPS', key: 'eps', raw: true },
 ];
 
 const BALANCE_ROWS = [
-    { label: 'Total Assets',       key: 'total_assets' },
-    { label: 'Total Liabilities',  key: 'total_liab' },
-    { label: 'Total Equity',       key: 'total_equity' },
+    { label: 'Total Assets', key: 'total_assets' },
+    { label: 'Total Liabilities', key: 'total_liab' },
+    { label: 'Total Equity', key: 'total_equity' },
     { label: 'Cash & Equivalents', key: 'cash' },
-    { label: 'Total Debt',         key: 'total_debt' },
-    { label: 'Working Capital',    key: 'working_capital' },
+    { label: 'Total Debt', key: 'total_debt' },
+    { label: 'Working Capital', key: 'working_capital' },
 ];
 
 const CASHFLOW_ROWS = [
-    { label: 'Operating Cash Flow',  key: 'operating' },
-    { label: 'Investing Cash Flow',  key: 'investing' },
-    { label: 'Financing Cash Flow',  key: 'financing' },
+    { label: 'Operating Cash Flow', key: 'operating' },
+    { label: 'Investing Cash Flow', key: 'investing' },
+    { label: 'Financing Cash Flow', key: 'financing' },
     { label: 'Capital Expenditures', key: 'capex' },
-    { label: 'Free Cash Flow',       key: 'free_cf' },
+    { label: 'Free Cash Flow', key: 'free_cf' },
 ];
+
+const metricToneClass = {
+    accent: 'text-mm-accent-primary',
+    positive: 'text-mm-positive',
+    warning: 'text-mm-warning',
+    tertiary: 'text-mm-text-tertiary',
+};
+
+const sectionTitleClass = 'text-2xl font-semibold text-mm-text-primary mb-6';
 
 const FinancialTable = ({ title, rows, data }) => {
     if (!data || data.length === 0) return null;
-    const periods = data.map(d => d.period);
+    const periods = data.map((d) => d.period);
+
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h3>
+        <div className="ui-panel overflow-hidden">
+            <div className="px-5 py-4 border-b border-mm-border">
+                <h3 className="text-sm font-semibold text-mm-text-primary">{title}</h3>
             </div>
             <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+                    <thead className="bg-mm-surface-subtle">
                         <tr>
-                            <th className="px-5 py-2.5 text-left text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Metric</th>
-                            {periods.map(p => (
-                                <th key={p} className="px-5 py-2.5 text-right text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">{p}</th>
+                            <th className="px-5 py-2.5 text-left text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">Metric</th>
+                            {periods.map((p) => (
+                                <th key={p} className="px-5 py-2.5 text-right text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">
+                                    {p}
+                                </th>
                             ))}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    <tbody className="divide-y divide-mm-border">
                         {rows.map(({ label, key, raw }) => (
-                            <tr key={key} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                                <td className="px-5 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{label}</td>
-                                {data.map(d => (
-                                    <td key={d.period} className="px-5 py-2.5 text-right text-gray-900 dark:text-white">
+                            <tr key={key} className="hover:bg-mm-surface-subtle/80">
+                                <td className="px-5 py-2.5 text-mm-text-secondary font-medium">{label}</td>
+                                {data.map((d) => (
+                                    <td key={d.period} className="px-5 py-2.5 text-right text-mm-text-primary">
                                         {raw ? fmtBig(d[key]) : fmtBig(d[key], '$')}
                                     </td>
                                 ))}
@@ -81,14 +103,25 @@ const FinancialTable = ({ title, rows, data }) => {
     );
 };
 
-const MetricCard = ({ title, value, icon: Icon, color = 'blue' }) => (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+const MetricCard = ({ title, value, icon: Icon, tone = 'accent' }) => (
+    <div className="ui-panel-subtle p-4">
         <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-600 dark:text-gray-400">{title}</span>
-            {Icon && <Icon className={`w-4 h-4 text-${color}-600 dark:text-${color}-400`} />}
+            <span className="text-sm text-mm-text-secondary">{title}</span>
+            {Icon && <Icon className={`w-4 h-4 ${metricToneClass[tone] || metricToneClass.accent}`} />}
         </div>
-        <p className="text-xl font-bold text-gray-900 dark:text-white">{value}</p>
+        <p className="text-xl font-semibold text-mm-text-primary">{value}</p>
     </div>
+);
+
+const TabButton = ({ active, children, onClick }) => (
+    <button
+        onClick={onClick}
+        className={active
+            ? 'rounded-control bg-mm-accent-primary px-5 py-2 text-sm font-semibold text-white shadow-card'
+            : 'rounded-control border border-mm-border bg-mm-surface px-5 py-2 text-sm font-semibold text-mm-text-secondary transition hover:bg-mm-surface-subtle hover:text-mm-text-primary'}
+    >
+        {children}
+    </button>
 );
 
 const FundamentalsPage = () => {
@@ -126,7 +159,6 @@ const FundamentalsPage = () => {
             return;
         }
 
-        // Backend already returns snake_case keys — use directly
         setFundamentals(ov);
 
         if (financialsRes.status === 'fulfilled' && !financialsRes.value?.error) {
@@ -142,8 +174,8 @@ const FundamentalsPage = () => {
         const num = parseFloat(value);
         if (isNaN(num)) return value;
         if (Math.abs(num) >= 1e12) return `${prefix}${(num / 1e12).toFixed(2)}T${suffix}`;
-        else if (Math.abs(num) >= 1e9) return `${prefix}${(num / 1e9).toFixed(2)}B${suffix}`;
-        else if (Math.abs(num) >= 1e6) return `${prefix}${(num / 1e6).toFixed(2)}M${suffix}`;
+        if (Math.abs(num) >= 1e9) return `${prefix}${(num / 1e9).toFixed(2)}B${suffix}`;
+        if (Math.abs(num) >= 1e6) return `${prefix}${(num / 1e6).toFixed(2)}M${suffix}`;
         return `${prefix}${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffix}`;
     };
 
@@ -155,128 +187,113 @@ const FundamentalsPage = () => {
     };
 
     return (
-        <div className="container mx-auto px-6 py-8 max-w-7xl">
-            {/* Header */}
-            <div className="text-center mb-8 animate-fade-in">
-                <div className="flex items-center justify-center mb-2">
-                    <Building2 className="w-10 h-10 text-indigo-600 dark:text-indigo-400 mr-3" />
-                    <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Company Fundamentals</h1>
+        <div className="ui-page animate-fade-in space-y-8">
+            <div className="ui-page-header text-center">
+                <div className="flex items-center justify-center mb-3">
+                    <div className="mr-3 inline-flex items-center justify-center rounded-control border border-mm-accent-primary/15 bg-mm-accent-primary/10 p-3">
+                        <Building2 className="w-8 h-8 text-mm-accent-primary" />
+                    </div>
+                    <h1 className="ui-page-title">Company Fundamentals</h1>
                 </div>
-                <p className="text-gray-600 dark:text-gray-400">
+                <p className="ui-page-subtitle">
                     Comprehensive financial data and metrics for publicly traded companies
                 </p>
             </div>
 
-            {/* Search Box */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8 animate-fade-in">
-                <form onSubmit={handleSearch} className="flex gap-4">
+            <div className="ui-panel p-6">
+                <form onSubmit={handleSearch} className="flex gap-4 flex-col md:flex-row">
                     <div className="flex-1 relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-mm-text-tertiary" />
                         <input
                             type="text"
                             value={ticker}
                             onChange={(e) => setTicker(e.target.value.toUpperCase())}
                             placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
-                            className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                            className="ui-input pl-10"
                         />
                     </div>
                     <button
                         type="submit"
                         disabled={loading || !ticker.trim()}
-                        className={`px-8 py-3 rounded-lg font-semibold transition-all ${
-                            loading || !ticker.trim()
-                                ? 'bg-gray-400 cursor-not-allowed'
-                                : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'
-                        }`}
+                        className={`px-8 py-3 ${loading || !ticker.trim() ? 'ui-button-secondary cursor-not-allowed opacity-60' : 'ui-button-primary'}`}
                     >
                         {loading ? 'Searching...' : 'Search'}
                     </button>
                 </form>
             </div>
 
-            {/* Loading */}
             {loading && (
                 <div className="text-center py-12">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
-                    <p className="mt-4 text-gray-600 dark:text-gray-400">Loading fundamentals...</p>
+                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-mm-accent-primary border-t-transparent"></div>
+                    <p className="mt-4 text-mm-text-secondary">Loading fundamentals...</p>
                 </div>
             )}
 
-            {/* Error */}
             {error && (
-                <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-6 py-4 rounded-lg mb-8">
+                <div className="rounded-card border border-mm-negative/20 bg-mm-negative/10 px-6 py-4 text-mm-negative">
                     {error}
                 </div>
             )}
 
-            {/* Data view */}
             {fundamentals && !loading && (
-                <div className="space-y-6 animate-fade-in">
-                    {/* Tab bar */}
-                    <div className="flex gap-2">
-                        {TABS.map(tab => (
-                            <button
+                <div className="space-y-6">
+                    <div className="flex flex-wrap gap-2">
+                        {TABS.map((tab) => (
+                            <TabButton
                                 key={tab.key}
+                                active={activeTab === tab.key}
                                 onClick={() => setActiveTab(tab.key)}
-                                className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                    activeTab === tab.key
-                                        ? 'bg-indigo-600 text-white shadow'
-                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                }`}
                             >
                                 {tab.label}
-                            </button>
+                            </TabButton>
                         ))}
                     </div>
 
-                    {/* ── Overview tab ── */}
                     {activeTab === 'overview' && (
                         <div className="space-y-6">
-                            {/* Company Header */}
-                            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-xl p-8 border border-indigo-100 dark:border-indigo-800">
-                                <div className="flex items-start justify-between mb-4">
+                            <div className="ui-panel-elevated p-8">
+                                <p className="ui-section-label mb-3">Company Snapshot</p>
+                                <div className="flex items-start justify-between mb-4 gap-6 flex-col lg:flex-row">
                                     <div>
-                                        <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                                        <h2 className="text-3xl font-semibold text-mm-text-primary mb-2">
                                             {fundamentals.name}
                                         </h2>
-                                        <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
-                                            <span className="font-semibold">{fundamentals.symbol}</span>
+                                        <div className="flex flex-wrap items-center gap-3 text-sm text-mm-text-secondary">
+                                            <span className="font-semibold text-mm-text-primary">{fundamentals.symbol}</span>
                                             <span>•</span>
                                             <span>{fundamentals.exchange}</span>
                                             <span>•</span>
                                             <span>{fundamentals.currency}</span>
                                         </div>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">Sector</p>
-                                        <p className="text-lg font-bold text-gray-900 dark:text-white">{fundamentals.sector}</p>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{fundamentals.industry}</p>
+                                    <div className="text-left lg:text-right">
+                                        <p className="ui-section-label mb-2">Sector</p>
+                                        <p className="text-lg font-semibold text-mm-text-primary">{fundamentals.sector}</p>
+                                        <p className="text-sm text-mm-text-secondary mt-1">{fundamentals.industry}</p>
                                     </div>
                                 </div>
                                 {fundamentals.description !== 'N/A' && (
-                                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+                                    <p className="text-mm-text-secondary leading-relaxed">
                                         {fundamentals.description}
                                     </p>
                                 )}
                             </div>
 
-                            {/* Key Metrics */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
-                                    <BarChart3 className="w-6 h-6 mr-2 text-indigo-600" />
+                            <div className="ui-panel p-6">
+                                <h3 className={`${sectionTitleClass} flex items-center`}>
+                                    <BarChart3 className="w-6 h-6 mr-2 text-mm-accent-primary" />
                                     Key Metrics
                                 </h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <MetricCard title="Market Cap" value={formatNumber(fundamentals.market_cap, '$')} icon={DollarSign} color="green" />
-                                    <MetricCard title="P/E Ratio" value={formatNumber(fundamentals.pe_ratio)} icon={Target} color="blue" />
-                                    <MetricCard title="EPS" value={formatNumber(fundamentals.eps, '$')} icon={TrendingUp} color="purple" />
-                                    <MetricCard title="Beta" value={formatNumber(fundamentals.beta)} icon={BarChart3} color="orange" />
+                                    <MetricCard title="Market Cap" value={formatNumber(fundamentals.market_cap, '$')} icon={DollarSign} tone="accent" />
+                                    <MetricCard title="P/E Ratio" value={formatNumber(fundamentals.pe_ratio)} icon={Target} tone="accent" />
+                                    <MetricCard title="EPS" value={formatNumber(fundamentals.eps, '$')} icon={TrendingUp} tone="accent" />
+                                    <MetricCard title="Beta" value={formatNumber(fundamentals.beta)} icon={BarChart3} tone="warning" />
                                 </div>
                             </div>
 
-                            {/* Valuation */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Valuation Metrics</h3>
+                            <div className="ui-panel p-6">
+                                <h3 className={sectionTitleClass}>Valuation Metrics</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                     <MetricCard title="Forward P/E" value={formatNumber(fundamentals.forward_pe)} />
                                     <MetricCard title="Trailing P/E" value={formatNumber(fundamentals.trailing_pe)} />
@@ -287,20 +304,18 @@ const FundamentalsPage = () => {
                                 </div>
                             </div>
 
-                            {/* Profitability */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Profitability</h3>
+                            <div className="ui-panel p-6">
+                                <h3 className={sectionTitleClass}>Profitability</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <MetricCard title="Profit Margin" value={formatPercent(fundamentals.profit_margin)} />
-                                    <MetricCard title="Operating Margin" value={formatPercent(fundamentals.operating_margin_ttm)} />
-                                    <MetricCard title="ROA (TTM)" value={formatPercent(fundamentals.return_on_assets_ttm)} />
-                                    <MetricCard title="ROE (TTM)" value={formatPercent(fundamentals.return_on_equity_ttm)} />
+                                    <MetricCard title="Profit Margin" value={formatPercent(fundamentals.profit_margin)} tone="positive" />
+                                    <MetricCard title="Operating Margin" value={formatPercent(fundamentals.operating_margin_ttm)} tone="positive" />
+                                    <MetricCard title="ROA (TTM)" value={formatPercent(fundamentals.return_on_assets_ttm)} tone="positive" />
+                                    <MetricCard title="ROE (TTM)" value={formatPercent(fundamentals.return_on_equity_ttm)} tone="positive" />
                                 </div>
                             </div>
 
-                            {/* Financial Performance */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Financial Performance</h3>
+                            <div className="ui-panel p-6">
+                                <h3 className={sectionTitleClass}>Financial Performance</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                     <MetricCard title="Revenue (TTM)" value={formatNumber(fundamentals.revenue_ttm, '$')} />
                                     <MetricCard title="Gross Profit (TTM)" value={formatNumber(fundamentals.gross_profit_ttm, '$')} />
@@ -311,9 +326,8 @@ const FundamentalsPage = () => {
                                 </div>
                             </div>
 
-                            {/* Price & Technicals */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Price & Technicals</h3>
+                            <div className="ui-panel p-6">
+                                <h3 className={sectionTitleClass}>Price & Technicals</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                     <MetricCard title="52-Week High" value={formatNumber(fundamentals.week_52_high, '$')} />
                                     <MetricCard title="52-Week Low" value={formatNumber(fundamentals.week_52_low, '$')} />
@@ -322,25 +336,23 @@ const FundamentalsPage = () => {
                                 </div>
                             </div>
 
-                            {/* Dividends */}
                             {fundamentals.dividend_per_share !== 'N/A' && fundamentals.dividend_per_share !== '0' && (
-                                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
-                                        <Calendar className="w-6 h-6 mr-2 text-green-600" />
+                                <div className="ui-panel p-6">
+                                    <h3 className={`${sectionTitleClass} flex items-center`}>
+                                        <Calendar className="w-6 h-6 mr-2 text-mm-positive" />
                                         Dividend Information
                                     </h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <MetricCard title="Dividend Per Share" value={formatNumber(fundamentals.dividend_per_share, '$')} />
-                                        <MetricCard title="Dividend Yield" value={formatPercent(fundamentals.dividend_yield)} />
-                                        <MetricCard title="Dividend Date" value={fundamentals.dividend_date || 'N/A'} />
-                                        <MetricCard title="Ex-Dividend Date" value={fundamentals.ex_dividend_date || 'N/A'} />
+                                        <MetricCard title="Dividend Per Share" value={formatNumber(fundamentals.dividend_per_share, '$')} tone="positive" />
+                                        <MetricCard title="Dividend Yield" value={formatPercent(fundamentals.dividend_yield)} tone="positive" />
+                                        <MetricCard title="Dividend Date" value={fundamentals.dividend_date || 'N/A'} tone="positive" />
+                                        <MetricCard title="Ex-Dividend Date" value={fundamentals.ex_dividend_date || 'N/A'} tone="positive" />
                                     </div>
                                 </div>
                             )}
 
-                            {/* Additional */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Additional Information</h3>
+                            <div className="ui-panel p-6">
+                                <h3 className={sectionTitleClass}>Additional Information</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                     <MetricCard title="Shares Outstanding" value={formatNumber(fundamentals.shares_outstanding)} />
                                     <MetricCard title="Book Value" value={formatNumber(fundamentals.book_value, '$')} />
@@ -350,7 +362,6 @@ const FundamentalsPage = () => {
                         </div>
                     )}
 
-                    {/* ── Financials tab ── */}
                     {activeTab === 'financials' && (
                         <div className="space-y-6">
                             {financials ? (
@@ -360,7 +371,7 @@ const FundamentalsPage = () => {
                                     <FinancialTable title="Cash Flow Statement" rows={CASHFLOW_ROWS} data={financials.cash_flow} />
                                 </>
                             ) : (
-                                <div className="text-center py-16 text-gray-500 dark:text-gray-400">
+                                <div className="ui-panel-subtle py-16 text-mm-text-secondary text-center">
                                     <FileText className="w-12 h-12 mx-auto mb-3 opacity-40" />
                                     <p>Financial statements not available for this ticker.</p>
                                 </div>
@@ -368,40 +379,39 @@ const FundamentalsPage = () => {
                         </div>
                     )}
 
-                    {/* ── SEC Filings tab ── */}
                     {activeTab === 'filings' && (
                         <div>
                             {filings && filings.length > 0 ? (
-                                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-                                    <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                                        <FileText className="w-4 h-4 text-indigo-500" />
-                                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                <div className="ui-panel overflow-hidden">
+                                    <div className="px-5 py-4 border-b border-mm-border flex items-center gap-2">
+                                        <FileText className="w-4 h-4 text-mm-accent-primary" />
+                                        <h3 className="text-sm font-semibold text-mm-text-primary">
                                             SEC Filings — {fundamentals.symbol}
                                         </h3>
-                                        <span className="ml-auto text-xs text-gray-400">{filings.length} results</span>
+                                        <span className="ml-auto text-xs text-mm-text-tertiary">{filings.length} results</span>
                                     </div>
                                     <div className="overflow-x-auto">
                                         <table className="min-w-full text-sm">
-                                            <thead className="bg-gray-50 dark:bg-gray-700/50">
+                                            <thead className="bg-mm-surface-subtle">
                                                 <tr>
-                                                    <th className="px-5 py-2.5 text-left text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Date</th>
-                                                    <th className="px-5 py-2.5 text-left text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Type</th>
-                                                    <th className="px-5 py-2.5 text-left text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Description</th>
-                                                    <th className="px-5 py-2.5 text-center text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Link</th>
+                                                    <th className="px-5 py-2.5 text-left text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">Date</th>
+                                                    <th className="px-5 py-2.5 text-left text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">Type</th>
+                                                    <th className="px-5 py-2.5 text-left text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">Description</th>
+                                                    <th className="px-5 py-2.5 text-center text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">Link</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                            <tbody className="divide-y divide-mm-border">
                                                 {filings.map((f, i) => (
-                                                    <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                                                        <td className="px-5 py-2.5 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                                    <tr key={i} className="hover:bg-mm-surface-subtle/80">
+                                                        <td className="px-5 py-2.5 text-mm-text-secondary whitespace-nowrap">
                                                             {f.date ? new Date(f.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                                                         </td>
                                                         <td className="px-5 py-2.5">
-                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300">
+                                                            <span className="inline-flex items-center rounded-pill border border-mm-accent-primary/15 bg-mm-accent-primary/10 px-2 py-0.5 text-xs font-semibold text-mm-accent-primary">
                                                                 {f.type}
                                                             </span>
                                                         </td>
-                                                        <td className="px-5 py-2.5 text-gray-600 dark:text-gray-400 max-w-xs truncate">
+                                                        <td className="px-5 py-2.5 text-mm-text-secondary max-w-xs truncate">
                                                             {f.description || '—'}
                                                         </td>
                                                         <td className="px-5 py-2.5 text-center">
@@ -410,7 +420,7 @@ const FundamentalsPage = () => {
                                                                     href={f.url}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline text-xs"
+                                                                    className="inline-flex items-center gap-1 text-mm-accent-primary hover:underline text-xs"
                                                                 >
                                                                     View <ExternalLink className="w-3 h-3" />
                                                                 </a>
@@ -423,7 +433,7 @@ const FundamentalsPage = () => {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-16 text-gray-500 dark:text-gray-400">
+                                <div className="ui-panel-subtle py-16 text-mm-text-secondary text-center">
                                     <FileText className="w-12 h-12 mx-auto mb-3 opacity-40" />
                                     <p>SEC filings not available for this ticker.</p>
                                 </div>
@@ -433,14 +443,13 @@ const FundamentalsPage = () => {
                 </div>
             )}
 
-            {/* Empty State */}
             {!fundamentals && !loading && !error && (
-                <div className="text-center py-12">
-                    <Building2 className="w-24 h-24 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
-                    <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                <div className="ui-panel-subtle py-12 text-center">
+                    <Building2 className="w-24 h-24 mx-auto mb-4 text-mm-text-tertiary" />
+                    <h3 className="text-xl font-semibold text-mm-text-secondary mb-2">
                         Search for Company Fundamentals
                     </h3>
-                    <p className="text-gray-500 dark:text-gray-500">
+                    <p className="text-mm-text-tertiary">
                         Enter a stock ticker to view detailed financial metrics, annual statements, and SEC filings
                     </p>
                 </div>
