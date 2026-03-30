@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Optional local profiling / debugging tooling
+memray==1.19.2

@@ -85,3 +85,6 @@ backend/user_data/
 
 # ML artifacts (generated at runtime)
 backend/model_artifacts/
+
+# Memory profiling captures / reports
+backend/profiling/memray/output/
