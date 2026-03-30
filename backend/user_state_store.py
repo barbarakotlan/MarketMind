@@ -5,23 +5,27 @@ import json
 import os
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 from sqlalchemy import (
+    Date,
     JSON,
     BigInteger,
     Boolean,
     DateTime,
+    ForeignKey,
     Integer,
     LargeBinary,
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     create_engine,
     delete,
+    func,
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -287,6 +291,48 @@ class MarketMindAiChatMessage(Base):
     role: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PublicApiClient(Base):
+    __tablename__ = "public_api_clients"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    contact_email: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PublicApiKey(Base):
+    __tablename__ = "public_api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    client_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("public_api_clients.id"), index=True, nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PublicApiDailyUsage(Base):
+    __tablename__ = "public_api_daily_usage"
+    __table_args__ = (
+        UniqueConstraint("api_key_id", "day", "route_group", name="uq_public_api_daily_usage_key_day_route"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    client_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("public_api_clients.id"), index=True, nullable=False)
+    api_key_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("public_api_keys.id"), index=True, nullable=False)
+    day: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    route_group: Mapped[str] = mapped_column(Text, nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cached_request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 _ENGINES: Dict[str, Any] = {}
@@ -1499,3 +1545,171 @@ def summarize_user_state(state: Dict[str, Any]) -> Dict[str, Any]:
         "deliverable_count": len(state.get("deliverables", []) or []),
         "deliverable_memo_count": len(state.get("deliverable_memos", []) or []),
     }
+
+
+def create_public_api_client(
+    session: Session,
+    *,
+    name: str,
+    contact_email: Optional[str] = None,
+    notes: Optional[str] = None,
+    status: str = "active",
+) -> PublicApiClient:
+    client = PublicApiClient(
+        name=str(name).strip(),
+        contact_email=(str(contact_email).strip() if contact_email else None),
+        notes=notes,
+        status=str(status or "active").strip().lower(),
+        created_at=utcnow(),
+    )
+    session.add(client)
+    session.flush()
+    return client
+
+
+def get_public_api_client(session: Session, client_id: Any) -> Optional[PublicApiClient]:
+    return session.get(PublicApiClient, _coerce_uuid(client_id))
+
+
+def list_public_api_clients(session: Session) -> List[PublicApiClient]:
+    return list(session.scalars(select(PublicApiClient).order_by(PublicApiClient.created_at.asc())).all())
+
+
+def create_public_api_key(
+    session: Session,
+    *,
+    client_id: Any,
+    key_prefix: str,
+    key_hash: str,
+    label: Optional[str] = None,
+    status: str = "active",
+    expires_at: Optional[datetime] = None,
+) -> PublicApiKey:
+    key = PublicApiKey(
+        client_id=_coerce_uuid(client_id),
+        key_prefix=str(key_prefix).strip(),
+        key_hash=str(key_hash).strip(),
+        label=(str(label).strip() if label else None),
+        status=str(status or "active").strip().lower(),
+        created_at=utcnow(),
+        expires_at=expires_at,
+    )
+    session.add(key)
+    session.flush()
+    return key
+
+
+def get_public_api_key(session: Session, key_id: Any) -> Optional[PublicApiKey]:
+    return session.get(PublicApiKey, _coerce_uuid(key_id))
+
+
+def get_public_api_key_by_prefix(session: Session, key_prefix: str) -> Optional[PublicApiKey]:
+    if not str(key_prefix or "").strip():
+        return None
+    return session.scalar(
+        select(PublicApiKey).where(PublicApiKey.key_prefix == str(key_prefix).strip())
+    )
+
+
+def list_public_api_keys(session: Session, *, client_id: Any | None = None) -> List[PublicApiKey]:
+    stmt = select(PublicApiKey)
+    if client_id is not None:
+        stmt = stmt.where(PublicApiKey.client_id == _coerce_uuid(client_id))
+    stmt = stmt.order_by(PublicApiKey.created_at.asc())
+    return list(session.scalars(stmt).all())
+
+
+def set_public_api_key_status(session: Session, key_id: Any, status: str) -> Optional[PublicApiKey]:
+    key = get_public_api_key(session, key_id)
+    if key is None:
+        return None
+    key.status = str(status or "").strip().lower()
+    return key
+
+
+def touch_public_api_key_last_used(
+    session: Session,
+    key_id: Any,
+    *,
+    seen_at: Optional[datetime] = None,
+) -> Optional[PublicApiKey]:
+    key = get_public_api_key(session, key_id)
+    if key is None:
+        return None
+    key.last_used_at = seen_at or utcnow()
+    return key
+
+
+def increment_public_api_daily_usage(
+    session: Session,
+    *,
+    client_id: Any,
+    api_key_id: Any,
+    day_value: date,
+    route_group: str,
+    cached: bool = False,
+) -> PublicApiDailyUsage:
+    normalized_day = day_value if isinstance(day_value, date) else utcnow().date()
+    normalized_route_group = str(route_group or "unknown").strip().lower()
+    row = session.scalar(
+        select(PublicApiDailyUsage).where(
+            PublicApiDailyUsage.api_key_id == _coerce_uuid(api_key_id),
+            PublicApiDailyUsage.day == normalized_day,
+            PublicApiDailyUsage.route_group == normalized_route_group,
+        )
+    )
+    now = utcnow()
+    if row is None:
+        row = PublicApiDailyUsage(
+            client_id=_coerce_uuid(client_id),
+            api_key_id=_coerce_uuid(api_key_id),
+            day=normalized_day,
+            route_group=normalized_route_group,
+            request_count=0,
+            cached_request_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(row)
+        session.flush()
+
+    row.request_count += 1
+    if cached:
+        row.cached_request_count += 1
+    row.updated_at = now
+    return row
+
+
+def get_public_api_daily_request_total(
+    session: Session,
+    *,
+    api_key_id: Any,
+    day_value: date,
+) -> int:
+    normalized_day = day_value if isinstance(day_value, date) else utcnow().date()
+    total = session.scalar(
+        select(func.coalesce(func.sum(PublicApiDailyUsage.request_count), 0)).where(
+            PublicApiDailyUsage.api_key_id == _coerce_uuid(api_key_id),
+            PublicApiDailyUsage.day == normalized_day,
+        )
+    )
+    return int(total or 0)
+
+
+def list_public_api_daily_usage(
+    session: Session,
+    *,
+    client_id: Any | None = None,
+    day_value: date | None = None,
+) -> List[PublicApiDailyUsage]:
+    stmt = select(PublicApiDailyUsage)
+    if client_id is not None:
+        stmt = stmt.where(PublicApiDailyUsage.client_id == _coerce_uuid(client_id))
+    if day_value is not None:
+        stmt = stmt.where(PublicApiDailyUsage.day == day_value)
+    stmt = stmt.order_by(
+        PublicApiDailyUsage.day.desc(),
+        PublicApiDailyUsage.route_group.asc(),
+        PublicApiDailyUsage.created_at.asc(),
+    )
+    return list(session.scalars(stmt).all())

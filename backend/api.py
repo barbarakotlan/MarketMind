@@ -88,8 +88,17 @@ from marketmind_ai import (
     list_marketmind_ai_chats,
 )
 from user_state_store import (
+    create_public_api_client as create_public_api_client_db,
+    create_public_api_key as create_public_api_key_db,
     ensure_database_ready as ensure_user_state_database_ready,
+    get_public_api_client as get_public_api_client_db,
+    get_public_api_daily_request_total as get_public_api_daily_request_total_db,
+    get_public_api_key_by_prefix as get_public_api_key_by_prefix_db,
+    increment_public_api_daily_usage as increment_public_api_daily_usage_db,
     list_app_user_ids as list_app_user_ids_db,
+    list_public_api_clients as list_public_api_clients_db,
+    list_public_api_daily_usage as list_public_api_daily_usage_db,
+    list_public_api_keys as list_public_api_keys_db,
     load_notifications as load_notifications_db,
     load_portfolio as load_portfolio_db,
     load_prediction_portfolio as load_prediction_portfolio_db,
@@ -100,6 +109,8 @@ from user_state_store import (
     save_prediction_portfolio as save_prediction_portfolio_db,
     save_watchlist as save_watchlist_db,
     session_scope as user_state_session_scope,
+    set_public_api_key_status as set_public_api_key_status_db,
+    touch_public_api_key_last_used as touch_public_api_key_last_used_db,
     touch_app_user as touch_app_user_db,
 )
 
@@ -117,10 +128,12 @@ import api_handlers_deliverables as deliverables_handlers
 import api_handlers_market_data as market_data_handlers
 import api_handlers_marketmind_ai as marketmind_ai_handlers
 import api_handlers_notifications as notification_handlers
+import api_handlers_public as public_handlers
 import api_handlers_paper as paper_handlers
 import api_handlers_prediction_markets as prediction_markets_handlers
 import api_handlers_reference_data as reference_data_handlers
 import api_market_utils as api_market_utils_helpers
+import api_public as api_public_helpers
 import api_prediction_runtime as api_prediction_runtime_helpers
 import api_scheduler as api_scheduler_helpers
 import api_state as api_state_helpers
@@ -167,6 +180,11 @@ CORS(
 )
 
 # --- Security Headers Middleware ---
+@app.before_request
+def begin_public_api_request():
+    api_public_helpers.begin_public_request()
+
+
 @app.after_request
 def add_security_headers(response):
     # Prevent MIME type sniffing
@@ -190,16 +208,26 @@ def add_security_headers(response):
     # Cross-origin hardening for API responses
     response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
     response.headers['Cross-Origin-Resource-Policy'] = 'same-site' if IS_PRODUCTION else 'cross-origin'
-    return response
+    return api_public_helpers.finalize_public_response(
+        response,
+        session_scope_fn=user_state_session_scope,
+        database_url=DATABASE_URL,
+        increment_public_api_daily_usage_fn=increment_public_api_daily_usage_db,
+        touch_public_api_key_last_used_fn=touch_public_api_key_last_used_db,
+        logger=logger,
+    )
 
 # --- Rate Limiting Setup ---
 from flask_limiter import Limiter
+from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
 
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=[],
-    app=app
+    app=app,
+    headers_enabled=True,
+    storage_uri=os.getenv('PUBLIC_API_RATE_LIMIT_STORAGE_URL', '').strip() or None,
 )
 
 # Define rate limits
@@ -208,6 +236,13 @@ class RateLimits:
     STANDARD = os.getenv('RATE_LIMIT_STANDARD', '20/minute')
     HEAVY = os.getenv('RATE_LIMIT_HEAVY', '2/minute')
     WRITE = os.getenv('RATE_LIMIT_WRITE', '5/minute')
+
+
+@app.errorhandler(RateLimitExceeded)
+def handle_rate_limit_exceeded(_exc):
+    if api_public_helpers.is_public_api_request(request.path):
+        return _public_api_error_response(429, "rate_limited", "Rate limit exceeded for this API key.")
+    return jsonify({"error": "Rate limit exceeded"}), 429
 
 # --- CONFIGURATION ---
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
@@ -228,11 +263,24 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE = os.path.join(BASE_DIR, 'marketmind.db')
 DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
 PERSISTENCE_MODE = os.getenv('PERSISTENCE_MODE', 'json').strip().lower()
+PUBLIC_API_ENABLED = os.getenv('PUBLIC_API_ENABLED', 'false').strip()
+PUBLIC_API_DOCS_ENABLED = os.getenv('PUBLIC_API_DOCS_ENABLED', 'false').strip()
+PUBLIC_API_KEY_HASH_PEPPER = os.getenv('PUBLIC_API_KEY_HASH_PEPPER', '').strip()
+PUBLIC_API_RATE_LIMIT_STORAGE_URL = os.getenv('PUBLIC_API_RATE_LIMIT_STORAGE_URL', '').strip()
+PUBLIC_API_CACHE_URL = os.getenv('PUBLIC_API_CACHE_URL', '').strip()
+PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT = os.getenv('PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT', '30/minute').strip()
+PUBLIC_API_DEFAULT_PER_HOUR_LIMIT = os.getenv('PUBLIC_API_DEFAULT_PER_HOUR_LIMIT', '500/hour').strip()
+PUBLIC_API_DEFAULT_DAILY_QUOTA = int(os.getenv('PUBLIC_API_DEFAULT_DAILY_QUOTA', '2500'))
+PUBLIC_API_GLOBAL_EMERGENCY_LIMIT = os.getenv('PUBLIC_API_GLOBAL_EMERGENCY_LIMIT', '5000/hour').strip()
+PUBLIC_API_FALLBACK_IP_LIMIT = os.getenv('PUBLIC_API_FALLBACK_IP_LIMIT', '120/hour').strip()
 
 PORTFOLIO_FILE = os.path.join(BASE_DIR, 'paper_portfolio.json')
 NOTIFICATIONS_FILE = os.path.join(BASE_DIR, 'notifications.json')
 PREDICTION_PORTFOLIO_FILE = os.path.join(BASE_DIR, 'prediction_portfolio.json')
 USER_DATA_DIR = os.path.join(BASE_DIR, 'user_data')
+PUBLIC_API_OPENAPI_PATH = os.path.join(BASE_DIR, 'public_api_openapi_v1.yaml')
+PUBLIC_API_OPENAPI_V2_PATH = os.path.join(BASE_DIR, 'public_api_openapi_v2.yaml')
+PUBLIC_API_DOCS_PATH = os.path.join(BASE_DIR, 'public_api_docs.html')
 ALLOW_LEGACY_USER_DATA_SEED = os.getenv('ALLOW_LEGACY_USER_DATA_SEED', 'false').strip().lower() == 'true'
 
 CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '').strip()
@@ -317,6 +365,13 @@ def _get_bearer_token():
     return api_auth_helpers.get_bearer_token(request.headers.get('Authorization', ''))
 
 
+def _get_clerk_bearer_token():
+    token = _get_bearer_token()
+    if api_public_helpers.extract_public_api_key_prefix(token):
+        return None
+    return token
+
+
 def _resolve_clerk_jwks_url(issuer):
     return api_auth_helpers.resolve_clerk_jwks_url(CLERK_JWKS_URL, issuer)
 
@@ -358,7 +413,7 @@ def get_current_user_id():
 def require_auth(f):
     return api_auth_helpers.build_require_auth(
         f,
-        token_getter=lambda: _get_bearer_token(),
+        token_getter=lambda: _get_clerk_bearer_token(),
         verify_token_fn=lambda token: verify_clerk_token(token),
         sync_authenticated_user_fn=lambda payload: _sync_authenticated_user(payload),
         logger=logger,
@@ -368,6 +423,99 @@ def require_auth(f):
             setattr(g, 'auth_payload', payload),
         ),
     )
+
+
+def _public_api_enabled():
+    return api_public_helpers.normalize_enabled(PUBLIC_API_ENABLED)
+
+
+def _public_api_docs_enabled():
+    return _public_api_enabled() and api_public_helpers.normalize_enabled(PUBLIC_API_DOCS_ENABLED)
+
+
+def _public_api_readiness():
+    return api_public_helpers.build_public_api_readiness(
+        enabled=PUBLIC_API_ENABLED,
+        persistence_mode=PERSISTENCE_MODE,
+        database_url=DATABASE_URL,
+        key_hash_pepper=PUBLIC_API_KEY_HASH_PEPPER,
+        rate_limit_storage_url=PUBLIC_API_RATE_LIMIT_STORAGE_URL,
+    )
+
+
+def _public_api_error_response(status_code, code, message):
+    return api_public_helpers.public_error_response(jsonify, status_code, code, message)
+
+
+def _public_api_authenticate(token):
+    return api_public_helpers.authenticate_public_api_key(
+        token,
+        session_scope_fn=user_state_session_scope,
+        database_url=DATABASE_URL,
+        key_hash_pepper=PUBLIC_API_KEY_HASH_PEPPER,
+        get_public_api_key_by_prefix_fn=get_public_api_key_by_prefix_db,
+        get_public_api_client_fn=get_public_api_client_db,
+    )
+
+
+def _public_api_daily_quota(_identity):
+    return PUBLIC_API_DEFAULT_DAILY_QUOTA
+
+
+def _public_api_daily_usage_total(identity, day_value):
+    _ensure_user_state_storage_ready()
+    with user_state_session_scope(DATABASE_URL) as session:
+        return get_public_api_daily_request_total_db(
+            session,
+            api_key_id=identity["api_key_id"],
+            day_value=day_value,
+        )
+
+
+def require_public_api_auth(route_group):
+    def decorator(view_fn):
+        return api_public_helpers.build_require_public_api_auth(
+            view_fn,
+            route_group=route_group,
+            enabled_fn=_public_api_enabled,
+            readiness_fn=_public_api_readiness,
+            token_getter=_get_bearer_token,
+            authenticate_key_fn=_public_api_authenticate,
+            get_daily_quota_fn=_public_api_daily_quota,
+            get_daily_usage_total_fn=_public_api_daily_usage_total,
+            logger=logger,
+            error_response_fn=_public_api_error_response,
+        )
+
+    return decorator
+
+
+def _public_cache():
+    return api_public_helpers.get_public_cache(PUBLIC_API_CACHE_URL, logger=logger)
+
+
+def _public_cache_key(route_group, **path_params):
+    return api_public_helpers.build_public_cache_key(
+        route_group,
+        path_params=path_params,
+        query_params=request.args.to_dict(flat=True),
+    )
+
+
+def _public_api_rate_limit_key():
+    return api_public_helpers.public_rate_limit_key(get_remote_address())
+
+
+def _public_api_global_limit_key():
+    return api_public_helpers.public_global_rate_limit_key()
+
+
+def _public_dispatch(handler_fn, *args, **kwargs):
+    try:
+        payload, status_code = handler_fn(*args, **kwargs)
+        return jsonify(payload), status_code
+    except api_public_helpers.PublicApiError as exc:
+        return _public_api_error_response(exc.status_code, exc.code, exc.message)
 
 def validate_request_json(required_fields):
     """
@@ -1824,6 +1972,509 @@ def get_macro_overview():
         logger=logger,
         yf_module=yf,
         macro_indicators=MACRO_INDICATORS,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MarketMind Public API v1 (Private Beta)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/public/docs', methods=['GET'])
+def public_api_docs():
+    if not _public_api_docs_enabled():
+        return _public_api_error_response(404, "not_found", "MarketMind Public API docs are not enabled.")
+    with open(PUBLIC_API_DOCS_PATH, 'r', encoding='utf-8') as f:
+        return app.response_class(f.read(), mimetype='text/html')
+
+
+@app.route('/api/public/openapi/v1.yaml', methods=['GET'])
+def public_api_openapi_spec():
+    if not _public_api_docs_enabled():
+        return _public_api_error_response(404, "not_found", "MarketMind Public API docs are not enabled.")
+    with open(PUBLIC_API_OPENAPI_PATH, 'r', encoding='utf-8') as f:
+        return app.response_class(f.read(), mimetype='application/yaml')
+
+
+@app.route('/api/public/openapi/v2.yaml', methods=['GET'])
+def public_api_openapi_spec_v2():
+    if not _public_api_docs_enabled():
+        return _public_api_error_response(404, "not_found", "MarketMind Public API docs are not enabled.")
+    with open(PUBLIC_API_OPENAPI_V2_PATH, 'r', encoding='utf-8') as f:
+        return app.response_class(f.read(), mimetype='application/yaml')
+
+
+@app.route('/api/public/v1/health', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('health')
+def public_api_health():
+    return _public_dispatch(public_handlers.health_handler, version='v1')
+
+
+@app.route('/api/public/v1/stock/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('stock')
+def public_api_stock(ticker):
+    return _public_dispatch(
+        public_handlers.stock_handler,
+        ticker,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('stock', ticker=ticker.upper()),
+        cache_ttl_seconds=30,
+        get_stock_data_handler_fn=market_data_handlers.get_stock_data_handler,
+        alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
+        yf_module=yf,
+        requests_module=requests,
+        logger=logger,
+        clean_value_fn=clean_value,
+    )
+
+
+@app.route('/api/public/v1/chart/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('chart')
+def public_api_chart(ticker):
+    return _public_dispatch(
+        public_handlers.chart_handler,
+        ticker,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('chart', ticker=ticker.upper()),
+        cache_ttl_seconds=60,
+        get_chart_data_handler_fn=market_data_handlers.get_chart_data_handler,
+        yf_module=yf,
+        logger=logger,
+        clean_value_fn=clean_value,
+    )
+
+
+@app.route('/api/public/v1/news', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('news')
+def public_api_news():
+    return _public_dispatch(
+        public_handlers.news_handler,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('news'),
+        cache_ttl_seconds=300,
+        get_query_news_handler_fn=market_data_handlers.get_query_news_handler,
+        get_general_news_fn=get_general_news,
+        news_api_key=NEWS_API_KEY,
+        requests_module=requests,
+    )
+
+
+@app.route('/api/public/v1/search-symbols', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('search-symbols')
+def public_api_search_symbols():
+    return _public_dispatch(
+        public_handlers.search_symbols_handler,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('search-symbols'),
+        cache_ttl_seconds=3600,
+        search_symbols_handler_fn=market_data_handlers.search_symbols_handler,
+        get_symbol_suggestions_fn=get_symbol_suggestions,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v1/predictions/ensemble/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('predictions/ensemble')
+def public_api_ensemble_prediction(ticker):
+    return _public_dispatch(
+        public_handlers.ensemble_prediction_handler,
+        ticker,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('predictions/ensemble', ticker=ticker.upper()),
+        cache_ttl_seconds=900,
+        predict_ensemble_handler_fn=market_data_handlers.predict_ensemble_handler,
+        selective_modes=SELECTIVE_MODES,
+        selector_source_requestable=SELECTOR_SOURCE_REQUESTABLE,
+        yf_module=yf,
+        live_ensemble_signal_components_fn=_live_ensemble_signal_components,
+        infer_selective_decision_fn=infer_selective_decision,
+        logger=logger,
+        pd_module=pd,
+        np_module=np,
+    )
+
+
+@app.route('/api/public/v1/fundamentals/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('fundamentals')
+def public_api_fundamentals(ticker):
+    return _public_dispatch(
+        public_handlers.fundamentals_handler,
+        ticker,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('fundamentals', ticker=ticker.upper()),
+        cache_ttl_seconds=3600,
+        get_fundamentals_handler_fn=reference_data_handlers.get_fundamentals_handler,
+        alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
+        requests_module=requests,
+        logger=logger,
+        clean_value_fn=clean_value,
+        fundamentals_from_yfinance_fn=_fundamentals_from_yfinance,
+    )
+
+
+@app.route('/api/public/v1/macro/overview', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('macro/overview')
+def public_api_macro_overview():
+    return _public_dispatch(
+        public_handlers.macro_overview_handler,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('macro/overview'),
+        cache_ttl_seconds=900,
+        get_macro_overview_handler_fn=reference_data_handlers.get_macro_overview_handler,
+        openbb_available=OPENBB_AVAILABLE,
+        obb_module=obb if OPENBB_AVAILABLE else None,
+        logger=logger,
+        yf_module=yf,
+        macro_indicators=MACRO_INDICATORS,
+    )
+
+
+@app.route('/api/public/v2/health', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/health')
+def public_api_v2_health():
+    return _public_dispatch(public_handlers.health_handler, version='v2')
+
+
+@app.route('/api/public/v2/options/stock-price/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/options/stock-price')
+def public_api_v2_options_stock_price(ticker):
+    return _public_dispatch(
+        public_handlers.options_stock_price_handler,
+        ticker,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/options/stock-price', ticker=ticker.upper()),
+        cache_ttl_seconds=30,
+        get_options_stock_price_handler_fn=market_data_handlers.get_options_stock_price_handler,
+        yf_module=yf,
+        clean_value_fn=clean_value,
+    )
+
+
+@app.route('/api/public/v2/options/expirations/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/options/expirations')
+def public_api_v2_option_expirations(ticker):
+    return _public_dispatch(
+        public_handlers.option_expirations_handler,
+        ticker,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/options/expirations', ticker=ticker.upper()),
+        cache_ttl_seconds=3600,
+        get_option_expirations_handler_fn=market_data_handlers.get_option_expirations_handler,
+        yf_module=yf,
+    )
+
+
+@app.route('/api/public/v2/options/chain/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/options/chain')
+def public_api_v2_option_chain(ticker):
+    return _public_dispatch(
+        public_handlers.option_chain_handler,
+        ticker,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/options/chain', ticker=ticker.upper()),
+        cache_ttl_seconds=60,
+        get_option_chain_handler_fn=market_data_handlers.get_option_chain_handler,
+        yf_module=yf,
+        math_module=math,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/options/suggest/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/options/suggest')
+def public_api_v2_option_suggestion(ticker):
+    return _public_dispatch(
+        public_handlers.option_suggestion_handler,
+        ticker,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/options/suggest', ticker=ticker.upper()),
+        cache_ttl_seconds=900,
+        get_option_suggestion_handler_fn=market_data_handlers.get_option_suggestion_handler,
+        generate_suggestion_fn=generate_suggestion,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/forex/convert', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/forex/convert')
+def public_api_v2_forex_convert():
+    return _public_dispatch(
+        public_handlers.forex_convert_public_handler,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/forex/convert'),
+        cache_ttl_seconds=300,
+        forex_convert_handler_fn=reference_data_handlers.forex_convert_handler,
+        get_exchange_rate_fn=get_exchange_rate,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/forex/currencies', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/forex/currencies')
+def public_api_v2_forex_currencies():
+    return _public_dispatch(
+        public_handlers.forex_currencies_public_handler,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/forex/currencies'),
+        cache_ttl_seconds=86400,
+        forex_currencies_handler_fn=reference_data_handlers.forex_currencies_handler,
+        get_currency_list_fn=get_currency_list,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/crypto/convert', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/crypto/convert')
+def public_api_v2_crypto_convert():
+    return _public_dispatch(
+        public_handlers.crypto_convert_public_handler,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/crypto/convert'),
+        cache_ttl_seconds=300,
+        crypto_convert_handler_fn=reference_data_handlers.crypto_convert_handler,
+        get_crypto_exchange_rate_fn=get_crypto_exchange_rate,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/crypto/list', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/crypto/list')
+def public_api_v2_crypto_list():
+    return _public_dispatch(
+        public_handlers.crypto_list_public_handler,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/crypto/list'),
+        cache_ttl_seconds=86400,
+        crypto_list_handler_fn=reference_data_handlers.crypto_list_handler,
+        get_crypto_list_fn=get_crypto_list,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/crypto/currencies', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/crypto/currencies')
+def public_api_v2_crypto_currencies():
+    return _public_dispatch(
+        public_handlers.crypto_currencies_public_handler,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/crypto/currencies'),
+        cache_ttl_seconds=86400,
+        crypto_target_currencies_handler_fn=reference_data_handlers.crypto_target_currencies_handler,
+        get_target_currencies_fn=get_target_currencies,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/commodities/price/<string:commodity>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/commodities/price')
+def public_api_v2_commodity_price(commodity):
+    return _public_dispatch(
+        public_handlers.commodity_price_public_handler,
+        commodity,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/commodities/price', commodity=commodity.lower()),
+        cache_ttl_seconds=300,
+        commodity_price_handler_fn=reference_data_handlers.commodity_price_handler,
+        get_commodity_price_fn=get_commodity_price,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/commodities/list', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/commodities/list')
+def public_api_v2_commodities_list():
+    return _public_dispatch(
+        public_handlers.commodities_list_public_handler,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/commodities/list'),
+        cache_ttl_seconds=86400,
+        commodities_list_handler_fn=reference_data_handlers.commodities_list_handler,
+        get_commodity_list_fn=get_commodity_list,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/commodities/all', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/commodities/all')
+def public_api_v2_commodities_all():
+    return _public_dispatch(
+        public_handlers.commodities_all_public_handler,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/commodities/all'),
+        cache_ttl_seconds=86400,
+        commodities_all_handler_fn=reference_data_handlers.commodities_all_handler,
+        get_commodities_by_category_fn=get_commodities_by_category,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/prediction-markets', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/prediction-markets')
+def public_api_v2_prediction_markets():
+    return _public_dispatch(
+        public_handlers.prediction_markets_list_public_handler,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/prediction-markets'),
+        cache_ttl_seconds=60,
+        list_prediction_markets_handler_fn=prediction_markets_handlers.list_prediction_markets_handler,
+        pm_search_markets_fn=pm_search_markets,
+        pm_fetch_markets_fn=pm_fetch_markets,
+        log_api_error_fn=log_api_error,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/prediction-markets/exchanges', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/prediction-markets/exchanges')
+def public_api_v2_prediction_market_exchanges():
+    return _public_dispatch(
+        public_handlers.prediction_markets_exchanges_public_handler,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/prediction-markets/exchanges'),
+        cache_ttl_seconds=86400,
+        list_prediction_exchanges_handler_fn=prediction_markets_handlers.list_prediction_exchanges_handler,
+        pm_get_exchanges_fn=pm_get_exchanges,
+    )
+
+
+@app.route('/api/public/v2/prediction-markets/<path:market_id>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/prediction-markets/detail')
+def public_api_v2_prediction_market_detail(market_id):
+    return _public_dispatch(
+        public_handlers.prediction_market_detail_public_handler,
+        market_id,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/prediction-markets/detail', market_id=market_id),
+        cache_ttl_seconds=60,
+        get_prediction_market_handler_fn=prediction_markets_handlers.get_prediction_market_handler,
+        pm_get_market_fn=pm_get_market,
+        log_api_error_fn=log_api_error,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/calendar/economic', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/calendar/economic')
+def public_api_v2_calendar_economic():
+    return _public_dispatch(
+        public_handlers.economic_calendar_public_handler,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/calendar/economic'),
+        cache_ttl_seconds=900,
+        get_economic_calendar_handler_fn=reference_data_handlers.get_economic_calendar_handler,
+        calendar_cache=CALENDAR_CACHE,
+        requests_module=requests,
+        time_module=time,
+        datetime_cls=datetime,
     )
 
 
