@@ -2,11 +2,211 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Autocomplete dropdown animation */
+@layer base {
+    :root {
+        --mm-canvas: 248 250 252;
+        --mm-surface: 255 255 255;
+        --mm-surface-subtle: 241 245 249;
+        --mm-border: 226 232 240;
+        --mm-border-strong: 203 213 225;
+        --mm-text-primary: 15 23 42;
+        --mm-text-secondary: 71 85 105;
+        --mm-text-tertiary: 100 116 139;
+        --mm-accent-primary: 37 99 235;
+        --mm-positive: 22 163 74;
+        --mm-negative: 220 38 38;
+        --mm-warning: 217 119 6;
+        --mm-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.04);
+        --mm-shadow-elevated: 0 1px 2px rgba(15, 23, 42, 0.08), 0 16px 32px rgba(15, 23, 42, 0.08);
+    }
+
+    .dark {
+        --mm-canvas: 3 7 18;
+        --mm-surface: 15 23 42;
+        --mm-surface-subtle: 30 41 59;
+        --mm-border: 51 65 85;
+        --mm-border-strong: 71 85 105;
+        --mm-text-primary: 241 245 249;
+        --mm-text-secondary: 203 213 225;
+        --mm-text-tertiary: 148 163 184;
+        --mm-accent-primary: 96 165 250;
+        --mm-positive: 74 222 128;
+        --mm-negative: 248 113 113;
+        --mm-warning: 251 191 36;
+        --mm-shadow-card: 0 1px 2px rgba(2, 6, 23, 0.32), 0 8px 24px rgba(2, 6, 23, 0.24);
+        --mm-shadow-elevated: 0 1px 2px rgba(2, 6, 23, 0.4), 0 16px 32px rgba(2, 6, 23, 0.3);
+    }
+
+    html {
+        overscroll-behavior: none;
+    }
+
+    body {
+        @apply bg-mm-canvas text-mm-text-primary antialiased;
+        overflow-x: clip;
+        overscroll-behavior: none;
+    }
+}
+
+@layer components {
+    .app-shell {
+        @apply bg-mm-canvas text-mm-text-primary font-sans;
+    }
+
+    .app-shell-main {
+        @apply bg-mm-canvas;
+    }
+
+    .ui-page {
+        @apply mx-auto w-full max-w-7xl px-6 py-8 lg:px-8;
+    }
+
+    .ui-page-header {
+        @apply mb-8;
+    }
+
+    .ui-page-title {
+        @apply text-3xl font-bold tracking-tight text-mm-text-primary;
+    }
+
+    .ui-page-subtitle {
+        @apply mt-2 text-base text-mm-text-secondary;
+    }
+
+    .ui-section-label {
+        @apply text-sm font-semibold uppercase tracking-[0.16em] text-mm-text-tertiary;
+    }
+
+    .ui-form-label {
+        @apply mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-mm-text-tertiary;
+    }
+
+    .ui-panel {
+        @apply rounded-card border border-mm-border bg-mm-surface shadow-card;
+    }
+
+    .ui-panel-elevated {
+        @apply rounded-card border border-mm-border bg-mm-surface shadow-elevated;
+    }
+
+    .ui-panel-subtle {
+        @apply rounded-card border border-mm-border bg-mm-surface-subtle shadow-card;
+    }
+
+    .ui-input {
+        @apply w-full rounded-control border border-mm-border bg-mm-surface px-4 py-3 text-sm text-mm-text-primary outline-none transition;
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+    }
+
+    .ui-input:focus {
+        @apply border-mm-accent-primary;
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16);
+    }
+
+    .ui-button-primary {
+        @apply inline-flex items-center justify-center rounded-control bg-mm-accent-primary px-4 py-2.5 text-sm font-semibold text-white transition;
+    }
+
+    .ui-button-primary:hover {
+        background-color: rgb(29 78 216);
+    }
+
+    .ui-button-secondary {
+        @apply inline-flex items-center justify-center rounded-control border border-mm-border-strong bg-mm-surface px-4 py-2.5 text-sm font-semibold text-mm-text-primary transition;
+    }
+
+    .ui-button-secondary:hover {
+        @apply bg-mm-surface-subtle;
+    }
+
+    .ui-button-destructive {
+        @apply inline-flex items-center justify-center rounded-control border px-4 py-2.5 text-sm font-semibold transition;
+        color: rgb(var(--mm-negative));
+        border-color: rgb(var(--mm-negative) / 0.2);
+        background-color: rgb(var(--mm-negative) / 0.06);
+    }
+
+    .ui-button-destructive:hover {
+        background-color: rgb(var(--mm-negative) / 0.12);
+    }
+
+    .ui-chip {
+        @apply inline-flex items-center rounded-pill border border-mm-border bg-mm-surface-subtle px-3 py-1.5 text-sm font-medium text-mm-text-secondary transition;
+    }
+
+    .ui-chip:hover {
+        color: rgb(var(--mm-accent-primary));
+        border-color: rgb(var(--mm-accent-primary) / 0.22);
+        background-color: rgb(var(--mm-accent-primary) / 0.08);
+    }
+
+    .ui-status-chip {
+        @apply inline-flex items-center gap-1 rounded-pill px-2.5 py-1 text-xs font-semibold;
+    }
+
+    .ui-status-chip--positive {
+        background-color: rgb(var(--mm-positive) / 0.12);
+        color: rgb(var(--mm-positive));
+    }
+
+    .ui-status-chip--negative {
+        background-color: rgb(var(--mm-negative) / 0.12);
+        color: rgb(var(--mm-negative));
+    }
+
+    .ui-status-chip--warning {
+        background-color: rgb(var(--mm-warning) / 0.12);
+        color: rgb(var(--mm-warning));
+    }
+
+    .ui-tab-group {
+        @apply inline-flex rounded-control border border-mm-border bg-mm-surface-subtle p-1;
+    }
+
+    .ui-tab {
+        @apply rounded-control px-4 py-2 text-sm font-semibold text-mm-text-secondary transition;
+    }
+
+    .ui-tab:hover {
+        @apply text-mm-text-primary;
+    }
+
+    .ui-tab-active {
+        @apply bg-mm-surface text-mm-text-primary shadow-card;
+    }
+
+    .ui-empty-state {
+        @apply ui-panel-subtle flex flex-col items-center justify-center p-8 text-center text-mm-text-secondary;
+    }
+
+    .ui-banner {
+        @apply rounded-card border px-4 py-3;
+    }
+
+    .ui-banner-success {
+        border-color: rgb(var(--mm-positive) / 0.24);
+        background-color: rgb(var(--mm-positive) / 0.08);
+        color: rgb(var(--mm-positive));
+    }
+
+    .ui-banner-error {
+        border-color: rgb(var(--mm-negative) / 0.24);
+        background-color: rgb(var(--mm-negative) / 0.08);
+        color: rgb(var(--mm-negative));
+    }
+
+    .ui-banner-warning {
+        border-color: rgb(var(--mm-warning) / 0.24);
+        background-color: rgb(var(--mm-warning) / 0.08);
+        color: rgb(var(--mm-warning));
+    }
+}
+
+/* Shared animation */
 @keyframes fade-in {
     from {
         opacity: 0;
-        transform: translateY(-10px);
+        transform: translateY(8px);
     }
     to {
         opacity: 1;
@@ -15,17 +215,7 @@
 }
 
 .animate-fade-in {
-    animation: fade-in 0.2s ease-out;
-}
-
-/* Prevent horizontal overflow globally without creating a scroll container */
-html {
-    overscroll-behavior: none;
-}
-
-body {
-    overflow-x: clip;
-    overscroll-behavior: none;
+    animation: fade-in 0.28s ease-out;
 }
 
 /* Infinite marquee ticker */

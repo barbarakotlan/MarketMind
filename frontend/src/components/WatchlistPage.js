@@ -1,72 +1,54 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Sparklines, SparklinesLine, SparklinesReferenceLine } from 'react-sparklines';
-// --- MODIFIED: Import the named StockChart component from SearchPage ---
 import StockChart from './charts/StockChart';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
-// --- Helper Functions & Components ---
-
-// --- NEW: Helper to format numbers and return 'N/A' ---
 const formatNum = (num, isPercent = false) => {
     if (num === null || num === undefined || isNaN(num)) return 'N/A';
     const val = Number(num);
-    if (isPercent) return `${val.toFixed(2)}%`;
-    // Use toFixed for consistent decimal places
-    return val.toFixed(2);
+    return isPercent ? `${val.toFixed(2)}%` : val.toFixed(2);
 };
 
-// Creates a visual bar for the 52-week range
 const FiftyTwoWeekRange = ({ low, high, price }) => {
-    // --- FIX: Check for valid numbers ---
     if (!low || !high || !price || high === low) return <span>N/A</span>;
     const percent = Math.max(0, Math.min(100, ((price - low) / (high - low)) * 100));
     return (
-        <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full relative" title={`Low: $${low} | High: $${high}`}>
-            <div 
-                className="h-2 bg-blue-500 rounded-full absolute"
-                style={{ left: `${percent}%` }}
-            >
-                {/* This is the dot */}
-                <div className="w-2 h-2 bg-blue-700 rounded-full absolute -top-0 -right-1"></div>
+        <div className="relative h-2 w-full rounded-pill bg-mm-surface-subtle" title={`Low: $${low} | High: $${high}`}>
+            <div className="absolute h-2 rounded-pill bg-mm-accent-primary" style={{ left: `${percent}%` }}>
+                <div className="absolute -right-1 top-0 h-2 w-2 rounded-pill bg-mm-accent-primary"></div>
             </div>
         </div>
     );
 };
 
-// Creates a colored pill for the analyst rating
 const RatingPill = ({ rating }) => {
-    if (!rating) return <span className="text-gray-400">N/A</span>;
-    let color = "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
-    if (rating.includes("buy")) color = "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
-    if (rating.includes("sell")) color = "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
-    if (rating.includes("hold")) color = "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300";
-
+    if (!rating) return <span className="text-mm-text-tertiary">N/A</span>;
+    let color = 'ui-status-chip';
+    if (rating.includes('buy')) color = 'ui-status-chip ui-status-chip--positive';
+    else if (rating.includes('sell')) color = 'ui-status-chip ui-status-chip--negative';
+    else if (rating.includes('hold')) color = 'ui-status-chip ui-status-chip--warning';
     return (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${color}`}>
+        <span className={`${color} capitalize`}>
             {rating}
         </span>
     );
 };
 
-// Creates a small sparkline chart
 const SparklineChart = ({ data, change }) => {
     if (!data || data.length === 0) return <div className="h-10 w-24"></div>;
-    const color = (change || 0) >= 0 ? '#10B981' : '#EF4444';
+    const color = (change || 0) >= 0 ? '#16a34a' : '#ef4444';
     return (
         <div className="h-10 w-24">
             <Sparklines data={data}>
                 <SparklinesLine color={color} style={{ strokeWidth: 2 }} />
-                <SparklinesReferenceLine type="avg" style={{ stroke: 'rgba(100,100,100,0.2)' }} />
+                <SparklinesReferenceLine type="avg" style={{ stroke: 'rgba(100,116,139,0.2)' }} />
             </Sparklines>
         </div>
     );
 };
 
-// A single row in the watchlist
 const WatchlistRow = ({ stock, onRemove, onRowClick }) => {
     const isPositive = (stock.change || 0) >= 0;
-    
-    // --- MODIFIED: Access data from the 'fundamentals' object ---
     const fundamentals = stock.fundamentals || {};
     const pe = fundamentals.peRatio || 'N/A';
     const mktCap = stock.marketCap || 'N/A';
@@ -74,48 +56,45 @@ const WatchlistRow = ({ stock, onRemove, onRowClick }) => {
     const targetPrice = fundamentals.analystTargetPrice;
 
     let upsidePercent = 'N/A';
-    let upsideColor = 'text-gray-600 dark:text-gray-400';
+    let upsideColor = 'text-mm-text-secondary';
     if (targetPrice && stock.price) {
         const upside = ((targetPrice - stock.price) / stock.price) * 100;
         upsidePercent = formatNum(upside, true);
-        upsideColor = upside >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+        upsideColor = upside >= 0 ? 'text-mm-positive' : 'text-mm-negative';
     }
-    
+
     return (
-        <tr className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer" onClick={() => onRowClick(stock.symbol)}>
-            <td className="py-3 px-4">
-                <div className="font-bold text-gray-900 dark:text-white">{stock.symbol}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate w-40">{stock.companyName}</div>
+        <tr className="border-t border-mm-border hover:bg-mm-surface-subtle cursor-pointer" onClick={() => onRowClick(stock.symbol)}>
+            <td className="px-4 py-3">
+                <div className="font-semibold text-mm-text-primary">{stock.symbol}</div>
+                <div className="w-40 truncate text-xs text-mm-text-secondary">{stock.companyName}</div>
             </td>
-            <td className="py-3 px-4 font-medium dark:text-gray-200">${formatNum(stock.price)}</td>
-            <td className={`py-3 px-4 font-medium ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {isPositive ? '+' : ''}{formatNum(stock.change)} ({formatNum(stock.changePercent)}%)
+            <td className="px-4 py-3 font-medium text-mm-text-primary">${formatNum(stock.price)}</td>
+            <td className={`px-4 py-3 font-medium ${isPositive ? 'text-mm-positive' : 'text-mm-negative'}`}>
+                {isPositive ? '+' : ''}{formatNum(stock.change)} ({formatNum(stock.changePercent, true)})
             </td>
-            <td className="py-3 px-4 text-gray-600 dark:text-gray-400">{mktCap}</td>
-            <td className="py-3 px-4 text-gray-600 dark:text-gray-400">{pe === 'N/A' ? 'N/A' : formatNum(pe)}</td>
-            <td className="py-3 px-4 w-40">
-                {/* --- MODIFIED: Access 52-week data from 'fundamentals' --- */}
+            <td className="px-4 py-3 text-mm-text-secondary">{mktCap}</td>
+            <td className="px-4 py-3 text-mm-text-secondary">{pe === 'N/A' ? 'N/A' : formatNum(pe)}</td>
+            <td className="w-40 px-4 py-3">
                 <FiftyTwoWeekRange low={fundamentals.week52Low} high={fundamentals.week52High} price={stock.price} />
             </td>
-            <td className="py-3 px-4">
+            <td className="px-4 py-3">
                 <SparklineChart data={stock.sparkline} change={stock.change} />
             </td>
-            <td className="py-3 px-4">
+            <td className="px-4 py-3">
                 <RatingPill rating={rating} />
             </td>
-            <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-200">
+            <td className="px-4 py-3 font-medium text-mm-text-primary">
                 ${formatNum(targetPrice)}
             </td>
-            <td className={`py-3 px-4 font-semibold ${upsideColor}`}>
-                {upsidePercent}
-            </td>
-            <td className="py-3 px-4">
+            <td className={`px-4 py-3 font-semibold ${upsideColor}`}>{upsidePercent}</td>
+            <td className="px-4 py-3">
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
                         onRemove(stock.symbol);
                     }}
-                    className="bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-3 rounded-md transition-colors"
+                    className="ui-button-destructive px-3 py-1.5"
                 >
                     Remove
                 </button>
@@ -124,14 +103,11 @@ const WatchlistRow = ({ stock, onRemove, onRowClick }) => {
     );
 };
 
-
-// --- Main Watchlist Page Component ---
 const WatchlistPage = () => {
     const [watchlistData, setWatchlistData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [sortConfig, setSortConfig] = useState({ key: 'symbol', direction: 'ascending' });
-
     const [selectedTicker, setSelectedTicker] = useState(null);
     const [chartData, setChartData] = useState(null);
     const [chartError, setChartError] = useState(null);
@@ -146,12 +122,9 @@ const WatchlistPage = () => {
                 setLoading(false);
                 return;
             }
-            // --- MODIFIED: Fetch from the new /stock endpoint ---
-            const promises = tickers.map(ticker =>
-                apiRequest(API_ENDPOINTS.STOCK(ticker))
-            );
+            const promises = tickers.map((ticker) => apiRequest(API_ENDPOINTS.STOCK(ticker)));
             const detailedData = await Promise.all(promises);
-            setWatchlistData(detailedData.filter(data => !data.error));
+            setWatchlistData(detailedData.filter((data) => !data.error));
         } catch (err) {
             setError('Failed to fetch watchlist data. Is the backend server running?');
         } finally {
@@ -162,7 +135,7 @@ const WatchlistPage = () => {
     const handleRemoveStock = async (ticker) => {
         try {
             await apiRequest(API_ENDPOINTS.WATCHLIST_ITEM(ticker), { method: 'DELETE' });
-            setWatchlistData(prevData => prevData.filter(stock => stock.symbol !== ticker));
+            setWatchlistData((prevData) => prevData.filter((stock) => stock.symbol !== ticker));
         } catch (err) {
             setError('Failed to remove stock.');
         }
@@ -199,19 +172,19 @@ const WatchlistPage = () => {
     };
 
     useEffect(() => {
-        setLoading(true); 
-        fetchWatchlistData(); 
-        const refreshInterval = setInterval(fetchWatchlistData, 60000); 
-        return () => clearInterval(refreshInterval); 
+        setLoading(true);
+        fetchWatchlistData();
+        const refreshInterval = setInterval(fetchWatchlistData, 60000);
+        return () => clearInterval(refreshInterval);
     }, [fetchWatchlistData]);
 
     const sortedWatchlistData = useMemo(() => {
-        let sortableData = [...watchlistData];
+        const sortableData = [...watchlistData];
         if (sortConfig.key) {
             sortableData.sort((a, b) => {
-                let aValue, bValue;
-                
-                // --- MODIFIED: Access sorting data from 'fundamentals' object ---
+                let aValue;
+                let bValue;
+
                 if (sortConfig.key === 'targetPrice') {
                     aValue = a.fundamentals?.analystTargetPrice || 0;
                     bValue = b.fundamentals?.analystTargetPrice || 0;
@@ -227,7 +200,7 @@ const WatchlistPage = () => {
                         if (cap.endsWith('T')) return parseFloat(cap) * 1e12;
                         if (cap.endsWith('B')) return parseFloat(cap) * 1e9;
                         return 0;
-                    }
+                    };
                     aValue = parseCap(a.marketCap);
                     bValue = parseCap(b.marketCap);
                 } else {
@@ -251,15 +224,12 @@ const WatchlistPage = () => {
         setSortConfig({ key, direction });
     };
 
-    if (loading) return <div className="text-center p-8 text-gray-600 dark:text-gray-400">Loading watchlist...</div>;
-    if (error) return <div className="text-center p-8 text-red-500 dark:text-red-400">{error}</div>;
-
     const SortableTh = ({ label, sortKey }) => {
         const isSorted = sortConfig.key === sortKey;
         const arrow = isSorted ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '';
         return (
-            <th 
-                className="py-3 px-4 font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700"
+            <th
+                className="px-4 py-3 font-semibold text-mm-text-secondary cursor-pointer hover:bg-mm-surface-subtle"
                 onClick={() => requestSort(sortKey)}
             >
                 {label} {arrow}
@@ -267,41 +237,49 @@ const WatchlistPage = () => {
         );
     };
 
+    if (loading) return <div className="ui-page"><div className="ui-empty-state py-12">Loading watchlist...</div></div>;
+    if (error) return <div className="ui-page"><div className="ui-banner ui-banner-error">{error}</div></div>;
+
     return (
-        <div className="container mx-auto p-4 md:p-8 animate-fade-in">
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-6">My Watchlist</h1>
+        <div className="ui-page animate-fade-in space-y-8">
+            <div className="ui-page-header">
+                <h1 className="ui-page-title">My Watchlist</h1>
+            </div>
+
             {sortedWatchlistData.length > 0 ? (
-                <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-x-auto">
+                <div className="ui-panel overflow-x-auto">
                     <table className="min-w-full text-left text-sm">
-                        <thead className="bg-gray-100 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700">
+                        <thead className="border-b border-mm-border bg-mm-surface-subtle">
                             <tr>
                                 <SortableTh label="Symbol" sortKey="symbol" />
                                 <SortableTh label="Price" sortKey="price" />
                                 <SortableTh label="Change" sortKey="change" />
                                 <SortableTh label="Market Cap" sortKey="marketCap" />
                                 <SortableTh label="P/E (TTM)" sortKey="peRatio" />
-                                <th className="py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">52-Week Range</th>
-                                <th className="py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">7-Day Trend</th>
-                                <th className="py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Rating</th>
+                                <th className="px-4 py-3 font-semibold text-mm-text-secondary">52-Week Range</th>
+                                <th className="px-4 py-3 font-semibold text-mm-text-secondary">7-Day Trend</th>
+                                <th className="px-4 py-3 font-semibold text-mm-text-secondary">Rating</th>
                                 <SortableTh label="Price Target" sortKey="targetPrice" />
                                 <SortableTh label="Upside" sortKey="upside" />
-                                <th className="py-3 px-4 font-semibold text-gray-600 dark:text-gray-300">Actions</th>
+                                <th className="px-4 py-3 font-semibold text-mm-text-secondary">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {sortedWatchlistData.map(stock => (
-                                <WatchlistRow 
-                                    key={stock.symbol} 
-                                    stock={stock} 
+                            {sortedWatchlistData.map((stock) => (
+                                <WatchlistRow
+                                    key={stock.symbol}
+                                    stock={stock}
                                     onRemove={handleRemoveStock}
-                                    onRowClick={handleRowClick} 
+                                    onRowClick={handleRowClick}
                                 />
                             ))}
                         </tbody>
                     </table>
                 </div>
             ) : (
-                <p className="text-center text-gray-500 dark:text-gray-400 mt-8">Your watchlist is empty. Add stocks from the Search page.</p>
+                <div className="ui-empty-state mt-8">
+                    Your watchlist is empty. Add stocks from the Search page.
+                </div>
             )}
 
             {selectedTicker && (
@@ -314,7 +292,7 @@ const WatchlistPage = () => {
                             activeTimeFrame={activeTimeFrame}
                         />
                     )}
-                    {chartError && <div className="text-center p-8 text-red-500">{chartError}</div>}
+                    {chartError && <div className="ui-banner ui-banner-error mt-4">{chartError}</div>}
                 </div>
             )}
         </div>

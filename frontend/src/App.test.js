@@ -4,6 +4,9 @@ import App from './App';
 let mockIsSignedIn = false;
 let mockIsLoaded = true;
 
+jest.mock('react-markdown', () => ({ children }) => <div>{children}</div>);
+jest.mock('remark-gfm', () => () => null);
+
 jest.mock('@clerk/clerk-react', () => ({
     SignedIn: ({ children }) => (mockIsSignedIn ? children : null),
     SignedOut: ({ children }) => (mockIsSignedIn ? null : children),

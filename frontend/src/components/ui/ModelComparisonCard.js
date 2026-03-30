@@ -23,47 +23,48 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
     });
 
     return (
-        <div className="mt-8 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 p-6 rounded-xl shadow-lg border border-indigo-100 dark:border-indigo-800 animate-fade-in transition-colors duration-200">
+        <div className="ui-panel mt-8 animate-fade-in p-6">
+            <p className="ui-section-label mb-3">Ensemble Breakdown</p>
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
-                        <svg className="w-6 h-6 mr-2 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <h3 className="text-xl font-semibold text-mm-text-primary flex items-center">
+                        <svg className="w-6 h-6 mr-2 text-mm-accent-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
                         Model Comparison
                     </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    <p className="text-sm text-mm-text-secondary mt-1">
                         Ensemble of {modelsUsed.length} ML models
                     </p>
                 </div>
                 <div className="text-right">
-                    <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
+                    <div className="text-3xl font-bold text-mm-accent-primary">
                         {confidence}%
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Confidence</p>
+                    <p className="text-xs text-mm-text-tertiary">Confidence</p>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {modelsUsed.map(model => (
-                    <div key={model} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                    <div key={model} className="ui-panel-subtle p-4">
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center">
                                 <span className="text-2xl mr-2">{modelIcons[model]}</span>
                                 <div>
-                                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                    <h4 className="text-sm font-semibold text-mm-text-primary">
                                         {modelLabels[model]}
                                     </h4>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    <p className="text-xs text-mm-text-tertiary">
                                         {modelBreakdown[model].length} day forecast
                                     </p>
                                 </div>
                             </div>
                         </div>
-                        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                        <div className="mt-3 pt-3 border-t border-mm-border">
                             <div className="text-center">
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Avg. Prediction</p>
-                                <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                                <p className="text-xs text-mm-text-tertiary mb-1">Avg. Prediction</p>
+                                <p className="text-2xl font-bold text-mm-accent-primary">
                                     ${modelAverages[model]}
                                 </p>
                             </div>
@@ -71,14 +72,14 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
                         {/* Show first and last prediction */}
                         <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                             <div className="text-center">
-                                <p className="text-gray-500 dark:text-gray-400">Day 1</p>
-                                <p className="font-medium text-gray-900 dark:text-gray-200">
+                                <p className="text-mm-text-tertiary">Day 1</p>
+                                <p className="font-medium text-mm-text-primary">
                                     ${modelBreakdown[model][0]}
                                 </p>
                             </div>
                             <div className="text-center">
-                                <p className="text-gray-500 dark:text-gray-400">Day 6</p>
-                                <p className="font-medium text-gray-900 dark:text-gray-200">
+                                <p className="text-mm-text-tertiary">Day 6</p>
+                                <p className="font-medium text-mm-text-primary">
                                     ${modelBreakdown[model][modelBreakdown[model].length - 1]}
                                 </p>
                             </div>
@@ -87,9 +88,9 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
                 ))}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-800">
-                <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                    <svg className="w-4 h-4 mr-2 text-indigo-500" fill="currentColor" viewBox="0 0 20 20">
+            <div className="mt-4 pt-4 border-t border-mm-border">
+                <div className="flex items-center text-sm text-mm-text-secondary">
+                    <svg className="w-4 h-4 mr-2 text-mm-accent-primary" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                     </svg>
                     <span>

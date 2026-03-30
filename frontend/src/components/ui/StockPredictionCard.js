@@ -3,20 +3,21 @@ import React from 'react';
 const StockPredictionCard = ({ data }) => {
     const spe = Math.abs(((data.recentPredicted - data.recentClose) / data.recentClose) * 100);
     const isAccurate = spe <= 1;
-    const changeColor = isAccurate ? 'text-green-500' : 'text-red-500';
+    const changeColor = isAccurate ? 'text-mm-positive' : 'text-mm-negative';
 
     const DataRow = ({ label, value }) => (
-        <div className="flex justify-between py-3 border-b border-gray-200 dark:border-gray-700 last:border-b-0">
-            <span className="text-sm text-gray-500 dark:text-gray-400">{label}</span>
-            <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{value}</span>
+        <div className="flex justify-between py-3 border-b border-mm-border last:border-b-0">
+            <span className="text-sm text-mm-text-secondary">{label}</span>
+            <span className="text-sm font-medium text-mm-text-primary">{value}</span>
         </div>
     );
 
     return (
-        <div className="mt-8 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg animate-fade-in transition-colors duration-200">
+        <div className="ui-panel mt-8 animate-fade-in p-6">
+            <p className="ui-section-label mb-3">Forecast Review</p>
             <div className="flex justify-between items-start">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    <h2 className="text-2xl font-semibold text-mm-text-primary">
                         {data.companyName} ({data.symbol})
                     </h2>
                 </div>

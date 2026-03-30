@@ -81,15 +81,7 @@ function App() {
             </SignedOut>
 
             <SignedIn>
-                <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden font-sans">
-                    <style>{`
-                        @keyframes fade-in {
-                            from { opacity: 0; transform: translateY(10px); }
-                            to { opacity: 1; transform: translateY(0); }
-                        }
-                        .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
-                    `}</style>
-
+                <div className="app-shell flex h-screen overflow-hidden">
                     <Sidebar
                         activePage={activePage}
                         setActivePage={setActivePage}
@@ -97,7 +89,7 @@ function App() {
                         onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
                     />
 
-                    <main className={`flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
+                    <main className={`app-shell-main flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
                         {activePage === 'dashboard' && <DashboardPage setActivePage={setActivePage} />}
                         {activePage === 'search' && <SearchPage initialTicker={sharedTicker} onClearInitialTicker={() => setSharedTicker(null)} />}
                         {activePage === 'screener' && <ScreenerPage onSearchTicker={handleScreenerNav} />}
