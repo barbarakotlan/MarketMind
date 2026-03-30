@@ -2,6 +2,9 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.1",
     "@testing-library/dom": "^10.4.1",
