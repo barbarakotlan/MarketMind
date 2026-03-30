@@ -5,6 +5,17 @@
 **Protocol:** HTTP/REST  
 **Format:** JSON
 
+> This file documents the current internal/app-facing backend routes.
+>
+> MarketMind Public API v1 and v2 are separate private-beta contracts served under:
+> - `/api/public/v1/*`
+> - `/api/public/v2/*`
+> - `/api/public/docs`
+> - `/api/public/openapi/v1.yaml`
+> - `/api/public/openapi/v2.yaml`
+>
+> Do not treat the internal routes below as the public developer contract.
+
 ---
 
 ## 📑 Table of Contents

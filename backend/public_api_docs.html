@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MarketMind Public API</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --text: #132033;
+      --muted: #5c6b80;
+      --border: #d8e0ea;
+      --accent: #1663d6;
+      --code: #eef3fa;
+    }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 980px; margin: 0 auto; padding: 40px 24px 64px; }
+    section, header { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 24px; margin-bottom: 20px; }
+    h1, h2, h3 { margin-top: 0; }
+    p, li { line-height: 1.6; color: var(--text); }
+    .muted { color: var(--muted); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); }
+    code { padding: 2px 6px; border-radius: 6px; }
+    pre { padding: 16px; border-radius: 12px; overflow-x: auto; }
+    a { color: var(--accent); text-decoration: none; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-top: 1px solid var(--border); padding: 12px 8px; text-align: left; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="muted">Private Beta</p>
+      <h1>MarketMind Public API</h1>
+      <p>Read-only MarketMind developer API for market data and research workflows. All requests use MarketMind developer API keys.</p>
+      <p class="muted">Available contracts: MarketMind Public API v1 and MarketMind Public API v2.</p>
+      <p>
+        <a href="/api/public/openapi/v1.yaml">OpenAPI v1</a>
+        &nbsp;|&nbsp;
+        <a href="/api/public/openapi/v2.yaml">OpenAPI v2</a>
+      </p>
+    </header>
+
+    <section>
+      <h2>Authentication</h2>
+      <p>Authenticate every request with a MarketMind developer API key:</p>
+      <pre>Authorization: Bearer &lt;marketmind_developer_api_key&gt;</pre>
+      <p class="muted">Keys are admin-issued for the private beta and are shown only once at creation time.</p>
+    </section>
+
+    <section>
+      <h2>Version Summary</h2>
+      <table>
+        <thead>
+          <tr><th>Version</th><th>Focus</th><th>Coverage</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>v1</code></td><td>Core market data + predictions</td><td>Stock, chart, news, symbol search, ensemble predictions, fundamentals, macro overview</td></tr>
+          <tr><td><code>v2</code></td><td>Expanded research surface</td><td>Options, forex, crypto, commodities, prediction markets metadata, economic calendar</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Examples</h2>
+      <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
+  "https://api.marketmind.example.com/api/public/v1/stock/AAPL"</pre>
+      <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
+  "https://api.marketmind.example.com/api/public/v2/options/chain/AAPL?date=2026-04-17"</pre>
+      <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
+  "https://api.marketmind.example.com/api/public/v2/prediction-markets?exchange=polymarket&limit=25"</pre>
+    </section>
+
+    <section>
+      <h2>Rate Limits and Quotas</h2>
+      <p>The private beta enforces per-minute, per-hour, and daily quotas per API key.</p>
+      <p>Responses may include:</p>
+      <ul>
+        <li><code>X-RateLimit-Limit</code></li>
+        <li><code>X-RateLimit-Remaining</code></li>
+        <li><code>X-RateLimit-Reset</code></li>
+        <li><code>X-Public-API-Daily-Quota</code></li>
+        <li><code>X-Public-API-Daily-Remaining</code></li>
+        <li><code>X-Cache</code></li>
+        <li><code>X-Request-ID</code></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Error Format</h2>
+      <pre>{
+  "error": {
+    "code": "invalid_ticker",
+    "message": "Ticker is invalid.",
+    "request_id": "0d69c0e9dcb147b0892bb9afdbd1eb8a"
+  }
+}</pre>
+      <p>Common codes: <code>invalid_api_key</code>, <code>api_key_revoked</code>, <code>api_key_expired</code>, <code>rate_limited</code>, <code>quota_exceeded</code>, <code>invalid_ticker</code>, <code>invalid_query</code>, <code>upstream_unavailable</code>, <code>not_found</code>, <code>internal_error</code>.</p>
+    </section>
+
+    <section>
+      <h2>Versioning and Changelog</h2>
+      <p><strong>v1</strong> established the core read-only contract. <strong>v2</strong> expands the read-only research surface while keeping the same auth, quota, and error model.</p>
+      <p class="muted">Support: contact the MarketMind team through the beta channel used to issue your key.</p>
+    </section>
+  </main>
+</body>
+</html>
