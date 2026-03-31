@@ -339,6 +339,7 @@ def macro_overview_handler(
     logger,
     yf_module,
     macro_indicators,
+    requests_module,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -349,6 +350,7 @@ def macro_overview_handler(
                 logger=logger,
                 yf_module=yf_module,
                 macro_indicators=macro_indicators,
+                requests_module=requests_module,
             )
         )
         if status_code == 503:

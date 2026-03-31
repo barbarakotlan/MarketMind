@@ -12,51 +12,51 @@ import {
 
 const NAV_GROUPS = [
     {
-        label: null,
+        label: 'Home',
         items: [
             { page: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         ],
     },
     {
-        label: 'Trading',
+        label: 'Research',
         items: [
             { page: 'search', icon: Search, label: 'Search' },
             { page: 'screener', icon: SlidersHorizontal, label: 'Screener' },
-            { page: 'watchlist', icon: Star, label: 'Watchlist' },
-            { page: 'portfolio', icon: Briefcase, label: 'Portfolio' },
             { page: 'fundamentals', icon: Building2, label: 'Fundamentals' },
-        ],
-    },
-    {
-        label: 'Analysis',
-        items: [
             { page: 'predictions', icon: TrendingUp, label: 'Predictions' },
             { page: 'performance', icon: Target, label: 'Evaluate' },
             { page: 'options', icon: BarChart3, label: 'Options' },
+            { page: 'marketmindAI', icon: Bot, label: 'MarketMindAI' },
         ],
     },
     {
-        label: 'AI',
+        label: 'Portfolio',
         items: [
-            { page: 'marketmindAI', icon: Bot, label: 'MarketMindAI' },
+            { page: 'watchlist', icon: Star, label: 'Watchlist' },
+            { page: 'portfolio', icon: Briefcase, label: 'Portfolio' },
+            { page: 'notifications', icon: Bell, label: 'Alerts' },
         ],
     },
     {
         label: 'Markets',
         items: [
+            { page: 'predictionMarkets', icon: Layers, label: 'Prediction Markets' },
             { page: 'forex', icon: DollarSign, label: 'Forex' },
             { page: 'crypto', icon: Bitcoin, label: 'Crypto' },
             { page: 'commodities', icon: Boxes, label: 'Commodities' },
-            { page: 'macro', icon: Globe, label: 'Macro' },
-            { page: 'predictionMarkets', icon: Layers, label: 'Prediction Mkt' },
         ],
     },
     {
-        label: 'Info',
+        label: 'Macro',
         items: [
-            { page: 'calendar', icon: Calendar, label: 'Calendar' }, // <-- Added Calendar page here
+            { page: 'macro', icon: Globe, label: 'Macro' },
+            { page: 'calendar', icon: Calendar, label: 'Calendar' },
             { page: 'news', icon: Newspaper, label: 'News' },
-            { page: 'notifications', icon: Bell, label: 'Alerts' },
+        ],
+    },
+    {
+        label: 'Learn',
+        items: [
             { page: 'gettingStarted', icon: BookOpen, label: 'Learn' },
             {page: 'plan', icon: Crown, label: 'Upgrade Plan' },
         ],

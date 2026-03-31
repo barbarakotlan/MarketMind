@@ -12,15 +12,30 @@ from user_state_store import (
 
 checkout_bp = Blueprint("checkout", __name__)
 
-# ── Stripe config ─────────────────────────────────────────────────────────────
-stripe.api_key = os.environ["STRIPE_SECRET_KEY"]
-WEBHOOK_SECRET = os.environ["STRIPE_WEBHOOK_SECRET"]
-DATABASE_URL   = os.environ["DATABASE_URL"]
+def _require_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
 
-PRICE_IDS = {
-    "pro_monthly": os.environ["STRIPE_PRICE_PRO_MONTHLY"],
-    "pro_annual":  os.environ["STRIPE_PRICE_PRO_ANNUAL"],
-}
+
+def _configure_stripe() -> None:
+    stripe.api_key = _require_env("STRIPE_SECRET_KEY")
+
+
+def _get_database_url() -> str:
+    return _require_env("DATABASE_URL")
+
+
+def _get_webhook_secret() -> str:
+    return _require_env("STRIPE_WEBHOOK_SECRET")
+
+
+def _get_price_ids() -> dict:
+    return {
+        "pro_monthly": _require_env("STRIPE_PRICE_PRO_MONTHLY"),
+        "pro_annual": _require_env("STRIPE_PRICE_PRO_ANNUAL"),
+    }
 
 
 # ── Auth helper ───────────────────────────────────────────────────────────────
@@ -46,7 +61,7 @@ def _get_or_create_stripe_customer(clerk_user_id: str, email: str) -> stripe.Cus
     If none exists yet, search Stripe by email or create a new customer,
     then persist the ID back to the DB.
     """
-    with session_scope(DATABASE_URL) as session:
+    with session_scope(_get_database_url()) as session:
         user = session.get(AppUser, clerk_user_id)
 
         # Reuse stored customer ID if we have one
@@ -77,7 +92,7 @@ def _get_or_create_stripe_customer(clerk_user_id: str, email: str) -> stripe.Cus
 
 def _set_user_plan(stripe_customer_id: str, plan: str, subscription_status: str):
     """Find user by stripe_customer_id and update their plan."""
-    with session_scope(DATABASE_URL) as session:
+    with session_scope(_get_database_url()) as session:
         user = session.scalars(
             select(AppUser).where(AppUser.stripe_customer_id == stripe_customer_id)
         ).first()
@@ -105,11 +120,12 @@ def create_subscription():
     if not email:
         return jsonify({"error": "Email is required."}), 400
 
-    price_id = PRICE_IDS.get("pro_annual" if billing == "annual" else "pro_monthly")
-    if not price_id:
-        return jsonify({"error": f"Unknown billing cadence: {billing}"}), 400
-
     try:
+        _configure_stripe()
+        price_id = _get_price_ids().get("pro_annual" if billing == "annual" else "pro_monthly")
+        if not price_id:
+            return jsonify({"error": f"Unknown billing cadence: {billing}"}), 400
+
         customer = _get_or_create_stripe_customer(clerk_user_id, email)
 
         subscription = stripe.Subscription.create(
@@ -131,6 +147,8 @@ def create_subscription():
             "customerId":     customer.id,
         })
 
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
     except stripe.error.StripeError as e:
         return jsonify({"error": e.user_message}), 400
 
@@ -146,7 +164,10 @@ def stripe_webhook():
     sig     = request.headers.get("Stripe-Signature", "")
 
     try:
-        event = stripe.Webhook.construct_event(payload, sig, WEBHOOK_SECRET)
+        _configure_stripe()
+        event = stripe.Webhook.construct_event(payload, sig, _get_webhook_secret())
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
     except stripe.error.SignatureVerificationError:
         return jsonify({"error": "Invalid signature"}), 400
 
@@ -193,12 +214,15 @@ def cancel_subscription():
         return jsonify({"error": "subscriptionId is required."}), 400
 
     try:
+        _configure_stripe()
         sub = stripe.Subscription.modify(subscription_id, cancel_at_period_end=True)
         return jsonify({
             "status":            sub.status,
             "cancelAtPeriodEnd": sub.cancel_at_period_end,
             "currentPeriodEnd":  sub.current_period_end,
         })
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
     except stripe.error.StripeError as e:
         return jsonify({"error": e.user_message}), 400
 
@@ -215,12 +239,15 @@ def plan_status():
     if not clerk_user_id:
         return jsonify({"error": "Unauthorized"}), 401
 
-    with session_scope(DATABASE_URL) as session:
-        user = session.get(AppUser, clerk_user_id)
-        if not user:
-            return jsonify({"plan": "free", "subscriptionStatus": None})
+    try:
+        with session_scope(_get_database_url()) as session:
+            user = session.get(AppUser, clerk_user_id)
+            if not user:
+                return jsonify({"plan": "free", "subscriptionStatus": None})
 
-        return jsonify({
-            "plan":               user.plan,
-            "subscriptionStatus": user.subscription_status,
-        })
+            return jsonify({
+                "plan":               user.plan,
+                "subscriptionStatus": user.subscription_status,
+            })
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500

@@ -42,6 +42,41 @@ except ImportError:
 from news_fetcher import get_general_news
 from models import create_dataset, ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict
 from professional_evaluation import rolling_window_backtest
+try:
+    from selective_prediction import (
+        infer_selective_decision,
+        SELECTIVE_MODES,
+        SELECTIVE_DISABLED_STATUSES,
+        SELECTOR_SOURCE_REQUESTABLE,
+    )
+except ImportError:
+    SELECTIVE_MODES = {"none", "conservative", "aggressive", "risk_conservative", "risk_aggressive"}
+    SELECTIVE_DISABLED_STATUSES = set()
+    SELECTOR_SOURCE_REQUESTABLE = {"auto"}
+
+    def infer_selective_decision(
+        ticker,
+        requested_mode="none",
+        selector_source_requested="auto",
+        raw_signal=0.0,
+        ensemble_disagreement=0.0,
+        config=None,
+        artifact_root=None,
+        logger=None,
+    ):
+        return {
+            "ticker": str(ticker or "").upper(),
+            "mode_requested": str(requested_mode or "none").lower(),
+            "abstain": False,
+            "abstain_reason": None,
+            "selector_prob": None,
+            "selector_threshold": None,
+            "selector_status": "unavailable",
+            "selector_source_requested": str(selector_source_requested or "auto").lower(),
+            "selector_source": "none",
+            "raw_signal": float(raw_signal or 0.0),
+            "ensemble_disagreement": float(ensemble_disagreement or 0.0),
+        }
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
 from commodities_fetcher import get_commodity_price, get_commodity_list, get_commodities_by_category
@@ -51,6 +86,10 @@ from prediction_markets_fetcher import (
     get_market_by_id as pm_get_market,
     get_exchange_list as pm_get_exchanges,
     get_current_prices as pm_get_prices,
+)
+from prediction_market_analysis import (
+    PredictionMarketAnalysisError,
+    analyze_prediction_market as pm_analyze_market,
 )
 from logger_config import setup_logger, log_api_error
 from deliverables import (
@@ -1782,6 +1821,20 @@ def list_prediction_exchanges():
     )
 
 
+@app.route('/prediction-markets/analyze', methods=['POST'])
+@require_auth
+@limiter.limit(RateLimits.WRITE)
+def analyze_prediction_market():
+    return prediction_markets_handlers.analyze_prediction_market_handler(
+        request_obj=request,
+        analyze_prediction_market_fn=pm_analyze_market,
+        error_cls=PredictionMarketAnalysisError,
+        jsonify_fn=jsonify,
+        log_api_error_fn=log_api_error,
+        logger=logger,
+    )
+
+
 @app.route('/prediction-markets/<path:market_id>', methods=['GET'])
 @limiter.limit(RateLimits.STANDARD)
 def get_prediction_market(market_id):
@@ -1954,9 +2007,9 @@ def get_screener():
 
 
 MACRO_INDICATORS = [
-    {"symbol": "URATE", "name": "Unemployment Rate",     "unit": "%",    "multiplier": 100},
-    {"symbol": "CPI",   "name": "Consumer Price Index",  "unit": "Index","multiplier": 1},
-    {"symbol": "IP",    "name": "Industrial Production", "unit": "Index","multiplier": 1},
+    {"symbol": "URATE", "name": "Unemployment Rate",     "unit": "%",    "multiplier": 1, "openbb_multiplier": 100, "fred_multiplier": 1, "series_id": "UNRATE"},
+    {"symbol": "CPI",   "name": "Consumer Price Index",  "unit": "Index","multiplier": 1, "series_id": "CPIAUCSL"},
+    {"symbol": "IP",    "name": "Industrial Production", "unit": "Index","multiplier": 1, "series_id": "INDPRO"},
 ]
 
 @app.route('/macro/overview')
@@ -1968,6 +2021,7 @@ def get_macro_overview():
         logger=logger,
         yf_module=yf,
         macro_indicators=MACRO_INDICATORS,
+        requests_module=requests,
     )
 
 
@@ -2157,6 +2211,7 @@ def public_api_macro_overview():
         logger=logger,
         yf_module=yf,
         macro_indicators=MACRO_INDICATORS,
+        requests_module=requests,
     )
 
 
