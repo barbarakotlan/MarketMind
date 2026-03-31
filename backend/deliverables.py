@@ -9,8 +9,7 @@ import yfinance as yf
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from ensemble_model import ensemble_predict
-from model import create_dataset
+from models import ensemble_predict, create_dataset
 from openrouter_client import DEFAULT_OPENROUTER_MODEL, create_structured_completion
 from user_state_store import (
     Deliverable,

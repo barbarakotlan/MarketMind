@@ -24,7 +24,8 @@ def live_ensemble_signal_components(
     if df.empty or len(df) < 30:
         return None
 
-    ensemble_preds, individual_preds = ensemble_predict_fn(df, days_ahead=6)
+    ensemble_preds, individual_preds = ensemble_predict_fn(df, days_ahead=7)
+    print(f"ensemble_preds length: {len(ensemble_preds)}")
     if ensemble_preds is None or len(ensemble_preds) == 0:
         return None
 

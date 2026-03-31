@@ -31,16 +31,15 @@ const PredictionChart = ({ predictionData }) => {
     const chartGridColor = isDarkMode ? 'rgba(148, 163, 184, 0.18)' : 'rgba(148, 163, 184, 0.14)';
     const tooltipBackground = isDarkMode ? '#020617' : '#0F172A';
 
-    const dates = predictionData.predictions.map(p => {
-        const date = new Date(p.date);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    });
+    const formatDate = (dateStr) => {
+        const [year, month, day] = dateStr.split('-');
+        return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+
+    const dates = predictionData.predictions.map(p => formatDate(p.date));
     const predictedPrices = predictionData.predictions.map(p => p.predictedClose);
 
-    const allDates = [
-        new Date(predictionData.recentDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        ...dates
-    ];
+    const allDates = [formatDate(predictionData.recentDate), ...dates];
     const allPrices = [predictionData.recentClose, ...predictedPrices];
 
     const data = {
