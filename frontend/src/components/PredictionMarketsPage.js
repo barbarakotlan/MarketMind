@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import {
     BarChart3, Search, RefreshCw,
@@ -448,7 +448,7 @@ const PredictionMarketsPage = () => {
 
     const analysisEnabled = isLoaded && isSignedIn;
 
-    const fetchMarkets = async (search = '') => {
+    const fetchMarkets = useCallback(async (search = '') => {
         setLoadingMarkets(true);
         try {
             const url = API_ENDPOINTS.PREDICTION_MARKETS('polymarket', 50, search);
@@ -459,9 +459,9 @@ const PredictionMarketsPage = () => {
         } finally {
             setLoadingMarkets(false);
         }
-    };
+    }, []);
 
-    const refreshPortfolioState = async () => {
+    const refreshPortfolioState = useCallback(async () => {
         if (!isLoaded || !isSignedIn) {
             setPortfolio(null);
             setTradeHistory([]);
@@ -482,7 +482,7 @@ const PredictionMarketsPage = () => {
         } finally {
             setLoadingPortfolio(false);
         }
-    };
+    }, [isLoaded, isSignedIn]);
 
     const handleReset = async () => {
         if (!window.confirm('Reset your prediction markets portfolio to $10,000?')) return;
@@ -574,11 +574,11 @@ const PredictionMarketsPage = () => {
 
     useEffect(() => {
         fetchMarkets();
-    }, []);
+    }, [fetchMarkets]);
 
     useEffect(() => {
         refreshPortfolioState();
-    }, [isLoaded, isSignedIn]);
+    }, [refreshPortfolioState]);
 
     return (
         <div className="ui-page animate-fade-in space-y-8">
