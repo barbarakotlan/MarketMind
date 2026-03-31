@@ -289,9 +289,6 @@ if IS_PRODUCTION:
         logger.warning("⚠️ NEWS_API_KEY not set in production environment")
     if not ALPHA_VANTAGE_API_KEY:
         logger.warning("⚠️ ALPHA_VANTAGE_API_KEY not set in production environment")
-    if not os.getenv('FLASK_SECRET_KEY'):
-        logger.error("❌ FLASK_SECRET_KEY must be set in production environment")
-        raise ValueError("FLASK_SECRET_KEY environment variable is required in production")
 
 # --- Paths & Auth Configuration ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -319,9 +316,41 @@ PUBLIC_API_DOCS_PATH = os.path.join(BASE_DIR, 'public_api_docs.html')
 ALLOW_LEGACY_USER_DATA_SEED = os.getenv('ALLOW_LEGACY_USER_DATA_SEED', 'false').strip().lower() == 'true'
 
 CLERK_JWKS_URL = os.getenv('CLERK_JWKS_URL', '').strip()
+CLERK_ISSUER = os.getenv('CLERK_ISSUER', '').strip()
 CLERK_AUDIENCE = os.getenv('CLERK_AUDIENCE', '').strip()
 CLERK_JWKS_CACHE_TTL_SECONDS = int(os.getenv('CLERK_JWKS_CACHE_TTL_SECONDS', '3600'))
 _JWKS_CACHE = {}
+
+
+def validate_production_runtime_security(
+    *,
+    flask_secret_key: str,
+    clerk_jwks_url: str,
+    clerk_issuer: str,
+    allow_legacy_user_data_seed: bool,
+):
+    errors = []
+
+    if not str(flask_secret_key or '').strip():
+        errors.append("FLASK_SECRET_KEY environment variable is required in production")
+    if not str(clerk_jwks_url or '').strip():
+        errors.append("CLERK_JWKS_URL environment variable is required in production")
+    if not str(clerk_issuer or '').strip():
+        errors.append("CLERK_ISSUER environment variable is required in production")
+    if allow_legacy_user_data_seed:
+        errors.append("ALLOW_LEGACY_USER_DATA_SEED must be false in production")
+
+    if errors:
+        raise ValueError("; ".join(errors))
+
+
+if IS_PRODUCTION:
+    validate_production_runtime_security(
+        flask_secret_key=os.getenv('FLASK_SECRET_KEY', ''),
+        clerk_jwks_url=CLERK_JWKS_URL,
+        clerk_issuer=CLERK_ISSUER,
+        allow_legacy_user_data_seed=ALLOW_LEGACY_USER_DATA_SEED,
+    )
 
 
 def _normalize_persistence_mode(mode):
@@ -408,7 +437,11 @@ def _get_clerk_bearer_token():
 
 
 def _resolve_clerk_jwks_url(issuer):
-    return api_auth_helpers.resolve_clerk_jwks_url(CLERK_JWKS_URL, issuer)
+    return api_auth_helpers.resolve_clerk_jwks_url(
+        CLERK_JWKS_URL,
+        issuer,
+        allow_unverified_issuer_fallback=not IS_PRODUCTION,
+    )
 
 
 def _fetch_jwks(jwks_url):
@@ -433,9 +466,11 @@ def verify_clerk_token(token):
     return api_auth_helpers.verify_clerk_token(
         token,
         clerk_jwks_url=CLERK_JWKS_URL,
+        clerk_issuer=CLERK_ISSUER,
         clerk_audience=CLERK_AUDIENCE,
         jwks_cache_ttl_seconds=CLERK_JWKS_CACHE_TTL_SECONDS,
         jwks_cache=_JWKS_CACHE,
+        is_production=IS_PRODUCTION,
         requests_get=requests.get,
         time_fn=time.time,
     )

@@ -308,8 +308,7 @@ export default function CheckoutPage({
     const [isAnnual,     setIsAnnual]     = useState(initialAnnual);
     const [clientSecret, setClientSecret] = useState(null);
     const [fetchError,   setFetchError]   = useState(null);
-    const [email,        setEmail]        = useState(userEmail);
-    const [emailReady,   setEmailReady]   = useState(!!userEmail);
+    const [requestNonce, setRequestNonce] = useState(0);
     const [success,      setSuccess]      = useState(false);
 
     useEffect(() => {
@@ -318,25 +317,25 @@ export default function CheckoutPage({
     }, [isAnnual]);
 
     useEffect(() => {
-        if (!emailReady || !email) return;
-
         let cancelled = false;
         setFetchError(null);
 
         apiRequest(API_ENDPOINTS.CHECKOUT_CREATE_SUBSCRIPTION, {
             method: 'POST',
-            body: JSON.stringify({ email, billing: isAnnual ? 'annual' : 'monthly' }),
+            body: JSON.stringify({ billing: isAnnual ? 'annual' : 'monthly' }),
         })
             .then(data => {
                 if (cancelled) return;
                 setClientSecret(data.clientSecret);
             })
-            .catch(() => {
-                if (!cancelled) setFetchError('Could not reach the server. Please try again.');
+            .catch((error) => {
+                if (!cancelled) {
+                    setFetchError(error?.message || 'Could not reach the server. Please try again.');
+                }
             });
 
         return () => { cancelled = true; };
-    }, [emailReady, email, isAnnual]);
+    }, [isAnnual, requestNonce]);
 
     const appearance = {
         theme: 'stripe',
@@ -409,37 +408,20 @@ export default function CheckoutPage({
                             Complete your purchase
                         </h2>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-7">
-                            Your card details are handled entirely by Stripe.
+                            {userEmail
+                                ? `Your card details are handled entirely by Stripe for ${userEmail}.`
+                                : 'Your card details are handled entirely by Stripe.'}
                         </p>
 
-                        {!emailReady ? (
-                            <div className="flex flex-col gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">
-                                        Email
-                                    </label>
-                                    <input
-                                        type="email"
-                                        placeholder="you@example.com"
-                                        value={email}
-                                        onChange={e => setEmail(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && email.includes('@') && setEmailReady(true)}
-                                        className="w-full px-4 py-3 rounded-xl text-sm font-medium border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-blue-500 transition-colors"
-                                    />
-                                </div>
-                                <button
-                                    onClick={() => email.includes('@') && setEmailReady(true)}
-                                    disabled={!email.includes('@')}
-                                    className="w-full py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed hover:from-blue-700 hover:to-indigo-700 transition-all"
-                                >
-                                    Continue to Payment
-                                </button>
-                            </div>
-                        ) : fetchError ? (
+                        {fetchError ? (
                             <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300">
                                 {fetchError}
                                 <button
-                                    onClick={() => { setEmailReady(false); setFetchError(null); }}
+                                    onClick={() => {
+                                        setClientSecret(null);
+                                        setFetchError(null);
+                                        setRequestNonce(value => value + 1);
+                                    }}
                                     className="block mt-2 text-xs underline"
                                 >
                                     Try again

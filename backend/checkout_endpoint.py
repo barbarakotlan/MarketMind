@@ -1,4 +1,5 @@
 import os
+import logging
 import stripe
 from flask import Blueprint, request, jsonify, g
 from functools import wraps
@@ -11,6 +12,7 @@ from user_state_store import (
 )
 
 checkout_bp = Blueprint("checkout", __name__)
+logger = logging.getLogger(__name__)
 
 def _require_env(name: str) -> str:
     value = os.environ.get(name)
@@ -54,38 +56,71 @@ def _get_user_id():
     return getattr(g, 'current_user_id', None)
 
 
+def _stripe_value(obj, key, default=None):
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _ensure_app_user(session, clerk_user_id: str, *, email: str | None) -> AppUser:
+    user = session.get(AppUser, clerk_user_id)
+    now = utcnow()
+    if user is None:
+        user = AppUser(
+            clerk_user_id=clerk_user_id,
+            email=email,
+            plan="free",
+            created_at=now,
+            last_seen_at=now,
+        )
+        session.add(user)
+    elif email and not user.email:
+        user.email = email
+    return user
+
+
+def _get_authenticated_email(clerk_user_id: str) -> str | None:
+    auth_payload = getattr(g, "auth_payload", {}) or {}
+    auth_email = str(auth_payload.get("email") or "").strip()
+    if auth_email:
+        return auth_email
+
+    with session_scope(_get_database_url()) as session:
+        user = session.get(AppUser, clerk_user_id)
+        if user and user.email:
+            return str(user.email).strip()
+    return None
+
+
 # ── Helper: find or upsert stripe_customer_id on AppUser ─────────────────────
 def _get_or_create_stripe_customer(clerk_user_id: str, email: str) -> stripe.Customer:
     """
     Look up the Stripe customer ID stored on the user row.
-    If none exists yet, search Stripe by email or create a new customer,
-    then persist the ID back to the DB.
+    If none exists yet, create a new customer and persist the ID back to the DB.
     """
     with session_scope(_get_database_url()) as session:
-        user = session.get(AppUser, clerk_user_id)
+        user = _ensure_app_user(session, clerk_user_id, email=email)
 
         # Reuse stored customer ID if we have one
         if user and user.stripe_customer_id:
-            return stripe.Customer.retrieve(user.stripe_customer_id)
+            try:
+                customer = stripe.Customer.retrieve(user.stripe_customer_id)
+                if _stripe_value(customer, "deleted", False):
+                    user.stripe_customer_id = None
+                else:
+                    return customer
+            except stripe.error.InvalidRequestError:
+                user.stripe_customer_id = None
 
-        # Search Stripe by email as fallback
-        existing = stripe.Customer.search(query=f'email:"{email}"', limit=1)
-        customer = existing.data[0] if existing.data else stripe.Customer.create(email=email)
+        customer = stripe.Customer.create(
+            email=email,
+            metadata={"clerk_user_id": clerk_user_id},
+        )
 
-        # Persist the customer ID so we never create duplicates
         if user:
             user.stripe_customer_id = customer.id
-        else:
-            # Touch the user row into existence (shouldn't normally happen
-            # since Clerk auth syncs users, but defensive fallback)
-            session.add(AppUser(
-                clerk_user_id=clerk_user_id,
-                email=email,
-                stripe_customer_id=customer.id,
-                plan="free",
-                created_at=utcnow(),
-                last_seen_at=utcnow(),
-            ))
 
     return customer
 
@@ -93,12 +128,21 @@ def _get_or_create_stripe_customer(clerk_user_id: str, email: str) -> stripe.Cus
 def _set_user_plan(stripe_customer_id: str, plan: str, subscription_status: str):
     """Find user by stripe_customer_id and update their plan."""
     with session_scope(_get_database_url()) as session:
-        user = session.scalars(
+        users = session.scalars(
             select(AppUser).where(AppUser.stripe_customer_id == stripe_customer_id)
-        ).first()
-        if user:
-            user.plan = plan
-            user.subscription_status = subscription_status
+        ).all()
+        if len(users) != 1:
+            if users:
+                logger.warning(
+                    "Skipping Stripe plan update for customer %s because ownership is ambiguous (%s rows)",
+                    stripe_customer_id,
+                    len(users),
+                )
+            return
+
+        user = users[0]
+        user.plan = plan
+        user.subscription_status = subscription_status
 
 
 # ── POST /checkout/create-subscription ───────────────────────────────────────
@@ -113,12 +157,12 @@ def create_subscription():
     if not clerk_user_id:
         return jsonify({"error": "Unauthorized"}), 401
 
-    data    = request.get_json()
-    email   = (data.get("email") or "").strip()
+    data    = request.get_json(silent=True) or {}
     billing = data.get("billing", "monthly")
 
+    email = _get_authenticated_email(clerk_user_id)
     if not email:
-        return jsonify({"error": "Email is required."}), 400
+        return jsonify({"error": "Authenticated email is required to create a subscription."}), 400
 
     try:
         _configure_stripe()
@@ -136,15 +180,18 @@ def create_subscription():
             expand=["latest_invoice"],
         )
 
+        latest_invoice = _stripe_value(subscription, "latest_invoice")
+        latest_invoice_id = _stripe_value(latest_invoice, "id", latest_invoice)
         invoice = stripe.Invoice.retrieve(
-            subscription.latest_invoice.id,
+            latest_invoice_id,
             expand=["confirmation_secret"],
         )
+        confirmation_secret = _stripe_value(invoice, "confirmation_secret")
 
         return jsonify({
-            "clientSecret":   invoice.confirmation_secret.client_secret,
-            "subscriptionId": subscription.id,
-            "customerId":     customer.id,
+            "clientSecret":   _stripe_value(confirmation_secret, "client_secret"),
+            "subscriptionId": _stripe_value(subscription, "id"),
+            "customerId":     _stripe_value(customer, "id"),
         })
 
     except RuntimeError as e:
@@ -207,7 +254,7 @@ def cancel_subscription():
     if not clerk_user_id:
         return jsonify({"error": "Unauthorized"}), 401
 
-    data            = request.get_json()
+    data            = request.get_json(silent=True) or {}
     subscription_id = (data.get("subscriptionId") or "").strip()
 
     if not subscription_id:
@@ -215,11 +262,23 @@ def cancel_subscription():
 
     try:
         _configure_stripe()
+        with session_scope(_get_database_url()) as session:
+            user = session.get(AppUser, clerk_user_id)
+            stripe_customer_id = user.stripe_customer_id if user else None
+
+        if not stripe_customer_id:
+            return jsonify({"error": "No linked Stripe customer found for this user."}), 409
+
+        subscription = stripe.Subscription.retrieve(subscription_id)
+        subscription_customer_id = str(_stripe_value(subscription, "customer", "") or "")
+        if subscription_customer_id != stripe_customer_id:
+            return jsonify({"error": "You are not allowed to manage this subscription."}), 403
+
         sub = stripe.Subscription.modify(subscription_id, cancel_at_period_end=True)
         return jsonify({
-            "status":            sub.status,
-            "cancelAtPeriodEnd": sub.cancel_at_period_end,
-            "currentPeriodEnd":  sub.current_period_end,
+            "status":            _stripe_value(sub, "status"),
+            "cancelAtPeriodEnd": _stripe_value(sub, "cancel_at_period_end"),
+            "currentPeriodEnd":  _stripe_value(sub, "current_period_end"),
         })
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 500

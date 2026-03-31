@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from functools import wraps
+from urllib.parse import urlparse
 
 import jwt
 import requests
@@ -14,10 +15,26 @@ def get_bearer_token(auth_header: str) -> str | None:
     return auth_header.split(" ", 1)[1].strip()
 
 
-def resolve_clerk_jwks_url(clerk_jwks_url: str, issuer: str | None) -> str | None:
+def is_allowed_clerk_dev_issuer(issuer: str | None) -> bool:
+    if not issuer:
+        return False
+
+    parsed = urlparse(str(issuer).strip())
+    hostname = (parsed.hostname or "").lower()
+    return parsed.scheme == "https" and (
+        hostname == "clerk.accounts.dev" or hostname.endswith(".clerk.accounts.dev")
+    )
+
+
+def resolve_clerk_jwks_url(
+    clerk_jwks_url: str,
+    issuer: str | None,
+    *,
+    allow_unverified_issuer_fallback: bool = False,
+) -> str | None:
     if clerk_jwks_url:
         return clerk_jwks_url
-    if not issuer:
+    if not allow_unverified_issuer_fallback or not is_allowed_clerk_dev_issuer(issuer):
         return None
     return issuer.rstrip("/") + "/.well-known/jwks.json"
 
@@ -60,26 +77,43 @@ def verify_clerk_token(
     token: str,
     *,
     clerk_jwks_url: str,
+    clerk_issuer: str,
     clerk_audience: str,
     jwks_cache_ttl_seconds: int,
     jwks_cache: dict,
+    is_production: bool,
     requests_get=requests.get,
     jwt_module=jwt,
     time_fn=time.time,
 ):
-    unverified_payload = jwt_module.decode(
-        token,
-        options={
-            "verify_signature": False,
-            "verify_aud": False,
-            "verify_iss": False,
-            "verify_exp": False,
-        },
-    )
-    issuer = unverified_payload.get("iss")
-    jwks_url = resolve_clerk_jwks_url(clerk_jwks_url, issuer)
+    if bool(clerk_jwks_url) != bool(clerk_issuer):
+        raise ValueError("CLERK_JWKS_URL and CLERK_ISSUER must be configured together")
+
+    expected_issuer = str(clerk_issuer or "").strip()
+    jwks_url = str(clerk_jwks_url or "").strip()
+
     if not jwks_url:
-        raise ValueError("Unable to resolve Clerk JWKS URL")
+        if is_production:
+            raise ValueError("Production Clerk auth requires pinned CLERK_JWKS_URL and CLERK_ISSUER")
+
+        unverified_payload = jwt_module.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_iss": False,
+                "verify_exp": False,
+            },
+        )
+        expected_issuer = unverified_payload.get("iss") or ""
+        jwks_url = resolve_clerk_jwks_url(
+            "",
+            expected_issuer,
+            allow_unverified_issuer_fallback=True,
+        ) or ""
+
+        if not jwks_url or not expected_issuer:
+            raise ValueError("Development Clerk auth fallback only supports trusted https Clerk dev issuers")
 
     signing_key = get_signing_key(
         token,
@@ -99,8 +133,8 @@ def verify_clerk_token(
         "algorithms": ["RS256"],
         "options": {"verify_aud": bool(clerk_audience)},
     }
-    if issuer:
-        decode_kwargs["issuer"] = issuer
+    if expected_issuer:
+        decode_kwargs["issuer"] = expected_issuer
     if clerk_audience:
         decode_kwargs["audience"] = clerk_audience
 
