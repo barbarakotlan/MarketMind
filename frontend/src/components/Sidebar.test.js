@@ -54,6 +54,28 @@ describe('Sidebar alert badge polling', () => {
         expect(apiRequest).toHaveBeenCalledWith('/marketmind-ai/chats');
     });
 
+    test('renders the workflow-first navigation groups', async () => {
+        render(
+            <Sidebar
+                activePage="dashboard"
+                setActivePage={jest.fn()}
+                isCollapsed={false}
+                onToggleCollapse={jest.fn()}
+            />
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Research')).toBeInTheDocument();
+        });
+
+        expect(screen.getByText('Home')).toBeInTheDocument();
+        expect(screen.getAllByText('Portfolio').length).toBeGreaterThan(0);
+        expect(screen.getByText('Markets')).toBeInTheDocument();
+        expect(screen.getAllByText('Macro').length).toBeGreaterThan(0);
+        expect(screen.getByText('Prediction Markets')).toBeInTheDocument();
+        expect(screen.getAllByText('Learn').length).toBeGreaterThan(0);
+    });
+
     test('deletes a recent MarketMindAI chat from the sidebar via trash icon', async () => {
         let chats = [{ id: 'chat-1', title: 'Analyze AAPL', attachedTicker: 'AAPL' }];
         apiRequest.mockImplementation((url, options = {}) => {

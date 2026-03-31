@@ -19,6 +19,12 @@ describe('API_ENDPOINTS', () => {
         );
     });
 
+    test('uses the authenticated prediction market analysis endpoint', () => {
+        expect(API_ENDPOINTS.PREDICTION_ANALYZE).toBe(
+            `${API_BASE_URL}/prediction-markets/analyze`
+        );
+    });
+
     test('builds triggered alert URLs without forcing seen state changes', () => {
         expect(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED()).toBe(
             `${API_BASE_URL}/notifications/triggered`

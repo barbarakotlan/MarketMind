@@ -42,6 +42,7 @@ class RouteRegistrationSmokeTests(unittest.TestCase):
             "/paper/options/buy": {"POST"},
             "/notifications": {"GET", "POST"},
             "/prediction-markets": {"GET"},
+            "/prediction-markets/analyze": {"POST"},
             "/prediction-markets/buy": {"POST"},
             "/fundamentals/<string:ticker>": {"GET"},
             "/search-symbols": {"GET"},
