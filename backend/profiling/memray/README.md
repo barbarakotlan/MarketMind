@@ -47,6 +47,52 @@ backend/profiling/memray/run_api_under_memray.sh --live
 backend/profiling/memray/run_api_under_memray.sh -o /tmp/marketmind-api.bin
 ```
 
+For the most reliable route-flow profiling on macOS, use a second terminal to
+exercise a real request pattern while the backend is already running under
+Memray:
+
+Terminal 1:
+
+```bash
+cd /Users/tazeemmahashin/MarketMind/backend
+./profiling/memray/run_api_under_memray.sh
+```
+
+Terminal 2:
+
+```bash
+cd /Users/tazeemmahashin/MarketMind
+backend/profiling/memray/exercise_macro_dashboard_flow.sh
+```
+
+That recipe profiles a real Macro Dashboard workload by hitting:
+
+- `/macro/overview`
+- `/calendar/economic`
+- a second refresh pass of both routes
+
+By default it repeats that cycle 3 times. You can tune it with:
+
+```bash
+MARKETMIND_MACRO_FLOW_ITERATIONS=5 \
+MARKETMIND_MACRO_FLOW_SLEEP_SECONDS=2 \
+backend/profiling/memray/exercise_macro_dashboard_flow.sh
+```
+
+If you want a reproducible request-flow capture in one command, use:
+
+```bash
+cd /Users/tazeemmahashin/MarketMind
+backend/profiling/memray/profile_api_request_flow.sh \
+  /healthz \
+  /macro/overview
+```
+
+This attaches Memray to a warm backend, performs the requested GET routes, and
+generates summary / stats / flamegraph outputs automatically. If no backend is
+already running, the helper starts `backend/api.py` normally first, then
+attaches to it for the request portion of the flow.
+
 ### 2. Profile a heavy selective / benchmark job
 
 Use this for the longest-running ML / benchmark commands:
@@ -97,6 +143,23 @@ backend/.venv/bin/python -m memray attach --native -o /tmp/backend-attach.bin <p
 ```
 
 Use attach mode as a development-only debugging tool.
+
+To simplify warm-process profiling, you can use:
+
+```bash
+cd /Users/tazeemmahashin/MarketMind
+backend/profiling/memray/attach_api_under_memray.sh
+backend/profiling/memray/attach_api_under_memray.sh 12345 --live
+```
+
+If no PID is provided, the helper attempts to attach to the oldest running
+`api.py` backend process.
+
+## Not Yet Added
+
+We have not integrated `pytest-memray` yet. That is a reasonable follow-up once
+we decide on a small set of backend tests worth profiling repeatedly and confirm
+the workflow we want on Linux-based CI versus macOS development.
 
 ## When to use this in MarketMind
 
