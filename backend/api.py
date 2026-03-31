@@ -57,6 +57,10 @@ from prediction_markets_fetcher import (
     get_exchange_list as pm_get_exchanges,
     get_current_prices as pm_get_prices,
 )
+from prediction_market_analysis import (
+    PredictionMarketAnalysisError,
+    analyze_prediction_market as pm_analyze_market,
+)
 from logger_config import setup_logger, log_api_error
 from deliverables import (
     DOCX_MIME_TYPE,
@@ -1786,6 +1790,20 @@ def list_prediction_exchanges():
     )
 
 
+@app.route('/prediction-markets/analyze', methods=['POST'])
+@require_auth
+@limiter.limit(RateLimits.WRITE)
+def analyze_prediction_market():
+    return prediction_markets_handlers.analyze_prediction_market_handler(
+        request_obj=request,
+        analyze_prediction_market_fn=pm_analyze_market,
+        error_cls=PredictionMarketAnalysisError,
+        jsonify_fn=jsonify,
+        log_api_error_fn=log_api_error,
+        logger=logger,
+    )
+
+
 @app.route('/prediction-markets/<path:market_id>', methods=['GET'])
 @limiter.limit(RateLimits.STANDARD)
 def get_prediction_market(market_id):
@@ -1958,9 +1976,9 @@ def get_screener():
 
 
 MACRO_INDICATORS = [
-    {"symbol": "URATE", "name": "Unemployment Rate",     "unit": "%",    "multiplier": 100},
-    {"symbol": "CPI",   "name": "Consumer Price Index",  "unit": "Index","multiplier": 1},
-    {"symbol": "IP",    "name": "Industrial Production", "unit": "Index","multiplier": 1},
+    {"symbol": "URATE", "name": "Unemployment Rate",     "unit": "%",    "multiplier": 1, "openbb_multiplier": 100, "fred_multiplier": 1, "series_id": "UNRATE"},
+    {"symbol": "CPI",   "name": "Consumer Price Index",  "unit": "Index","multiplier": 1, "series_id": "CPIAUCSL"},
+    {"symbol": "IP",    "name": "Industrial Production", "unit": "Index","multiplier": 1, "series_id": "INDPRO"},
 ]
 
 @app.route('/macro/overview')
@@ -1972,6 +1990,7 @@ def get_macro_overview():
         logger=logger,
         yf_module=yf,
         macro_indicators=MACRO_INDICATORS,
+        requests_module=requests,
     )
 
 
@@ -2161,6 +2180,7 @@ def public_api_macro_overview():
         logger=logger,
         yf_module=yf,
         macro_indicators=MACRO_INDICATORS,
+        requests_module=requests,
     )
 
 

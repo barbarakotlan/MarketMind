@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Minus, Globe, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Globe, RefreshCw, Calendar, Clock, Mic } from 'lucide-react';
 import { Sparklines, SparklinesLine, SparklinesReferenceLine } from 'react-sparklines';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
@@ -15,6 +15,26 @@ const fmt = (val, unit) => {
     if (unit === '%') return `${val.toFixed(2)}%`;
     if (unit === 'Index') return val.toFixed(2);
     return val.toFixed(3);
+};
+
+const formatEventDate = (dateString) => {
+    const date = new Date(`${dateString}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return dateString || 'TBD';
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+};
+
+const getFeaturedEvents = (events) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const upcoming = (events || []).filter((event) => {
+        if (!event.date) return true;
+        const eventDate = new Date(`${event.date}T12:00:00`);
+        return Number.isNaN(eventDate.getTime()) || eventDate >= today;
+    });
+
+    const impactFirst = upcoming.filter((event) => event.impact === 'High' || event.impact === 'Medium');
+    return (impactFirst.length ? impactFirst : upcoming).slice(0, 4);
 };
 
 const TrendIcon = ({ value, prev, invert }) => {
@@ -126,24 +146,132 @@ const HistoryTable = ({ ind }) => {
     );
 };
 
+const UpcomingEventsPanel = ({ events, error }) => {
+    const featuredEvents = getFeaturedEvents(events);
+
+    if (!featuredEvents.length && !error) {
+        return null;
+    }
+
+    return (
+        <div className="ui-panel p-5">
+            <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-mm-text-primary">
+                        <Calendar className="h-4 w-4 text-mm-accent-primary" />
+                        Next Macro Events
+                    </h2>
+                    <p className="mt-1 text-xs text-mm-text-secondary">
+                        The highest-signal U.S. reports and Fed appearances coming up this week.
+                    </p>
+                </div>
+                <p className="text-xs text-mm-text-tertiary">Data via Fair Economy</p>
+            </div>
+
+            {error ? (
+                <div className="rounded-control border border-mm-border bg-mm-surface-subtle px-4 py-3 text-sm text-mm-text-secondary">
+                    {error}
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    {featuredEvents.map((event) => {
+                        const isSpeaker = event.type === 'speaker';
+                        return (
+                            <div key={event.id} className="rounded-control border border-mm-border bg-mm-surface-subtle p-4">
+                                <div className="mb-2 flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-mm-accent-primary">
+                                            {formatEventDate(event.date)}
+                                        </p>
+                                        <p className="mt-1 text-sm font-semibold text-mm-text-primary">
+                                            {event.event}
+                                        </p>
+                                    </div>
+                                    <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider ${
+                                        event.impact === 'High' ? 'ui-status-chip ui-status-chip--negative' :
+                                        event.impact === 'Medium' ? 'ui-status-chip ui-status-chip--warning' :
+                                        'ui-status-chip'
+                                    }`}>
+                                        {event.impact}
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-4 text-xs text-mm-text-secondary">
+                                    <span className="flex items-center gap-1">
+                                        <Clock className="h-3.5 w-3.5" />
+                                        {event.time || 'TBD'}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        {isSpeaker ? <Mic className="h-3.5 w-3.5" /> : <TrendingUp className="h-3.5 w-3.5" />}
+                                        {isSpeaker ? 'Fed speaker' : 'Report'}
+                                    </span>
+                                </div>
+
+                                <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                                    <div>
+                                        <p className="text-mm-text-tertiary">Actual</p>
+                                        <p className="mt-1 font-medium text-mm-text-primary">{event.actual || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-mm-text-tertiary">Forecast</p>
+                                        <p className="mt-1 font-medium text-mm-text-primary">{event.forecast || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-mm-text-tertiary">Previous</p>
+                                        <p className="mt-1 font-medium text-mm-text-primary">{event.previous || '-'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const MacroPage = () => {
     const [indicators, setIndicators] = useState([]);
+    const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [eventsError, setEventsError] = useState('');
     const [expanded, setExpanded] = useState(null);
 
     const load = () => {
         setLoading(true);
         setError('');
+        setEventsError('');
         apiRequest(API_ENDPOINTS.MACRO_OVERVIEW)
-            .then((d) => {
-                if (d.error) throw new Error(d.error);
-                setIndicators(d);
-                setLoading(false);
+            .then((macroPayload) => {
+                if (macroPayload?.error) {
+                    throw new Error(macroPayload.error);
+                }
+
+                const nextIndicators = Array.isArray(macroPayload) ? macroPayload : [];
+                setIndicators(nextIndicators);
+                setExpanded((current) => nextIndicators.some((ind) => ind.symbol === current) ? current : null);
             })
             .catch((e) => {
-                setError(e.message);
+                setIndicators([]);
+                setError(e.message || 'Failed to fetch macro data.');
+            })
+            .finally(() => {
                 setLoading(false);
+            });
+
+        apiRequest(API_ENDPOINTS.ECONOMIC_CALENDAR)
+            .then((calendarPayload) => {
+                if (calendarPayload?.error) {
+                    setEvents([]);
+                    setEventsError(calendarPayload.error);
+                    return;
+                }
+                setEvents(Array.isArray(calendarPayload) ? calendarPayload : []);
+            })
+            .catch(() => {
+                setEvents([]);
+                setEventsError('Economic calendar is temporarily unavailable.');
             });
     };
 
@@ -180,6 +308,8 @@ const MacroPage = () => {
 
             {!loading && !error && (
                 <>
+                    <UpcomingEventsPanel events={events} error={eventsError} />
+
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         {indicators.map((ind) => (
                             <div
@@ -203,7 +333,7 @@ const MacroPage = () => {
 
                     {!expanded && (
                         <p className="text-center text-xs text-mm-text-tertiary">
-                            Click any card to see 12-month history · Data via EconDB & Yahoo Finance
+                            Click any card to see 12-month history · Data via FRED and Yahoo Finance
                         </p>
                     )}
                 </>

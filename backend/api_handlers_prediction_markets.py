@@ -57,6 +57,38 @@ def get_prediction_market_handler(
         return jsonify_fn({"error": "Failed to fetch market details"}), 500
 
 
+def analyze_prediction_market_handler(
+    *,
+    request_obj,
+    analyze_prediction_market_fn,
+    error_cls,
+    jsonify_fn,
+    log_api_error_fn,
+    logger,
+):
+    try:
+        if not request_obj.is_json:
+            return jsonify_fn({"error": "Request must be JSON"}), 400
+
+        data = request_obj.get_json() or {}
+        market_id = str(data.get('market_id') or '').strip() or None
+        market_url = str(data.get('market_url') or '').strip() or None
+        exchange = str(data.get('exchange') or 'polymarket').strip() or 'polymarket'
+
+        payload = analyze_prediction_market_fn(
+            market_id=market_id,
+            market_url=market_url,
+            exchange=exchange,
+        )
+        return jsonify_fn(payload)
+    except error_cls as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify_fn(body), exc.status_code
+    except Exception as exc:
+        log_api_error_fn(logger, '/prediction-markets/analyze', exc)
+        return jsonify_fn({"error": "Failed to analyze prediction market"}), 500
+
+
 def get_prediction_portfolio_handler(
     *,
     get_current_user_id_fn,

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import csv
+from io import StringIO
+
+
+_OPENBB_MACRO_SUPPORT_CACHE = {}
+
 
 def news_api_handler(*, get_general_news_fn, jsonify_fn):
     try:
@@ -376,6 +382,127 @@ def get_screener_handler(
         return jsonify_fn({"error": str(exc)}), 500
 
 
+def _coerce_float(value):
+    try:
+        if value in (None, "", "."):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_macro_indicator_payload(indicator, rows, *, multiplier=None):
+    normalized_rows = []
+    scale = indicator.get("multiplier", 1) if multiplier is None else multiplier
+    for row in rows or []:
+        date_value = str(row.get("date") or "").strip()
+        value = _coerce_float(row.get("value"))
+        if not date_value or value is None:
+            continue
+        normalized_rows.append(
+            {
+                "date": date_value,
+                "value": round(value * scale, 4),
+            }
+        )
+
+    normalized_rows.sort(key=lambda row: row["date"])
+    if not normalized_rows:
+        return None
+
+    last = normalized_rows[-1]
+    prev = normalized_rows[-2] if len(normalized_rows) > 1 else last
+    return {
+        "symbol": indicator["symbol"],
+        "name": indicator["name"],
+        "unit": indicator["unit"],
+        "value": round(last["value"], 3),
+        "prev": round(prev["value"], 3),
+        "date": str(last["date"]),
+        "sparkline": normalized_rows[-24:],
+    }
+
+
+def _fetch_macro_rows_from_openbb(*, indicator, obb_module):
+    economy_router = getattr(obb_module, "economy", None)
+    if economy_router is None or not hasattr(economy_router, "indicators"):
+        raise AttributeError("OpenBB economy router does not expose indicators().")
+
+    df = economy_router.indicators(
+        symbol=indicator["symbol"],
+        country="US",
+        provider="econdb",
+    ).to_dataframe().reset_index()
+    df = df.sort_values("date")
+    return [{"date": str(row["date"]), "value": row["value"]} for _, row in df.iterrows()]
+
+
+def _is_openbb_macro_capability_error(exc):
+    if isinstance(exc, (AttributeError, NotImplementedError)):
+        return True
+    message = str(exc or "").lower()
+    return (
+        "does not expose indicators" in message
+        or "has no attribute 'indicators'" in message
+    )
+
+
+def _get_openbb_macro_support(obb_module):
+    if obb_module is None:
+        return False, "OpenBB module unavailable."
+
+    cache_key = id(obb_module)
+    cached = _OPENBB_MACRO_SUPPORT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    economy_router = getattr(obb_module, "economy", None)
+    if economy_router is None:
+        support = (False, "OpenBB economy router is unavailable.")
+    elif not hasattr(economy_router, "indicators"):
+        support = (False, "OpenBB economy router does not expose indicators().")
+    else:
+        support = (True, None)
+
+    _OPENBB_MACRO_SUPPORT_CACHE[cache_key] = support
+    return support
+
+
+def _disable_openbb_macro_support(obb_module, reason):
+    if obb_module is None:
+        return
+    _OPENBB_MACRO_SUPPORT_CACHE[id(obb_module)] = (
+        False,
+        str(reason or "OpenBB macro support disabled."),
+    )
+
+
+def _fetch_macro_rows_from_fred(*, indicator, requests_module):
+    series_id = indicator.get("series_id") or indicator["symbol"]
+    response = requests_module.get(
+        f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}",
+        timeout=10,
+    )
+    status_code = getattr(response, "status_code", 200)
+    if status_code >= 400:
+        raise ValueError(f"FRED returned status {status_code} for {series_id}")
+
+    text = getattr(response, "text", "") or ""
+    reader = csv.DictReader(StringIO(text))
+    rows = []
+    for raw_row in reader:
+        date_value = raw_row.get("DATE") or raw_row.get("date") or raw_row.get("observation_date")
+        value = raw_row.get(series_id) or raw_row.get("VALUE") or raw_row.get("value")
+        numeric_value = _coerce_float(value)
+        if not date_value or numeric_value is None:
+            continue
+        rows.append({"date": date_value, "value": numeric_value})
+
+    if not rows:
+        raise ValueError(f"No usable FRED data returned for {series_id}")
+    return rows
+
+
 def get_macro_overview_handler(
     *,
     openbb_available,
@@ -384,40 +511,53 @@ def get_macro_overview_handler(
     logger,
     yf_module,
     macro_indicators,
+    requests_module,
 ):
-    if not openbb_available:
-        return jsonify_fn({"error": "OpenBB not installed on this server."}), 503
     result = []
     try:
+        openbb_macro_supported = False
+        openbb_macro_reason = None
+        if openbb_available and obb_module is not None:
+            openbb_macro_cached = id(obb_module) in _OPENBB_MACRO_SUPPORT_CACHE
+            openbb_macro_supported, openbb_macro_reason = _get_openbb_macro_support(obb_module)
+            if not openbb_macro_supported and openbb_macro_reason and not openbb_macro_cached:
+                logger.warning(f"Macro overview using FRED fallback because {openbb_macro_reason}")
+
         for indicator in macro_indicators:
-            try:
-                df = obb_module.economy.indicators(
-                    symbol=indicator["symbol"],
-                    country="US",
-                    provider="econdb",
-                ).to_dataframe().reset_index()
-                df = df.sort_values("date")
-                last = df.iloc[-1]
-                prev = df.iloc[-2] if len(df) > 1 else last
-                val = float(last["value"]) * indicator["multiplier"]
-                prev_val = float(prev["value"]) * indicator["multiplier"]
-                sparkline = [
-                    {"date": str(row["date"]), "value": round(float(row["value"]) * indicator["multiplier"], 4)}
-                    for _, row in df.tail(24).iterrows()
-                ]
-                result.append(
-                    {
-                        "symbol": indicator["symbol"],
-                        "name": indicator["name"],
-                        "unit": indicator["unit"],
-                        "value": round(val, 3),
-                        "prev": round(prev_val, 3),
-                        "date": str(last["date"]),
-                        "sparkline": sparkline,
-                    }
-                )
-            except Exception as exc:
-                logger.warning(f"Macro indicator {indicator['symbol']} failed: {exc}")
+            indicator_payload = None
+
+            if openbb_macro_supported:
+                try:
+                    indicator_payload = _build_macro_indicator_payload(
+                        indicator,
+                        _fetch_macro_rows_from_openbb(indicator=indicator, obb_module=obb_module),
+                        multiplier=indicator.get("openbb_multiplier", indicator.get("multiplier", 1)),
+                    )
+                except Exception as exc:
+                    if _is_openbb_macro_capability_error(exc):
+                        _disable_openbb_macro_support(obb_module, exc)
+                        openbb_macro_supported = False
+                        logger.warning(
+                            f"Macro overview disabling OpenBB macro path after {indicator['symbol']} failed: {exc}"
+                        )
+                    else:
+                        logger.warning(f"Macro indicator {indicator['symbol']} OpenBB fetch failed: {exc}")
+
+            if indicator_payload is None:
+                try:
+                    indicator_payload = _build_macro_indicator_payload(
+                        indicator,
+                        _fetch_macro_rows_from_fred(
+                            indicator=indicator,
+                            requests_module=requests_module,
+                        ),
+                        multiplier=indicator.get("fred_multiplier", indicator.get("multiplier", 1)),
+                    )
+                except Exception as exc:
+                    logger.warning(f"Macro indicator {indicator['symbol']} FRED fallback failed: {exc}")
+
+            if indicator_payload is not None:
+                result.append(indicator_payload)
 
         try:
             tnx = yf_module.Ticker("^TNX")
@@ -443,6 +583,8 @@ def get_macro_overview_handler(
         except Exception as exc:
             logger.warning(f"TNX fetch failed: {exc}")
 
+        if not result:
+            return jsonify_fn({"error": "Macro data is temporarily unavailable."}), 503
         return jsonify_fn(result)
     except Exception as exc:
         logger.error(f"Macro overview error: {exc}")
