@@ -168,7 +168,7 @@ def get_stock_data_with_fallback(ticker, min_days=300):
 
 def validate_and_clean_data(df):
     """
-    Validate and clean stock data according to DATA_SPECS.md
+    Validate and clean stock data according to docs/backend/DATA_SPECS.md
     
     Requirements:
     - No missing values in Close
