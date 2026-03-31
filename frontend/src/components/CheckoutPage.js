@@ -13,13 +13,12 @@ import {
 } from 'lucide-react';
 
 // ─── Stripe publishable key ───────────────────────────────────────────────────
-// Set VITE_STRIPE_PUBLISHABLE_KEY (or REACT_APP_... for CRA) in your .env
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 
 // ─── Plan definition ──────────────────────────────────────────────────────────
 const PRO_PLAN = {
     label: 'Pro',
-    monthlyPrice: 23.97,
+    monthlyPrice: 14.97,
     includes: [
         'Everything in Free',
         '100 AI predictions / day',
@@ -31,12 +30,18 @@ const PRO_PLAN = {
     ],
 };
 
+// ─── Shared pricing helper — single source of truth ──────────────────────────
+function calcPricing(isAnnual) {
+    const monthly      = PRO_PLAN.monthlyPrice;
+    const billedTotal  = isAnnual ? +(monthly * 12 * 0.8).toFixed(2) : +monthly.toFixed(2);
+    const displayPrice = isAnnual ? +(monthly * 0.8).toFixed(2) : +monthly.toFixed(2);
+    const savings      = isAnnual ? +(monthly * 12 - billedTotal).toFixed(2) : 0;
+    return { monthly, billedTotal, displayPrice, savings };
+}
+
 // ─── Order summary (left column) ─────────────────────────────────────────────
 function OrderSummary({ isAnnual, onToggleAnnual }) {
-    const monthly      = PRO_PLAN.monthlyPrice;
-    const displayPrice = isAnnual ? +(monthly * 0.8).toFixed(2) : monthly;
-    const billedTotal  = isAnnual ? +(displayPrice * 12).toFixed(2) : monthly;
-    const savings      = isAnnual ? +(monthly * 12 - billedTotal).toFixed(2) : 0;
+    const { monthly, billedTotal, displayPrice, savings } = calcPricing(isAnnual);
 
     return (
         <div className="flex flex-col gap-6">
@@ -81,7 +86,7 @@ function OrderSummary({ isAnnual, onToggleAnnual }) {
             <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                 <div>
                     <p className="text-sm font-bold text-gray-900 dark:text-white">Annual billing</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Save 20% — 2 months free</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Save 20% with annual billing</p>
                 </div>
                 <button
                     onClick={onToggleAnnual}
@@ -134,10 +139,10 @@ function OrderSummary({ isAnnual, onToggleAnnual }) {
             {/* Trust badges */}
             <div className="flex flex-wrap gap-4 text-xs text-gray-400 dark:text-gray-500 px-1">
                 {[
-                    { icon: ShieldCheck,  label: 'SSL Encrypted'     },
-                    { icon: RefreshCw,    label: 'Cancel anytime'     },
-                    { icon: Zap,          label: 'Instant access'     },
-                    { icon: TrendingUp,   label: 'Powered by Stripe'  },
+                    { icon: ShieldCheck, label: 'SSL Encrypted'    },
+                    { icon: RefreshCw,   label: 'Cancel anytime'    },
+                    { icon: Zap,         label: 'Instant access'    },
+                    { icon: TrendingUp,  label: 'Powered by Stripe' },
                 ].map(({ icon: Icon, label }) => (
                     <div key={label} className="flex items-center gap-1.5">
                         <Icon className="w-3 h-3" />
@@ -150,15 +155,13 @@ function OrderSummary({ isAnnual, onToggleAnnual }) {
 }
 
 // ─── Inner form — must be inside <Elements> ───────────────────────────────────
-function CheckoutForm({ isAnnual, email, onSuccess }) {
+function CheckoutForm({ isAnnual, onSuccess }) {
     const stripe   = useStripe();
     const elements = useElements();
     const [error,   setError]   = useState(null);
     const [loading, setLoading] = useState(false);
 
-    const billedTotal = isAnnual
-        ? +(PRO_PLAN.monthlyPrice * 0.8 * 12).toFixed(2)
-        : PRO_PLAN.monthlyPrice;
+    const { billedTotal } = calcPricing(isAnnual);
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -167,23 +170,18 @@ function CheckoutForm({ isAnnual, email, onSuccess }) {
         setError(null);
         setLoading(true);
 
-        // Stripe validates the Payment Element and confirms the PaymentIntent
-        // that was created server-side. Card data never touches your server.
         const { error: stripeError } = await stripe.confirmPayment({
             elements,
             confirmParams: {
-                // Stripe redirects here after 3DS or bank redirects if needed.
-                // For most cards this callback fires immediately without redirect.
                 return_url: `${window.location.origin}/checkout/success`,
             },
-            redirect: 'if_required', // avoid redirect for simple card payments
+            redirect: 'if_required',
         });
 
         if (stripeError) {
             setError(stripeError.message);
             setLoading(false);
         } else {
-            // Payment confirmed — no redirect needed
             onSuccess();
         }
     }
@@ -194,12 +192,6 @@ function CheckoutForm({ isAnnual, email, onSuccess }) {
                 <p className="text-xs font-black text-gray-300 dark:text-gray-600 uppercase tracking-widest mb-4">
                     Payment Details
                 </p>
-                {/*
-                  Stripe injects its own secure iframe here.
-                  It auto-detects card type, handles Apple Pay / Google Pay,
-                  Link (saved cards), and 3D Secure — all out of the box.
-                  Style it via the `appearance` option passed to <Elements>.
-                */}
                 <PaymentElement />
             </div>
 
@@ -249,9 +241,7 @@ function CheckoutForm({ isAnnual, email, onSuccess }) {
 
 // ─── Success screen ───────────────────────────────────────────────────────────
 function SuccessScreen({ isAnnual, onGoToDashboard }) {
-    const billedTotal = isAnnual
-        ? +(PRO_PLAN.monthlyPrice * 0.8 * 12).toFixed(2)
-        : PRO_PLAN.monthlyPrice;
+    const { billedTotal } = calcPricing(isAnnual);
 
     return (
         <div className="flex flex-col items-center justify-center text-center gap-6 py-12 px-6">
@@ -309,34 +299,24 @@ function SuccessScreen({ isAnnual, onGoToDashboard }) {
 }
 
 // ─── Page root ────────────────────────────────────────────────────────────────
-/**
- * Props:
- *   isAnnual      {boolean}  — passed from PlanPage (billing cadence)
- *   userEmail     {string}   — pre-fill from your auth context if available
- *   onBack        {function} — navigate back to PlanPage
- *   onSuccess     {function} — navigate to dashboard after payment
- */
 export default function CheckoutPage({
     isAnnual: initialAnnual = false,
     userEmail = '',
     onBack,
     onSuccess,
 }) {
-    const [isAnnual,      setIsAnnual]      = useState(initialAnnual);
-    const [clientSecret,  setClientSecret]  = useState(null);
-    const [fetchError,    setFetchError]    = useState(null);
-    const [email,         setEmail]         = useState(userEmail);
-    const [emailReady,    setEmailReady]    = useState(!!userEmail);
-    const [success,       setSuccess]       = useState(false);
+    const [isAnnual,     setIsAnnual]     = useState(initialAnnual);
+    const [clientSecret, setClientSecret] = useState(null);
+    const [fetchError,   setFetchError]   = useState(null);
+    const [email,        setEmail]        = useState(userEmail);
+    const [emailReady,   setEmailReady]   = useState(!!userEmail);
+    const [success,      setSuccess]      = useState(false);
 
-    // When billing cadence changes we need a new PaymentIntent/Subscription,
-    // so we reset the clientSecret to trigger a fresh fetch.
     useEffect(() => {
         setClientSecret(null);
         setFetchError(null);
     }, [isAnnual]);
 
-    // Fetch clientSecret from your Flask backend once email is confirmed
     useEffect(() => {
         if (!emailReady || !email) return;
 
@@ -344,31 +324,30 @@ export default function CheckoutPage({
         setFetchError(null);
 
         apiRequest(API_ENDPOINTS.CHECKOUT_CREATE_SUBSCRIPTION, {
-    method: 'POST',
-    body: JSON.stringify({ email, billing: isAnnual ? 'annual' : 'monthly' }),
-})
-    .then(data => {
-        if (cancelled) return;
-        setClientSecret(data.clientSecret);
-    })
-    .catch(() => {
-        if (!cancelled) setFetchError('Could not reach the server. Please try again.');
-    });
+            method: 'POST',
+            body: JSON.stringify({ email, billing: isAnnual ? 'annual' : 'monthly' }),
+        })
+            .then(data => {
+                if (cancelled) return;
+                setClientSecret(data.clientSecret);
+            })
+            .catch(() => {
+                if (!cancelled) setFetchError('Could not reach the server. Please try again.');
+            });
 
         return () => { cancelled = true; };
     }, [emailReady, email, isAnnual]);
 
-    // Stripe Elements appearance — matches your app's design system
     const appearance = {
         theme: 'stripe',
         variables: {
-            colorPrimary:       '#2563eb',
-            colorBackground:    '#ffffff',
-            colorText:          '#111827',
-            colorDanger:        '#ef4444',
-            fontFamily:         'ui-sans-serif, system-ui, sans-serif',
-            borderRadius:       '12px',
-            spacingUnit:        '4px',
+            colorPrimary:    '#2563eb',
+            colorBackground: '#ffffff',
+            colorText:       '#111827',
+            colorDanger:     '#ef4444',
+            fontFamily:      'ui-sans-serif, system-ui, sans-serif',
+            borderRadius:    '12px',
+            spacingUnit:     '4px',
         },
         rules: {
             '.Input': {
@@ -381,11 +360,11 @@ export default function CheckoutPage({
                 boxShadow: 'none',
             },
             '.Label': {
-                fontSize:    '11px',
-                fontWeight:  '700',
+                fontSize:      '11px',
+                fontWeight:    '700',
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color:       '#6b7280',
+                color:         '#6b7280',
             },
         },
     };
@@ -433,7 +412,6 @@ export default function CheckoutPage({
                             Your card details are handled entirely by Stripe.
                         </p>
 
-                        {/* Step 1 — collect email if not provided by auth */}
                         {!emailReady ? (
                             <div className="flex flex-col gap-4">
                                 <div>
@@ -468,7 +446,6 @@ export default function CheckoutPage({
                                 </button>
                             </div>
                         ) : !clientSecret ? (
-                            /* Loading skeleton while fetching clientSecret */
                             <div className="flex flex-col gap-4 animate-pulse">
                                 {[80, 100, 60, 60, 100].map((w, i) => (
                                     <div key={i} className={`h-12 w-${w} rounded-xl bg-gray-100 dark:bg-gray-800`} />
@@ -478,7 +455,6 @@ export default function CheckoutPage({
                             <Elements stripe={stripePromise} options={{ clientSecret, appearance }}>
                                 <CheckoutForm
                                     isAnnual={isAnnual}
-                                    email={email}
                                     onSuccess={() => setSuccess(true)}
                                 />
                             </Elements>

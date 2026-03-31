@@ -17,6 +17,7 @@ jest.mock('../config/api', () => ({
     API_ENDPOINTS: {
         MARKETMIND_AI_CHATS: '/marketmind-ai/chats',
         MARKETMIND_AI_CHAT_DELETE: jest.fn((chatId) => `/marketmind-ai/chats/${chatId}`),
+        CHECKOUT_PLAN_STATUS: '/checkout/plan-status',
         NOTIFICATIONS_TRIGGERED: jest.fn((all = false) =>
             all ? '/notifications/triggered?all=true' : '/notifications/triggered'
         ),
@@ -30,7 +31,12 @@ describe('Sidebar alert badge polling', () => {
             all ? '/notifications/triggered?all=true' : '/notifications/triggered'
         );
         API_ENDPOINTS.MARKETMIND_AI_CHAT_DELETE.mockImplementation((chatId) => `/marketmind-ai/chats/${chatId}`);
-        apiRequest.mockResolvedValue([]);
+        apiRequest.mockImplementation((url) => {
+            if (url === '/checkout/plan-status') {
+                return Promise.resolve({ plan: 'free' });
+            }
+            return Promise.resolve([]);
+        });
     });
 
     afterEach(() => {
@@ -54,11 +60,36 @@ describe('Sidebar alert badge polling', () => {
         expect(apiRequest).toHaveBeenCalledWith('/marketmind-ai/chats');
     });
 
+    test('renders the workflow-first navigation groups', async () => {
+        render(
+            <Sidebar
+                activePage="dashboard"
+                setActivePage={jest.fn()}
+                isCollapsed={false}
+                onToggleCollapse={jest.fn()}
+            />
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('Research')).toBeInTheDocument();
+        });
+
+        expect(screen.getByText('Home')).toBeInTheDocument();
+        expect(screen.getAllByText('Portfolio').length).toBeGreaterThan(0);
+        expect(screen.getByText('Markets')).toBeInTheDocument();
+        expect(screen.getAllByText('Macro').length).toBeGreaterThan(0);
+        expect(screen.getByText('Prediction Markets')).toBeInTheDocument();
+        expect(screen.getAllByText('Learn').length).toBeGreaterThan(0);
+    });
+
     test('deletes a recent MarketMindAI chat from the sidebar via trash icon', async () => {
         let chats = [{ id: 'chat-1', title: 'Analyze AAPL', attachedTicker: 'AAPL' }];
         apiRequest.mockImplementation((url, options = {}) => {
             if (url === '/notifications/triggered?all=true') {
                 return Promise.resolve([]);
+            }
+            if (url === '/checkout/plan-status') {
+                return Promise.resolve({ plan: 'free' });
             }
             if (url === '/marketmind-ai/chats' && !options.method) {
                 return Promise.resolve(chats);

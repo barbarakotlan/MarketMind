@@ -4,12 +4,18 @@ import App from './App';
 let mockIsSignedIn = false;
 let mockIsLoaded = true;
 
+jest.mock('react-markdown', () => ({ children }) => <div>{children}</div>);
+jest.mock('remark-gfm', () => () => null);
+
 jest.mock('@clerk/clerk-react', () => ({
     SignedIn: ({ children }) => (mockIsSignedIn ? children : null),
     SignedOut: ({ children }) => (mockIsSignedIn ? null : children),
     useAuth: () => ({
         isLoaded: mockIsLoaded,
         isSignedIn: mockIsSignedIn,
+    }),
+    useUser: () => ({
+        user: null,
     }),
 }));
 
@@ -38,6 +44,7 @@ jest.mock('./components/Sidebar', () => ({ setActivePage }) => (
     </div>
 ));
 
+jest.mock('./components/PlanPage', () => () => <div>Plan Page</div>);
 jest.mock('./components/DashboardPage', () => () => <div>Dashboard Page</div>);
 jest.mock('./components/GettingStartedPage', () => () => <div>Getting Started Page</div>);
 jest.mock('./components/WatchlistPage', () => () => <div>Watchlist Page</div>);
@@ -54,6 +61,8 @@ jest.mock('./components/NotificationsPage', () => () => <div>Notifications Page<
 jest.mock('./components/PredictionMarketsPage', () => () => <div>Prediction Markets Page</div>);
 jest.mock('./components/MarketCalendarPage', () => () => <div>Market Calendar Page</div>);
 jest.mock('./components/MacroPage', () => () => <div>Macro Page</div>);
+jest.mock('./components/CheckoutPage', () => () => <div>Checkout Page</div>);
+jest.mock('./components/MarketMindAIPage', () => () => <div>MarketMindAI Page</div>);
 
 jest.mock('./components/ScreenerPage', () => ({ onSearchTicker }) => (
     <div>

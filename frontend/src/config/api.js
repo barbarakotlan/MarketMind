@@ -63,7 +63,7 @@ export const API_ENDPOINTS = {
     // Checkout
     CHECKOUT_CREATE_SUBSCRIPTION: `${API_BASE_URL}/checkout/create-subscription`,
     CHECKOUT_CANCEL_SUBSCRIPTION: `${API_BASE_URL}/checkout/cancel-subscription`,
-    
+    CHECKOUT_PLAN_STATUS: `${API_BASE_URL}/checkout/plan-status`,
     // Stock & Market Data
     STOCK: (ticker) => `${API_BASE_URL}/stock/${ticker}`,
     CHART: (ticker, period = '6mo') => `${API_BASE_URL}/chart/${ticker}?period=${period}`,
@@ -146,6 +146,7 @@ export const API_ENDPOINTS = {
     PREDICTION_MARKET: (marketId, exchange = 'polymarket') =>
         buildApiUrl(`/prediction-markets/${encodeURIComponent(marketId)}`, { exchange }),
     PREDICTION_EXCHANGES: `${API_BASE_URL}/prediction-markets/exchanges`,
+    PREDICTION_ANALYZE: `${API_BASE_URL}/prediction-markets/analyze`,
     PREDICTION_PORTFOLIO: `${API_BASE_URL}/prediction-markets/portfolio`,
     PREDICTION_HISTORY: `${API_BASE_URL}/prediction-markets/history`,
     PREDICTION_BUY: `${API_BASE_URL}/prediction-markets/buy`,

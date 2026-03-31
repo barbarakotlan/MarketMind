@@ -58,6 +58,11 @@ const normalizeData = (data) => {
 
 const StockChart = ({ chartData, ticker, onTimeFrameChange, activeTimeFrame, comparisonData }) => {
     const [chartType, setChartType] = useState('line');
+    const isDarkMode = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    const chartTextColor = isDarkMode ? '#CBD5E1' : '#64748B';
+    const chartTitleColor = isDarkMode ? '#F1F5F9' : '#0F172A';
+    const tooltipBackground = isDarkMode ? '#020617' : '#0F172A';
+    const chartGridColor = isDarkMode ? 'rgba(148, 163, 184, 0.18)' : 'rgba(148, 163, 184, 0.18)';
 
     const chartConfig = useMemo(() => {
         if (!chartData || chartData.length === 0) return null;
@@ -78,7 +83,7 @@ const StockChart = ({ chartData, ticker, onTimeFrameChange, activeTimeFrame, com
                 type: 'line',
                 label: ticker,
                 data: normalizeData(chartData),
-                borderColor: '#22c55e', // Green
+                borderColor: '#2563EB',
                 borderWidth: 2,
                 fill: false,
             });
@@ -112,7 +117,7 @@ const StockChart = ({ chartData, ticker, onTimeFrameChange, activeTimeFrame, com
                 type: 'line',
                 label: comparisonData.ticker,
                 data: normalizeData(comparisonData.data),
-                borderColor: '#8B5CF6', // Purple
+                borderColor: '#64748B',
                 borderWidth: 2,
                 fill: false,
             });
@@ -125,9 +130,23 @@ const StockChart = ({ chartData, ticker, onTimeFrameChange, activeTimeFrame, com
                 legend: { 
                     display: isComparing, // Only show legend if comparing
                     position: 'top',
+                    labels: {
+                        color: chartTextColor,
+                        font: {
+                            size: 12,
+                            weight: '600',
+                        },
+                    },
                 },
-                title: { display: true, text: `${ticker} Price History (${activeTimeFrame?.label || ''})`, font: { size: 18 }, padding: { top: 10, bottom: 20 } },
+                title: {
+                    display: true,
+                    text: `${ticker} Price History (${activeTimeFrame?.label || ''})`,
+                    color: chartTitleColor,
+                    font: { size: 18, weight: '600' },
+                    padding: { top: 10, bottom: 20 },
+                },
                 tooltip: {
+                    backgroundColor: tooltipBackground,
                     callbacks: {
                         label: function(context) {
                             let label = context.dataset.label || '';
@@ -146,11 +165,13 @@ const StockChart = ({ chartData, ticker, onTimeFrameChange, activeTimeFrame, com
                 x: { 
                     type: 'time', // <-- This requires the TimeScale and adapter
                     time: { unit: activeTimeFrame?.value === '1d' ? 'hour' : 'day' }, 
+                    ticks: { color: chartTextColor },
                     grid: { display: false } 
                 },
                 y: { 
-                    grid: { color: 'rgba(200, 200, 200, 0.1)' },
+                    grid: { color: chartGridColor },
                     ticks: {
+                        color: chartTextColor,
                         callback: function(value) {
                             return isComparing ? value + '%' : '$' + value;
                         }
@@ -161,30 +182,42 @@ const StockChart = ({ chartData, ticker, onTimeFrameChange, activeTimeFrame, com
             elements: { point: { radius: 0 } }
         };
         return { type: chartComponentType, options, data };
-    }, [chartData, chartType, ticker, activeTimeFrame, comparisonData]);
+    }, [activeTimeFrame, chartData, chartGridColor, chartTextColor, chartTitleColor, chartType, comparisonData, ticker, tooltipBackground]);
 
     if (!chartConfig) return null;
 
     return (
-        <div className="mt-8 bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg animate-fade-in">
+        <div className="ui-panel mt-8 animate-fade-in p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
-                <div className="flex items-center space-x-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
+                <div className="flex items-center space-x-1 rounded-control border border-mm-border bg-mm-surface-subtle p-1">
                     {timeFrames.map((frame) => (
-                        <button key={frame.value} onClick={() => onTimeFrameChange(frame)} className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors duration-200 ${ activeTimeFrame?.value === frame.value ? 'bg-blue-600 text-white shadow' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600' }`}>{frame.label}</button>
+                        <button
+                            key={frame.value}
+                            onClick={() => onTimeFrameChange(frame)}
+                            className={`rounded-md px-3 py-1 text-sm font-semibold transition-colors duration-200 ${
+                                activeTimeFrame?.value === frame.value
+                                    ? 'bg-mm-accent-primary text-white shadow-card'
+                                    : 'text-mm-text-secondary hover:bg-mm-surface hover:text-mm-text-primary'
+                            }`}
+                        >
+                            {frame.label}
+                        </button>
                     ))}
                 </div>
                 <select 
                     value={chartType} 
                     onChange={(e) => setChartType(e.target.value)} 
                     disabled={comparisonData && comparisonData.data.length > 0}
-                    className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="ui-input max-w-[160px] py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     <option value="line">Line Chart</option>
                     <option value="candlestick" disabled={comparisonData && comparisonData.data.length > 0}>Candlestick</option>
                 </select>
             </div>
-            <div className="h-96">
-                <Chart type={chartConfig.type} options={chartConfig.options} data={chartConfig.data} />
+            <div className="rounded-control border border-mm-border bg-mm-surface-subtle p-3">
+                <div className="h-96">
+                    <Chart type={chartConfig.type} options={chartConfig.options} data={chartConfig.data} />
+                </div>
             </div>
         </div>
     );

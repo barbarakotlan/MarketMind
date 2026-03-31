@@ -16,7 +16,7 @@ RUN pip install gunicorn
 # Copy the rest of the application code
 COPY . .
 
-# Set environment variables
+# Default port for local container runs; most platforms override this.
 ENV PORT=5001
 
 # Expose the port
@@ -24,4 +24,4 @@ EXPOSE 5001
 
 # Run the application
 # api:app refers to the "api.py" file and the "app" variable inside it
-CMD ["gunicorn", "--bind", ":5001", "--workers", "1", "--threads", "8", "--timeout", "0", "api:app"]
+CMD ["sh", "-c", "gunicorn --bind :${PORT:-5001} --workers 1 --threads 8 --timeout 0 api:app"]

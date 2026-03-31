@@ -146,7 +146,7 @@ const QuizSection = () => {
         return (
             <div className="flex flex-col items-center justify-center py-12 animate-in fade-in zoom-in duration-500">
                 <Brain className="w-20 h-20 text-blue-500 mb-6" />
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Test Your Market Knowledge</h2>
+                <h2 className="mb-4 text-3xl font-semibold text-mm-text-primary">Test Your Market Knowledge</h2>
                 <p className="text-gray-600 dark:text-gray-400 mb-8 text-center max-w-lg">
                     Choose a difficulty level to start a quiz. Questions cover everything from basic terms to advanced trading strategies.
                 </p>
@@ -182,10 +182,10 @@ const QuizSection = () => {
         return (
             <div className="flex flex-col items-center justify-center py-12 animate-in fade-in zoom-in duration-500 text-center">
                 <Award className={`w-24 h-24 mb-6 ${percentage >= 80 ? 'text-yellow-500' : 'text-blue-500'}`} />
-                <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">Quiz Complete</h2>
+                <h2 className="mb-2 text-4xl font-semibold text-mm-text-primary">Quiz Complete</h2>
                 <p className="text-xl text-gray-600 dark:text-gray-300 mb-6">{message}</p>
-                <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-xl border border-gray-200 dark:border-gray-700 mb-8 w-full max-w-md">
-                    <div className="text-6xl font-black text-blue-600 dark:text-blue-400 mb-2">{score}/{questions.length}</div>
+                <div className="ui-panel-elevated mb-8 w-full max-w-md p-8">
+                    <div className="mb-2 text-6xl font-semibold text-mm-accent-primary">{score}/{questions.length}</div>
                     <div className="text-sm font-bold text-gray-400 uppercase tracking-widest">Correct Answers</div>
                 </div>
                 <button onClick={resetQuiz} className="px-8 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:opacity-90 transition-all flex items-center gap-2">
@@ -208,8 +208,8 @@ const QuizSection = () => {
                     <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} />
                 </div>
             </div>
-            <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 mb-8 animate-in slide-in-from-right duration-300" key={currentQ.id}>
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">{currentQ.question}</h3>
+            <div className="ui-panel-elevated mb-8 p-8 animate-in slide-in-from-right duration-300" key={currentQ.id}>
+                <h3 className="mb-6 text-2xl font-semibold text-mm-text-primary">{currentQ.question}</h3>
                 
                 {/* --- Multiple Choice Fix --- */}
                 {currentQ.type === 'multiple' && (
@@ -256,7 +256,7 @@ const QuizSection = () => {
                 )}
                 
                 {currentQ.type === 'text' && (
-                    <input type="text" value={userAnswers[currentQ.id] || ''} onChange={(e) => handleAnswer(e.target.value)} placeholder="Type your answer here..." className="w-full p-4 text-lg border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500" />
+                    <input type="text" value={userAnswers[currentQ.id] || ''} onChange={(e) => handleAnswer(e.target.value)} placeholder="Type your answer here..." className="ui-input p-4 text-lg bg-transparent placeholder:text-mm-text-tertiary" />
                 )}
             </div>
             <div className="flex justify-end">
@@ -410,7 +410,7 @@ const ChapterSearch = ({ onSelectResult, onClose }) => {
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-32 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="w-full max-w-2xl mx-4 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="ui-panel-elevated w-full max-w-2xl mx-4 overflow-hidden">
                 <div className="flex items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
                     <Search className="w-5 h-5 text-gray-400" />
                     <input
@@ -419,7 +419,7 @@ const ChapterSearch = ({ onSelectResult, onClose }) => {
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="Search chapters, topics, or keywords..."
-                        className="flex-1 bg-transparent text-lg outline-none text-gray-900 dark:text-white placeholder-gray-400"
+                        className="flex-1 bg-transparent text-lg outline-none text-mm-text-primary placeholder:text-mm-text-tertiary"
                     />
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                         <X className="w-5 h-5 text-gray-400" />
@@ -471,9 +471,9 @@ const ChapterSearch = ({ onSelectResult, onClose }) => {
 // --- KEYBOARD SHORTCUTS HELP ---
 const KeyboardHelp = ({ onClose }) => (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
-        <div className="w-full max-w-md mx-4 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+        <div className="ui-panel-elevated w-full max-w-md mx-4 p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-mm-text-primary">
                     <Keyboard className="w-5 h-5" />
                     Keyboard Shortcuts
                 </h3>
@@ -644,12 +644,12 @@ const GettingStartedPage = () => {
     const isImmersive = selectedModule !== null;
 
     return (
-        <div className={`container mx-auto px-4 max-w-6xl animate-in fade-in duration-500 ${isImmersive ? 'py-4' : 'py-8'}`}>
+        <div className={`ui-page animate-in fade-in duration-500 ${isImmersive ? 'py-4' : 'py-8'}`}>
             {/* Header - Hidden when inside a module for immersive reading */}
             {!isImmersive && (
                 <div className="text-center mb-10 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <h1 className="text-4xl font-black text-gray-900 dark:text-white mb-2">Learning Center</h1>
-                    <p className="text-gray-500 dark:text-gray-400">
+                    <h1 className="mb-2 text-4xl font-semibold text-mm-text-primary">Learning Center</h1>
+                    <p className="text-mm-text-secondary">
                         Master financial markets through our comprehensive {totalChapters}-chapter course.
                     </p>
                 </div>
@@ -657,16 +657,16 @@ const GettingStartedPage = () => {
 
             {/* Navigation Tabs */}
             <div className={`flex justify-center ${isImmersive ? 'mb-6' : 'mb-12'}`}>
-                <div className={`bg-gray-100 dark:bg-gray-800 p-1.5 rounded-2xl flex gap-1 ${isImmersive ? 'scale-90' : ''}`}>
+                <div className={`ui-tab-group flex gap-1 ${isImmersive ? 'scale-90' : ''}`}>
                     <button 
                         onClick={() => {setActiveTab('learn'); backToModules();}} 
-                        className={`rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'learn' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'} ${isImmersive ? 'px-4 py-2' : 'px-8 py-3'}`}
+                        className={`${activeTab === 'learn' ? 'ui-tab ui-tab-active' : 'ui-tab'} text-sm flex items-center gap-2 ${isImmersive ? 'px-4 py-2' : 'px-8 py-3'}`}
                     >
                         <BookOpen className="w-4 h-4" /> {isImmersive ? 'Exit' : 'Course'}
                     </button>
                     <button 
                         onClick={() => setActiveTab('quiz')} 
-                        className={`rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'quiz' ? 'bg-white dark:bg-gray-700 text-purple-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'} ${isImmersive ? 'px-4 py-2' : 'px-8 py-3'}`}
+                        className={`${activeTab === 'quiz' ? 'ui-tab ui-tab-active text-mm-accent-primary' : 'ui-tab'} text-sm flex items-center gap-2 ${isImmersive ? 'px-4 py-2' : 'px-8 py-3'}`}
                     >
                         <HelpCircle className="w-4 h-4" /> Quiz
                     </button>
@@ -674,7 +674,7 @@ const GettingStartedPage = () => {
                     {/* Search Button */}
                     <button 
                         onClick={() => setShowSearch(true)}
-                        className={`rounded-xl text-sm font-bold transition-all flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 ${isImmersive ? 'px-4 py-2' : 'px-6 py-3'}`}
+                        className={`ui-tab text-sm flex items-center gap-2 ${isImmersive ? 'px-4 py-2' : 'px-6 py-3'}`}
                         title="Search chapters (/)"
                     >
                         <Search className="w-4 h-4" />
@@ -695,7 +695,7 @@ const GettingStartedPage = () => {
             {/* Breadcrumb / Context Bar - Only shown in immersive mode */}
             {isImmersive && selectedModule && (
                 <div className="mb-6 flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center gap-2 text-sm text-mm-text-secondary">
                         <span className="font-medium text-gray-400 dark:text-gray-500">Learning Center</span>
                         <ChevronRight className="w-4 h-4" />
                         <span className="font-medium text-gray-700 dark:text-gray-300">
@@ -746,7 +746,7 @@ const GettingStartedPage = () => {
                         // Course Overview - All Modules
                         <>
                             {/* Course Stats */}
-                            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 mb-8 text-white">
+                            <div className="ui-panel-elevated mb-8 bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
                                 <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                                     <div className="flex items-center gap-4">
                                         <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center">
@@ -783,10 +783,10 @@ const GettingStartedPage = () => {
                                         <div
                                             key={module.id}
                                             onClick={() => unlocked && setSelectedModule(module)}
-                                            className={`relative bg-white dark:bg-gray-800 rounded-xl border-2 p-6 transition-all duration-300 h-full flex flex-col
+                                            className={`relative ui-panel p-6 transition-all duration-300 h-full flex flex-col
                                                 ${!unlocked 
-                                                    ? 'border-gray-100 dark:border-gray-700 opacity-60 cursor-not-allowed' 
-                                                    : 'border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-600 hover:shadow-lg cursor-pointer'
+                                                    ? 'opacity-60 cursor-not-allowed' 
+                                                    : 'hover:border-mm-accent-primary/50 hover:shadow-elevated cursor-pointer'
                                                 }`}
                                         >
                                             {/* Lock/Status Indicator */}
@@ -813,10 +813,10 @@ const GettingStartedPage = () => {
                                                     {index + 1}
                                                 </div>
                                                 <div className="flex-1 pr-8">
-                                                    <h3 className={`font-bold text-lg ${!unlocked ? 'text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                                                    <h3 className={`text-lg font-semibold ${!unlocked ? 'text-gray-400' : 'text-mm-text-primary'}`}>
                                                         {module.title.replace(`Module ${index + 1}: `, '')}
                                                     </h3>
-                                                    <p className={`text-sm mt-1 ${!unlocked ? 'text-gray-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                                                    <p className={`mt-1 text-sm ${!unlocked ? 'text-gray-300' : 'text-mm-text-secondary'}`}>
                                                         {module.chapters.length} chapters • {module.estimatedMinutes} min
                                                     </p>
                                                 </div>
@@ -854,7 +854,7 @@ const GettingStartedPage = () => {
 
                             {/* How It Works */}
                             <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                                <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-4 flex items-center gap-2">
+                                <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-mm-text-primary">
                                     <Target className="w-5 h-5 text-blue-600" />
                                     How This Course Works
                                 </h3>
@@ -898,7 +898,7 @@ const GettingStartedPage = () => {
                                 Back to All Modules
                             </button>
 
-                            <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-2xl p-8 mb-8 text-white">
+                            <div className="ui-panel-elevated mb-8 bg-gradient-to-r from-gray-900 to-gray-800 p-8 text-white">
                                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                     <div>
                                         <h2 className="text-2xl font-bold mb-2">{selectedModule.title}</h2>
@@ -933,7 +933,7 @@ const GettingStartedPage = () => {
 
                             {/* Chapters List */}
                             <div className="space-y-3">
-                                <h3 className="font-bold text-gray-900 dark:text-white mb-4">Chapters</h3>
+                                <h3 className="mb-4 font-semibold text-mm-text-primary">Chapters</h3>
                                 {selectedModule.chapters.map((chapter, idx) => {
                                     const isCompleted = progress[chapter.id];
                                     return (
@@ -971,7 +971,7 @@ const GettingStartedPage = () => {
                         </div>
                     ) : (
                         // Individual Chapter Reading View
-                        <div className="animate-in fade-in slide-in-from-right duration-300 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
+                        <div className="ui-panel animate-in fade-in slide-in-from-right duration-300">
                             {/* Navigation */}
                             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
                                 <button 
@@ -1005,17 +1005,17 @@ const GettingStartedPage = () => {
                             </div>
 
                             {/* Chapter Header */}
-                            <div className="px-8 pt-8 pb-4 bg-white dark:bg-gray-800">
+                            <div className="px-8 pt-8 pb-4 bg-mm-surface">
                                 <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">
                                     {selectedModule.title.replace(/Module \d+: /, '')}
                                 </span>
-                                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mt-1">
+                                <h1 className="mt-1 text-3xl font-semibold text-mm-text-primary">
                                     {selectedChapter.title}
                                 </h1>
                             </div>
 
                             {/* Chapter Content */}
-                            <div className="p-8 bg-white dark:bg-gray-800">
+                            <div className="bg-mm-surface p-8">
                                 <ChapterContent 
                                     chapter={selectedChapter}
                                     isCompleted={progress[selectedChapter.id]}
@@ -1024,7 +1024,7 @@ const GettingStartedPage = () => {
                             </div>
 
                             {/* Chapter Navigation Footer */}
-                            <div className="flex items-center justify-between p-6 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                            <div className="flex items-center justify-between border-t border-mm-border bg-mm-surface p-6">
                                 {(() => {
                                     const currentIdx = selectedModule.chapters.findIndex(ch => ch.id === selectedChapter.id);
                                     const prevChapter = currentIdx > 0 ? selectedModule.chapters[currentIdx - 1] : null;

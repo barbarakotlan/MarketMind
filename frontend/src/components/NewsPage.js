@@ -22,7 +22,6 @@ const NewsPage = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeCategory, setActiveCategory] = useState('General');
 
-    // Pre-defined categories for quick access
     const categories = [
         { id: 'General', label: 'Top Stories', icon: Globe },
         { id: 'Market Movers', label: 'Market Movers', icon: TrendingUp },
@@ -39,14 +38,10 @@ const NewsPage = () => {
             return 'Recent';
         }
 
-        const parsedDate = new Date(
-            typeof rawTimestamp === 'number' ? rawTimestamp * 1000 : rawTimestamp
-        );
-
+        const parsedDate = new Date(typeof rawTimestamp === 'number' ? rawTimestamp * 1000 : rawTimestamp);
         return Number.isNaN(parsedDate.getTime()) ? 'Recent' : parsedDate.toLocaleDateString();
     };
 
-    // Helper to standardize API responses because /api/news and /news return different formats
     const normalizeArticle = (article) => {
         const headline = article.headline || article.title || 'No Headline';
         const source = article.source?.name || article.source || article.publisher || 'Unknown Source';
@@ -64,7 +59,7 @@ const NewsPage = () => {
             url: article.url || article.link || '#',
             summary: article.summary || article.description || '',
             image,
-            publishTime: formatPublishTime(article)
+            publishTime: formatPublishTime(article),
         };
     };
 
@@ -75,21 +70,15 @@ const NewsPage = () => {
 
         try {
             let data;
-            
-            // If searching or using a specific category filter, use the Search Endpoint
-            if (query || (category !== 'General')) {
-                const searchTerm = query || category; // Use category name if no manual query
+            if (query || category !== 'General') {
+                const searchTerm = query || category;
                 data = await apiRequest(API_ENDPOINTS.NEWS(searchTerm));
             } else {
-                // Default to General News Endpoint
                 data = await apiRequest(API_ENDPOINTS.NEWS());
             }
-            
-            // Handle cases where API returns different structures
+
             const rawArticles = Array.isArray(data) ? data : [];
-            const normalized = rawArticles.map(normalizeArticle);
-            
-            setArticles(normalized);
+            setArticles(rawArticles.map(normalizeArticle));
         } catch (err) {
             setError(err.message);
         } finally {
@@ -97,10 +86,8 @@ const NewsPage = () => {
         }
     };
 
-    // Initial load
     useEffect(() => {
         fetchNews();
-        // Intentionally load default feed once on mount.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -113,45 +100,39 @@ const NewsPage = () => {
 
     const handleCategoryClick = (category) => {
         setActiveCategory(category.id);
-        setSearchQuery(''); // Clear manual search when clicking a category
+        setSearchQuery('');
         fetchNews('', category.id);
     };
 
     return (
-        <div className="container mx-auto px-4 py-8 max-w-7xl">
-            {/* --- Header Section --- */}
-            <div className="flex flex-col md:flex-row justify-between items-center mb-10 space-y-4 md:space-y-0">
+        <div className="ui-page space-y-8">
+            <div className="ui-page-header flex flex-col items-center justify-between gap-4 md:flex-row">
                 <div className="text-center md:text-left">
-                    <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white flex items-center gap-3">
-                        <Globe className="w-10 h-10 text-blue-600" />
+                    <h1 className="ui-page-title flex items-center justify-center gap-3 md:justify-start">
+                        <Globe className="h-10 w-10 text-mm-accent-primary" />
                         Market Intelligence
                     </h1>
-                    <p className="text-gray-500 dark:text-gray-400 mt-2">
+                    <p className="ui-page-subtitle">
                         Real-time news feed, sentiment analysis, and market movers.
                     </p>
                 </div>
 
-                {/* --- Search Bar --- */}
                 <form onSubmit={handleSearchSubmit} className="relative w-full md:w-96">
                     <input
                         type="text"
                         placeholder="Search tickers (e.g. NVDA) or topics..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-12 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-gray-900 dark:text-white"
+                        className="ui-input py-3 pl-12 pr-16"
                     />
-                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                    <button 
-                        type="submit" 
-                        className="absolute right-2 top-1/2 transform -translate-y-1/2 px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 text-xs font-bold rounded-md hover:bg-blue-200 transition-colors"
-                    >
+                    <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-mm-text-tertiary" />
+                    <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-control bg-mm-accent-primary px-3 py-1 text-xs font-semibold text-white">
                         GO
                     </button>
                 </form>
             </div>
 
-            {/* --- Category Chips --- */}
-            <div className="flex flex-wrap gap-3 mb-8 animate-fade-in">
+            <div className="flex flex-wrap gap-3 animate-fade-in">
                 {categories.map((cat) => {
                     const Icon = cat.icon;
                     const isActive = activeCategory === cat.id;
@@ -159,38 +140,30 @@ const NewsPage = () => {
                         <button
                             key={cat.id}
                             onClick={() => handleCategoryClick(cat)}
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all duration-200 border ${
-                                isActive 
-                                    ? 'bg-blue-600 text-white border-blue-600 shadow-md transform scale-105' 
-                                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
-                            }`}
+                            className={isActive ? 'ui-button-primary gap-2 px-5 py-2.5' : 'ui-button-secondary gap-2 px-5 py-2.5'}
                         >
-                            <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+                            <Icon className="h-4 w-4" />
                             {cat.label}
                         </button>
                     );
                 })}
             </div>
 
-            {/* --- Content Area --- */}
             {loading ? (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {[1, 2, 3, 4, 5, 6].map((i) => (
-                        <div key={i} className="bg-white dark:bg-gray-800 p-6 rounded-xl h-80 animate-pulse border border-gray-200 dark:border-gray-700">
-                            <div className="h-40 bg-gray-200 dark:bg-gray-700 rounded-lg mb-4"></div>
-                            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
-                            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                        <div key={i} className="ui-panel h-80 animate-pulse p-6">
+                            <div className="mb-4 h-40 rounded-control bg-mm-surface-subtle"></div>
+                            <div className="mb-2 h-4 w-3/4 rounded-control bg-mm-surface-subtle"></div>
+                            <div className="h-4 w-1/2 rounded-control bg-mm-surface-subtle"></div>
                         </div>
                     ))}
                 </div>
             ) : error ? (
-                <div className="text-center py-16 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 dark:border-red-800">
-                    <h3 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">Unable to Load News</h3>
-                    <p className="text-red-500 dark:text-red-300 mb-6">{error}</p>
-                    <button 
-                        onClick={() => fetchNews('', 'General')}
-                        className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                    >
+                <div className="ui-banner ui-banner-error py-10 text-center">
+                    <h3 className="mb-2 text-xl font-semibold">Unable to Load News</h3>
+                    <p className="mb-6">{error}</p>
+                    <button onClick={() => fetchNews('', 'General')} className="ui-button-primary">
                         Retry Connection
                     </button>
                 </div>
@@ -198,58 +171,60 @@ const NewsPage = () => {
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {articles.length > 0 ? (
                         articles.map((article) => (
-                            <a 
-                                href={article.url} 
-                                key={article.id} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="group flex flex-col h-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-xl hover:border-blue-300 dark:hover:border-blue-700 transition-all duration-300 transform hover:-translate-y-1"
+                            <a
+                                href={article.url}
+                                key={article.id}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ui-panel flex h-full flex-col overflow-hidden transition hover:border-mm-border-strong hover:shadow-elevated"
                             >
-                                <div className="relative overflow-hidden h-48">
-                                    <img 
-                                        src={article.image} 
-                                        alt={article.headline} 
-                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                <div className="relative h-48 overflow-hidden">
+                                    <img
+                                        src={article.image}
+                                        alt={article.headline}
+                                        className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
                                         onError={(e) => {
                                             e.target.onerror = null;
                                             e.target.src = NEWS_IMAGE_PLACEHOLDER;
                                         }}
                                     />
-                                    <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-md text-white text-xs px-2 py-1 rounded-md font-medium">
+                                    <div className="absolute right-3 top-3 rounded-control bg-black/60 px-2 py-1 text-xs font-medium text-white backdrop-blur">
                                         {article.source}
                                     </div>
                                 </div>
-                                
-                                <div className="p-6 flex flex-col flex-grow">
-                                    <div className="flex items-center text-xs text-gray-400 mb-3 space-x-2">
-                                        <span className="font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+
+                                <div className="flex flex-grow flex-col p-6">
+                                    <div className="mb-3 flex items-center space-x-2 text-xs text-mm-text-tertiary">
+                                        <span className="font-semibold uppercase tracking-wider text-mm-accent-primary">
                                             {activeCategory === 'General' ? 'News' : activeCategory}
                                         </span>
                                         <span>•</span>
                                         <span>{article.publishTime}</span>
                                     </div>
-                                    
-                                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-3 leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+
+                                    <h2 className="mb-3 line-clamp-2 text-lg font-semibold leading-snug text-mm-text-primary transition hover:text-mm-accent-primary">
                                         {article.headline}
                                     </h2>
-                                    
-                                    <p className="text-gray-600 dark:text-gray-400 text-sm mb-4 line-clamp-3 flex-grow">
-                                        {article.summary ? article.summary : "Click to read the full story..."}
+
+                                    <p className="mb-4 line-clamp-3 flex-grow text-sm text-mm-text-secondary">
+                                        {article.summary || 'Click to read the full story...'}
                                     </p>
-                                    
-                                    <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700 flex items-center text-blue-600 dark:text-blue-400 text-sm font-semibold group-hover:translate-x-1 transition-transform">
-                                        Read Analysis <TrendingUp className="w-4 h-4 ml-2" />
+
+                                    <div className="mt-auto flex items-center border-t border-mm-border pt-4 text-sm font-semibold text-mm-accent-primary">
+                                        Read Analysis <TrendingUp className="ml-2 h-4 w-4" />
                                     </div>
                                 </div>
                             </a>
                         ))
                     ) : (
-                        <div className="col-span-full text-center py-20">
-                            <div className="bg-gray-100 dark:bg-gray-800 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
-                                <Search className="w-10 h-10 text-gray-400" />
+                        <div className="col-span-full">
+                            <div className="ui-empty-state py-20">
+                                <div className="mb-4 rounded-pill border border-mm-border bg-mm-surface p-5">
+                                    <Search className="h-10 w-10 text-mm-text-tertiary" />
+                                </div>
+                                <h3 className="text-xl font-semibold text-mm-text-primary">No Articles Found</h3>
+                                <p>Try adjusting your search terms or selecting a different category.</p>
                             </div>
-                            <h3 className="text-xl font-bold text-gray-700 dark:text-gray-300">No Articles Found</h3>
-                            <p className="text-gray-500">Try adjusting your search terms or selecting a different category.</p>
                         </div>
                     )}
                 </div>

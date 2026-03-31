@@ -81,6 +81,11 @@ MarketMind/
 |   |-- prediction_markets_fetcher.py
 |   |-- requirements.txt
 |   `-- tests/
+|-- docs/
+|   |-- README.md
+|   |-- backend/
+|   |-- operations/
+|   `-- product/
 |-- frontend/
 |   |-- package.json
 |   |-- src/
@@ -90,8 +95,6 @@ MarketMind/
 |   |   `-- config/authFetch.js
 |   `-- public/
 |-- .env.example
-|-- backend/API_DOCUMENTATION.md
-|-- backend/DATA_SPECS.md
 `-- README.md
 ```
 
@@ -156,6 +159,11 @@ Common development workflow:
 3. When changing a backend-powered feature, update the Flask route or supporting module first, then update the frontend API config, then update the consuming component.
 4. When changing authenticated features, verify both Clerk-based auth behavior and user-specific persistence under `backend/user_data/`.
 
+Useful local checks:
+
+- Frontend checks: `bash frontend/run_frontend_checks.sh`
+- Backend deterministic checks: `PYTHON_BIN=backend/.venv/bin/python bash backend/run_deterministic_backend_checks.sh`
+
 Beginner-friendly tips:
 
 - The frontend should call the Flask API, not third-party market providers directly.
@@ -185,8 +193,15 @@ The backend also contains ongoing work around selective prediction, pooled or gl
 
 ## Additional Documentation
 
-- [API documentation](./backend/API_DOCUMENTATION.md)
-- [Model data specifications](./backend/DATA_SPECS.md)
+- [Docs index](./docs/README.md)
+- [API documentation](./docs/backend/API_DOCUMENTATION.md)
+- [Model data specifications](./docs/backend/DATA_SPECS.md)
+- [Quality gates](./docs/operations/QUALITY_GATES.md)
+- [Release smoke checklist](./docs/operations/RELEASE_SMOKE_TEST_CHECKLIST.md)
+- [Monthly user journey simulation](./docs/operations/MONTHLY_USER_JOURNEY_SIMULATION.md)
+- [Production deployment checklist](./docs/operations/PRODUCTION_DEPLOYMENT_CHECKLIST.md)
+- [Production roadmap](./docs/product/PRODUCTION_ROADMAP.md)
+- [Monetization brainstorm](./docs/product/MONETIZATION_BRAINSTORM.md)
 - [Code of conduct](./CODE_OF_CONDUCT.md)
 - [License](./LICENSE)
 

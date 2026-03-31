@@ -38,7 +38,7 @@ const PLANS = [
         id: 'pro',
         icon: Crown,
         label: 'Pro',
-        price: 23.97,
+        price: 14.97,
         cadence: 'per month',
         tagline: 'Everything you need to trade smarter.',
         accent: 'from-blue-600 to-indigo-700',

@@ -51,6 +51,7 @@ psycopg[binary]==3.2.12
 pytz==2025.2
 PyYAML==6.0.1
 requests==2.32.5
+redis==5.2.1
 scikit-learn==1.6.1
 scipy==1.13.1
 six==1.17.0
@@ -59,6 +60,7 @@ sseclient-py==1.8.0
 statsmodels==0.14.5
 schedule==1.2.2
 SQLAlchemy==2.0.44
+stripe==15.0.0
 alembic==1.14.1
 threadpoolctl==3.6.0
 torch>=2.0

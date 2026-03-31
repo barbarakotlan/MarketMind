@@ -113,6 +113,7 @@ class AuthIsolationTests(unittest.TestCase):
             ("get", "/prediction-markets/portfolio", None),
             ("get", "/prediction-markets/history", None),
             ("post", "/prediction-markets/reset", None),
+            ("post", "/prediction-markets/analyze", {"market_id": "m1"}),
             ("post", "/prediction-markets/buy", {"market_id": "m1", "outcome": "Yes", "contracts": 1}),
             ("post", "/prediction-markets/sell", {"market_id": "m1", "outcome": "Yes", "contracts": 1}),
         ]
