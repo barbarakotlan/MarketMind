@@ -3,7 +3,6 @@ warnings.filterwarnings('ignore')
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import datetime
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import StandardScaler
@@ -235,8 +234,6 @@ def ensemble_predict(df, days_ahead=7):
     # Transformer Train and Predict
     transformer_trained, scaler_X, scaler_y, device = transformer_train(df, lookback=14, seq_len=30, days_ahead=days_ahead, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
     transformer_pred = transformer_predict(df, transformer_trained, scaler_X, scaler_y, device, lookback=14, seq_len=30)
-
-
 
     # Store individual predictions
     if lr_pred is not None:

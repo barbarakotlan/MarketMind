@@ -329,6 +329,10 @@ def predict_stock_handler(
     linear_regression_predict_fn,
     random_forest_predict_fn,
     xgboost_predict_fn,
+    lstm_train_fn=None,
+    lstm_predict_fn=None,
+    transformer_train_fn=None,
+    transformer_predict_fn=None,
     yf_module,
     jsonify_fn,
     log_api_error_fn,
@@ -346,6 +350,9 @@ def predict_stock_handler(
         elif model in ("RandomForest", "XGBoost"):
             period = "6mo"
             min_rows = 40
+        elif model in ("LSTM", "Transformer"):
+            period = "1y"
+            min_rows = 200
         else:
             return jsonify_fn({"error": "Unknown model"}), 400
 
@@ -357,8 +364,22 @@ def predict_stock_handler(
             preds = linear_regression_predict_fn(df, days_ahead=7)
         elif model == "RandomForest":
             preds = random_forest_predict_fn(df, days_ahead=7)
-        else:
+        elif model == "XGBoost":
             preds = xgboost_predict_fn(df, days_ahead=7)
+        elif model == 'LSTM':
+            trained, scaler_X, scaler_y, device = lstm_train_fn(
+                df, lookback=14, seq_len=30, days_ahead=7,
+                hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001
+            )
+            preds = lstm_predict_fn(df, trained, scaler_X, scaler_y, device, lookback=14, seq_len=30)
+        elif model == 'Transformer':
+            trained, scaler_X, scaler_y, device = transformer_train_fn(
+                df, lookback=14, seq_len=30, days_ahead=7,
+                d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001
+            )
+            preds = transformer_predict_fn(df, trained, scaler_X, scaler_y, device, lookback=14, seq_len=30)
+        else:
+            return jsonify_fn({"error": f"Unknown model: {model}"}), 400
 
         if preds is None or len(preds) == 0:
             return jsonify_fn({"error": f"{model} prediction failed."}), 400
@@ -421,7 +442,7 @@ def predict_ensemble_handler(
         disagreement = signal_parts["disagreement"]
 
         recent_date = df.index[-1]
-        future_dates = [recent_date + pd_module.Timedelta(days=i + 1) for i in range(6)]
+        future_dates = [recent_date + pd_module.Timedelta(days=i + 1) for i in range(len(ensemble_preds))]
 
         selector = infer_selective_decision_fn(
             ticker=sanitized_ticker,
