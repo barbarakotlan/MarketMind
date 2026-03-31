@@ -42,6 +42,41 @@ except ImportError:
 from news_fetcher import get_general_news
 from models import create_dataset, ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict
 from professional_evaluation import rolling_window_backtest
+try:
+    from selective_prediction import (
+        infer_selective_decision,
+        SELECTIVE_MODES,
+        SELECTIVE_DISABLED_STATUSES,
+        SELECTOR_SOURCE_REQUESTABLE,
+    )
+except ImportError:
+    SELECTIVE_MODES = {"none", "conservative", "aggressive", "risk_conservative", "risk_aggressive"}
+    SELECTIVE_DISABLED_STATUSES = set()
+    SELECTOR_SOURCE_REQUESTABLE = {"auto"}
+
+    def infer_selective_decision(
+        ticker,
+        requested_mode="none",
+        selector_source_requested="auto",
+        raw_signal=0.0,
+        ensemble_disagreement=0.0,
+        config=None,
+        artifact_root=None,
+        logger=None,
+    ):
+        return {
+            "ticker": str(ticker or "").upper(),
+            "mode_requested": str(requested_mode or "none").lower(),
+            "abstain": False,
+            "abstain_reason": None,
+            "selector_prob": None,
+            "selector_threshold": None,
+            "selector_status": "unavailable",
+            "selector_source_requested": str(selector_source_requested or "auto").lower(),
+            "selector_source": "none",
+            "raw_signal": float(raw_signal or 0.0),
+            "ensemble_disagreement": float(ensemble_disagreement or 0.0),
+        }
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
 from commodities_fetcher import get_commodity_price, get_commodity_list, get_commodities_by_category
