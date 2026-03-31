@@ -42,6 +42,9 @@ class Base(DeclarativeBase):
 
 class AppUser(Base):
     __tablename__ = "app_users"
+    __table_args__ = (
+        UniqueConstraint("stripe_customer_id", name="uq_app_users_stripe_customer_id"),
+    )
 
     clerk_user_id: Mapped[str] = mapped_column(Text, primary_key=True)
     email: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -51,7 +54,7 @@ class AppUser(Base):
     # Subscription fields
     plan: Mapped[str] = mapped_column(Text, nullable=False, default="free", server_default="free")
     subscription_status: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    stripe_customer_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True, index=True)
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 class WatchlistItem(Base):
     __tablename__ = "watchlist_items"

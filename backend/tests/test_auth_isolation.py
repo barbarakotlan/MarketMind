@@ -116,6 +116,9 @@ class AuthIsolationTests(unittest.TestCase):
             ("post", "/prediction-markets/analyze", {"market_id": "m1"}),
             ("post", "/prediction-markets/buy", {"market_id": "m1", "outcome": "Yes", "contracts": 1}),
             ("post", "/prediction-markets/sell", {"market_id": "m1", "outcome": "Yes", "contracts": 1}),
+            ("post", "/checkout/create-subscription", {"billing": "monthly"}),
+            ("post", "/checkout/cancel-subscription", {"subscriptionId": "sub_123"}),
+            ("get", "/checkout/plan-status", None),
         ]
 
         for method, route, payload in protected_requests:
