@@ -9,6 +9,9 @@ import {
     Calendar,
     FileText,
     ExternalLink,
+    ShieldAlert,
+    Users,
+    Activity,
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
@@ -129,6 +132,10 @@ const FundamentalsPage = () => {
     const [fundamentals, setFundamentals] = useState(null);
     const [financials, setFinancials] = useState(null);
     const [filings, setFilings] = useState(null);
+    const [secIntelligence, setSecIntelligence] = useState(null);
+    const [secIntelligenceError, setSecIntelligenceError] = useState('');
+    const [expandedFilingAccession, setExpandedFilingAccession] = useState(null);
+    const [filingDetailState, setFilingDetailState] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState('overview');
@@ -142,13 +149,18 @@ const FundamentalsPage = () => {
         setFundamentals(null);
         setFinancials(null);
         setFilings(null);
+        setSecIntelligence(null);
+        setSecIntelligenceError('');
+        setExpandedFilingAccession(null);
+        setFilingDetailState({});
         setActiveTab('overview');
 
         const sym = ticker.toUpperCase().trim();
-        const [overviewRes, financialsRes, filingsRes] = await Promise.allSettled([
+        const [overviewRes, financialsRes, filingsRes, secIntelligenceRes] = await Promise.allSettled([
             apiRequest(API_ENDPOINTS.FUNDAMENTALS(sym)),
             apiRequest(API_ENDPOINTS.FUNDAMENTALS_FINANCIALS(sym)),
             apiRequest(API_ENDPOINTS.FUNDAMENTALS_FILINGS(sym)),
+            apiRequest(API_ENDPOINTS.FUNDAMENTALS_SEC_INTELLIGENCE(sym)),
         ]);
 
         setLoading(false);
@@ -167,10 +179,17 @@ const FundamentalsPage = () => {
         if (filingsRes.status === 'fulfilled' && !filingsRes.value?.error) {
             setFilings(filingsRes.value);
         }
+        if (secIntelligenceRes.status === 'fulfilled' && !secIntelligenceRes.value?.error) {
+            setSecIntelligence(secIntelligenceRes.value);
+        } else if (secIntelligenceRes.status === 'fulfilled' && secIntelligenceRes.value?.error) {
+            setSecIntelligenceError(secIntelligenceRes.value.error);
+        } else if (secIntelligenceRes.status === 'rejected') {
+            setSecIntelligenceError(secIntelligenceRes.reason?.message || 'Failed to fetch SEC intelligence');
+        }
     };
 
     const formatNumber = (value, prefix = '', suffix = '') => {
-        if (value === 'N/A' || value === 'None' || !value) return 'N/A';
+        if (value === 'N/A' || value === 'None' || value === null || value === undefined || value === '') return 'N/A';
         const num = parseFloat(value);
         if (isNaN(num)) return value;
         if (Math.abs(num) >= 1e12) return `${prefix}${(num / 1e12).toFixed(2)}T${suffix}`;
@@ -180,10 +199,98 @@ const FundamentalsPage = () => {
     };
 
     const formatPercent = (value) => {
-        if (value === 'N/A' || value === 'None' || !value) return 'N/A';
+        if (value === 'N/A' || value === 'None' || value === null || value === undefined || value === '') return 'N/A';
         const num = parseFloat(value);
         if (isNaN(num)) return value;
         return `${(num * 100).toFixed(2)}%`;
+    };
+
+    const formatPercentValue = (value) => {
+        if (value === null || value === undefined || value === '') return '—';
+        const num = parseFloat(value);
+        return Number.isFinite(num) ? `${num.toFixed(1)}%` : '—';
+    };
+
+    const formatSignedInteger = (value) => {
+        if (value === null || value === undefined || value === '') return '—';
+        const num = Number(value);
+        if (!Number.isFinite(num)) return '—';
+        return `${num > 0 ? '+' : ''}${Math.round(num).toLocaleString()}`;
+    };
+
+    const filingDetailEndpoint = (accessionNumber) => {
+        const symbol = fundamentals?.symbol || ticker.toUpperCase().trim();
+        return API_ENDPOINTS.FUNDAMENTALS_FILING_DETAIL(symbol, accessionNumber);
+    };
+
+    const loadFilingDetail = async (filing, { expand = true } = {}) => {
+        const accessionNumber = filing?.accessionNumber;
+        if (!accessionNumber) return;
+
+        if (expand) {
+            setExpandedFilingAccession(accessionNumber);
+        }
+
+        setFilingDetailState((prev) => ({
+            ...prev,
+            [accessionNumber]: {
+                status: 'loading',
+                error: '',
+                data: prev[accessionNumber]?.data || null,
+                activeSectionKey: prev[accessionNumber]?.activeSectionKey || null,
+            },
+        }));
+
+        try {
+            const detail = await apiRequest(filingDetailEndpoint(accessionNumber));
+            const normalizedDetail = detail || { sections: [] };
+            setFilingDetailState((prev) => ({
+                ...prev,
+                [accessionNumber]: {
+                    status: 'success',
+                    error: '',
+                    data: normalizedDetail,
+                    activeSectionKey: normalizedDetail.sections?.[0]?.key || null,
+                },
+            }));
+        } catch (detailError) {
+            setFilingDetailState((prev) => ({
+                ...prev,
+                [accessionNumber]: {
+                    status: 'error',
+                    error: detailError?.message || 'Failed to load SEC filing detail.',
+                    data: prev[accessionNumber]?.data || null,
+                    activeSectionKey: prev[accessionNumber]?.activeSectionKey || null,
+                },
+            }));
+        }
+    };
+
+    const handleToggleFilingDetail = async (filing) => {
+        const accessionNumber = filing?.accessionNumber;
+        if (!accessionNumber) return;
+
+        if (expandedFilingAccession === accessionNumber) {
+            setExpandedFilingAccession(null);
+            return;
+        }
+
+        const existingState = filingDetailState[accessionNumber];
+        setExpandedFilingAccession(accessionNumber);
+        if (existingState?.status === 'success') {
+            return;
+        }
+        await loadFilingDetail(filing, { expand: false });
+    };
+
+    const setActiveFilingSection = (accessionNumber, sectionKey) => {
+        setFilingDetailState((prev) => ({
+            ...prev,
+            [accessionNumber]: {
+                ...prev[accessionNumber],
+                activeSectionKey: sectionKey,
+            },
+        }));
     };
 
     return (
@@ -380,7 +487,116 @@ const FundamentalsPage = () => {
                     )}
 
                     {activeTab === 'filings' && (
-                        <div>
+                        <div className="space-y-6">
+                            {(secIntelligence || secIntelligenceError) && (
+                                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                                    <div className="ui-panel p-5">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <ShieldAlert className="w-4 h-4 text-mm-warning" />
+                                            <h3 className="text-sm font-semibold text-mm-text-primary">Filing Change Watch</h3>
+                                        </div>
+                                        {secIntelligence?.filingChangeSummary?.comparisonForm ? (
+                                            <div className="space-y-3">
+                                                <div className="text-sm text-mm-text-secondary">
+                                                    Comparing latest <span className="font-semibold text-mm-text-primary">{secIntelligence.filingChangeSummary.comparisonForm}</span>
+                                                    {' '}on {secIntelligence.filingChangeSummary.currentFiling?.date || '—'}
+                                                    {' '}vs {secIntelligence.filingChangeSummary.previousFiling?.date || '—'}.
+                                                </div>
+                                                {(secIntelligence.filingChangeSummary.sectionChanges || []).length > 0 ? (
+                                                    <div className="space-y-3">
+                                                        {secIntelligence.filingChangeSummary.sectionChanges.slice(0, 3).map((sectionChange) => (
+                                                            <div key={sectionChange.key} className="rounded-card border border-mm-border bg-mm-surface-subtle px-3 py-3">
+                                                                <div className="flex items-center justify-between gap-3 mb-2">
+                                                                    <h4 className="text-sm font-semibold text-mm-text-primary">{sectionChange.title}</h4>
+                                                                    <span className="inline-flex items-center rounded-pill border border-mm-warning/20 bg-mm-warning/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-mm-warning">
+                                                                        {sectionChange.status}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-xs leading-6 text-mm-text-secondary whitespace-pre-wrap">
+                                                                    {sectionChange.currentExcerpt || sectionChange.previousExcerpt || 'No excerpt available.'}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-mm-text-secondary">No material section changes were detected between the latest comparable filings.</p>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-mm-text-secondary">Comparable annual or quarterly filings are not available yet for change detection.</p>
+                                        )}
+                                    </div>
+
+                                    <div className="ui-panel p-5">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Activity className="w-4 h-4 text-mm-positive" />
+                                            <h3 className="text-sm font-semibold text-mm-text-primary">Insider Activity</h3>
+                                        </div>
+                                        {(secIntelligence?.insiderActivity || []).length > 0 ? (
+                                            <div className="space-y-3">
+                                                {secIntelligence.insiderActivity.slice(0, 4).map((item) => (
+                                                    <div key={item.accessionNumber || `${item.date}-${item.insiderName}`} className="rounded-card border border-mm-border bg-mm-surface-subtle px-3 py-3">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <h4 className="text-sm font-semibold text-mm-text-primary">{item.insiderName || 'Unspecified insider'}</h4>
+                                                                <p className="text-xs text-mm-text-secondary">{item.position || item.type || 'Ownership filing'}</p>
+                                                            </div>
+                                                            <span className="text-[11px] uppercase tracking-[0.12em] text-mm-text-tertiary">{item.date || '—'}</span>
+                                                        </div>
+                                                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-mm-text-secondary">
+                                                            {item.activity ? <span className="rounded-pill border border-mm-border px-2 py-0.5">{item.activity}</span> : null}
+                                                            {item.netShares !== null && item.netShares !== undefined ? <span className="rounded-pill border border-mm-border px-2 py-0.5">{formatSignedInteger(item.netShares)} shares</span> : null}
+                                                            {item.remainingShares !== null && item.remainingShares !== undefined ? <span className="rounded-pill border border-mm-border px-2 py-0.5">{Math.round(item.remainingShares).toLocaleString()} held after filing</span> : null}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-mm-text-secondary">No recent insider Form 4 / Form 5 activity was parsed for this ticker.</p>
+                                        )}
+                                    </div>
+
+                                    <div className="ui-panel p-5">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Users className="w-4 h-4 text-mm-accent-primary" />
+                                            <h3 className="text-sm font-semibold text-mm-text-primary">Major Holders (13D/G)</h3>
+                                        </div>
+                                        {(secIntelligence?.beneficialOwnership || []).length > 0 ? (
+                                            <div className="space-y-3">
+                                                {secIntelligence.beneficialOwnership.slice(0, 4).map((item) => (
+                                                    <div key={item.accessionNumber || `${item.date}-${(item.owners || []).join('-')}`} className="rounded-card border border-mm-border bg-mm-surface-subtle px-3 py-3">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <h4 className="text-sm font-semibold text-mm-text-primary">{(item.owners || []).join(', ') || 'Reporting holders unavailable'}</h4>
+                                                                <p className="text-xs text-mm-text-secondary">{item.type || '13D/G filing'}</p>
+                                                            </div>
+                                                            <span className="text-[11px] uppercase tracking-[0.12em] text-mm-text-tertiary">{item.date || '—'}</span>
+                                                        </div>
+                                                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-mm-text-secondary">
+                                                            {item.ownershipPercent !== null && item.ownershipPercent !== undefined ? <span className="rounded-pill border border-mm-border px-2 py-0.5">{formatPercentValue(item.ownershipPercent)}</span> : null}
+                                                            {item.isPassive !== null && item.isPassive !== undefined ? <span className="rounded-pill border border-mm-border px-2 py-0.5">{item.isPassive ? 'Passive' : 'Active / activist'}</span> : null}
+                                                        </div>
+                                                        {item.purpose ? (
+                                                            <p className="mt-3 text-xs leading-6 text-mm-text-secondary whitespace-pre-wrap">
+                                                                {item.purpose}
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-mm-text-secondary">No recent 13D/G beneficial ownership disclosures were parsed for this ticker.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {secIntelligenceError && (
+                                <div className="rounded-card border border-mm-warning/20 bg-mm-warning/10 px-5 py-4 text-sm text-mm-warning">
+                                    SEC intelligence is temporarily unavailable: {secIntelligenceError}
+                                </div>
+                            )}
+
                             {filings && filings.length > 0 ? (
                                 <div className="ui-panel overflow-hidden">
                                     <div className="px-5 py-4 border-b border-mm-border flex items-center gap-2">
@@ -401,33 +617,139 @@ const FundamentalsPage = () => {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-mm-border">
-                                                {filings.map((f, i) => (
-                                                    <tr key={i} className="hover:bg-mm-surface-subtle/80">
-                                                        <td className="px-5 py-2.5 text-mm-text-secondary whitespace-nowrap">
-                                                            {f.date ? new Date(f.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                                                        </td>
-                                                        <td className="px-5 py-2.5">
-                                                            <span className="inline-flex items-center rounded-pill border border-mm-accent-primary/15 bg-mm-accent-primary/10 px-2 py-0.5 text-xs font-semibold text-mm-accent-primary">
-                                                                {f.type}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-5 py-2.5 text-mm-text-secondary max-w-xs truncate">
-                                                            {f.description || '—'}
-                                                        </td>
-                                                        <td className="px-5 py-2.5 text-center">
-                                                            {f.url ? (
-                                                                <a
-                                                                    href={f.url}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="inline-flex items-center gap-1 text-mm-accent-primary hover:underline text-xs"
-                                                                >
-                                                                    View <ExternalLink className="w-3 h-3" />
-                                                                </a>
-                                                            ) : '—'}
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                {filings.map((f, i) => {
+                                                    const accessionNumber = f.accessionNumber || `filing-${i}`;
+                                                    const isExpanded = expandedFilingAccession === accessionNumber;
+                                                    const detailState = filingDetailState[accessionNumber];
+                                                    const detail = detailState?.data;
+                                                    const sections = detail?.sections || [];
+                                                    const activeSectionKey = detailState?.activeSectionKey || sections[0]?.key;
+                                                    const activeSection = sections.find((section) => section.key === activeSectionKey) || sections[0];
+
+                                                    return (
+                                                        <React.Fragment key={accessionNumber}>
+                                                            <tr className="hover:bg-mm-surface-subtle/80">
+                                                                <td className="px-5 py-2.5 text-mm-text-secondary whitespace-nowrap">
+                                                                    {f.date ? new Date(f.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                                                                </td>
+                                                                <td className="px-5 py-2.5">
+                                                                    <span className="inline-flex items-center rounded-pill border border-mm-accent-primary/15 bg-mm-accent-primary/10 px-2 py-0.5 text-xs font-semibold text-mm-accent-primary">
+                                                                        {f.type}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-5 py-2.5 text-mm-text-secondary max-w-xs truncate">
+                                                                    {f.description || '—'}
+                                                                </td>
+                                                                <td className="px-5 py-2.5 text-center">
+                                                                    <div className="flex flex-col items-center gap-2">
+                                                                        {f.url ? (
+                                                                            <a
+                                                                                href={f.url}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className="inline-flex items-center gap-1 text-mm-accent-primary hover:underline text-xs"
+                                                                            >
+                                                                                View <ExternalLink className="w-3 h-3" />
+                                                                            </a>
+                                                                        ) : (
+                                                                            <span>—</span>
+                                                                        )}
+                                                                        {f.hasKeySections && f.accessionNumber ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleToggleFilingDetail(f)}
+                                                                                className="text-xs font-semibold text-mm-accent-primary hover:underline"
+                                                                            >
+                                                                                {isExpanded ? 'Hide key sections' : 'Read key sections'}
+                                                                            </button>
+                                                                        ) : null}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                            {isExpanded && (
+                                                                <tr>
+                                                                    <td colSpan={4} className="px-5 py-4 bg-mm-surface-subtle/60">
+                                                                        <div className="ui-panel-subtle p-4 space-y-4">
+                                                                            <div className="flex flex-wrap items-center gap-3">
+                                                                                <span className="inline-flex items-center rounded-pill border border-mm-accent-primary/15 bg-mm-accent-primary/10 px-2.5 py-0.5 text-xs font-semibold text-mm-accent-primary">
+                                                                                    {f.type}
+                                                                                </span>
+                                                                                <span className="text-xs text-mm-text-secondary">
+                                                                                    {f.date ? new Date(f.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date unavailable'}
+                                                                                </span>
+                                                                                {detail?.url ? (
+                                                                                    <a
+                                                                                        href={detail.url}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        className="inline-flex items-center gap-1 text-xs text-mm-accent-primary hover:underline"
+                                                                                    >
+                                                                                        Open on EDGAR <ExternalLink className="w-3 h-3" />
+                                                                                    </a>
+                                                                                ) : null}
+                                                                            </div>
+
+                                                                            {detailState?.status === 'loading' && (
+                                                                                <p className="text-sm text-mm-text-secondary">Loading key SEC filing sections...</p>
+                                                                            )}
+
+                                                                            {detailState?.status === 'error' && (
+                                                                                <div className="flex flex-wrap items-center gap-3">
+                                                                                    <p className="text-sm text-mm-negative">{detailState.error}</p>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => loadFilingDetail(f)}
+                                                                                        className="text-xs font-semibold text-mm-accent-primary hover:underline"
+                                                                                    >
+                                                                                        Retry
+                                                                                    </button>
+                                                                                </div>
+                                                                            )}
+
+                                                                            {detailState?.status === 'success' && (
+                                                                                <div className="space-y-4">
+                                                                                    {sections.length > 0 ? (
+                                                                                        <>
+                                                                                            <div className="flex flex-wrap gap-2">
+                                                                                                {sections.map((section) => (
+                                                                                                    <button
+                                                                                                        key={section.key}
+                                                                                                        type="button"
+                                                                                                        onClick={() => setActiveFilingSection(accessionNumber, section.key)}
+                                                                                                        className={activeSection?.key === section.key
+                                                                                                            ? 'rounded-control bg-mm-accent-primary px-3 py-1.5 text-xs font-semibold text-white'
+                                                                                                            : 'rounded-control border border-mm-border bg-mm-surface px-3 py-1.5 text-xs font-semibold text-mm-text-secondary hover:bg-mm-surface'}
+                                                                                                    >
+                                                                                                        {section.title}
+                                                                                                    </button>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                            {activeSection && (
+                                                                                                <div className="rounded-card border border-mm-border bg-mm-surface px-4 py-4">
+                                                                                                    <div className="flex items-center justify-between gap-3 mb-3">
+                                                                                                        <h4 className="text-sm font-semibold text-mm-text-primary">{activeSection.title}</h4>
+                                                                                                        {activeSection.truncated ? (
+                                                                                                            <span className="text-[11px] uppercase tracking-[0.14em] text-mm-text-tertiary">Excerpt</span>
+                                                                                                        ) : null}
+                                                                                                    </div>
+                                                                                                    <p className="text-sm leading-7 text-mm-text-secondary whitespace-pre-wrap">
+                                                                                                        {activeSection.text}
+                                                                                                    </p>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <p className="text-sm text-mm-text-secondary">No key sections were parsed for this filing.</p>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                        </React.Fragment>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>
