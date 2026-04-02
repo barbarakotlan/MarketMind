@@ -76,8 +76,28 @@ class MarketMindAiApiTests(unittest.TestCase):
             marketmind_ai_module,
             "_recent_news",
             return_value=[
-                {"title": "Apple launches a new hardware cycle", "publisher": "ExampleWire", "link": "https://example.com/apple-1"},
-                {"title": "Services revenue remains strong", "publisher": "ExampleWire", "link": "https://example.com/apple-2"},
+                {
+                    "title": "Apple launches a new hardware cycle",
+                    "publisher": "ExampleWire",
+                    "link": "https://example.com/apple-1",
+                    "sentiment": {
+                        "status": "scored",
+                        "label": "positive",
+                        "confidence": 0.81,
+                        "scores": {"positive": 0.81, "neutral": 0.13, "negative": 0.06},
+                    },
+                },
+                {
+                    "title": "Services revenue remains strong",
+                    "publisher": "ExampleWire",
+                    "link": "https://example.com/apple-2",
+                    "sentiment": {
+                        "status": "scored",
+                        "label": "neutral",
+                        "confidence": 0.56,
+                        "scores": {"positive": 0.2, "neutral": 0.56, "negative": 0.24},
+                    },
+                },
             ],
         )
         self.fundamentals_patch = patch.object(
@@ -105,8 +125,22 @@ class MarketMindAiApiTests(unittest.TestCase):
                             "title": "Risk Factors",
                             "text": "Supply chain disruption remains a material risk.",
                             "truncated": False,
+                            "sentiment": {
+                                "status": "scored",
+                                "label": "negative",
+                                "confidence": 0.79,
+                                "scores": {"positive": 0.05, "neutral": 0.16, "negative": 0.79},
+                            },
                         }
                     ],
+                    "filingSentimentSummary": {
+                        "status": "scored",
+                        "label": "negative",
+                        "confidence": 0.79,
+                        "scores": {"positive": 0.05, "neutral": 0.16, "negative": 0.79},
+                        "scoredCount": 1,
+                        "sourceTypes": ["sec_section"],
+                    },
                 },
                 "filingChangeSummary": {
                     "comparisonForm": "10-K",
@@ -115,8 +149,22 @@ class MarketMindAiApiTests(unittest.TestCase):
                             "key": "managementDiscussion",
                             "title": "Management's Discussion",
                             "status": "material",
+                            "currentSentiment": {
+                                "status": "scored",
+                                "label": "negative",
+                                "confidence": 0.68,
+                                "scores": {"positive": 0.08, "neutral": 0.24, "negative": 0.68},
+                            },
                         }
                     ],
+                    "filingSentimentSummary": {
+                        "status": "scored",
+                        "label": "negative",
+                        "confidence": 0.68,
+                        "scores": {"positive": 0.08, "neutral": 0.24, "negative": 0.68},
+                        "scoredCount": 1,
+                        "sourceTypes": ["filing_change"],
+                    },
                 },
                 "insiderActivity": [
                     {
@@ -227,6 +275,12 @@ class MarketMindAiApiTests(unittest.TestCase):
                         "publisher": "CNInfo",
                         "link": "https://example.com/tencent-results",
                         "publishTime": "2026-03-20",
+                        "sentiment": {
+                            "status": "scored",
+                            "label": "positive",
+                            "confidence": 0.77,
+                            "scores": {"positive": 0.77, "neutral": 0.17, "negative": 0.06},
+                        },
                     }
                 ],
                 "quoteSummary": {
@@ -236,7 +290,25 @@ class MarketMindAiApiTests(unittest.TestCase):
                 },
                 "companyResearch": {
                     "profile": [{"label": "Company", "value": "Tencent Holdings Limited"}],
-                    "announcements": [{"title": "Tencent announces annual results"}],
+                    "announcements": [
+                        {
+                            "title": "Tencent announces annual results",
+                            "sentiment": {
+                                "status": "scored",
+                                "label": "positive",
+                                "confidence": 0.77,
+                                "scores": {"positive": 0.77, "neutral": 0.17, "negative": 0.06},
+                            },
+                        }
+                    ],
+                    "announcementsSentimentSummary": {
+                        "status": "scored",
+                        "label": "positive",
+                        "confidence": 0.77,
+                        "scores": {"positive": 0.77, "neutral": 0.17, "negative": 0.06},
+                        "scoredCount": 1,
+                        "sourceTypes": ["announcement"],
+                    },
                 },
             },
         ):
@@ -252,6 +324,7 @@ class MarketMindAiApiTests(unittest.TestCase):
             self.assertEqual(context_payload["recentNews"][0]["title"], "Tencent announces annual results")
             self.assertEqual(context_payload["marketSession"]["calendarCode"], "XHKG")
             self.assertEqual(context_payload["marketSession"]["market"], "HK")
+            self.assertEqual(context_payload["sentimentSummary"]["announcements"]["label"], "positive")
             self.assertNotIn("secFilingsSummary", context_payload)
 
             preflight_response = self.client.post(
@@ -290,7 +363,10 @@ class MarketMindAiApiTests(unittest.TestCase):
         self.assertEqual(context_payload["marketSession"]["market"], "US")
         self.assertEqual(context_payload["secFilingsSummary"]["type"], "10-K")
         self.assertEqual(context_payload["secFilingsSummary"]["sections"][0]["key"], "riskFactors")
+        self.assertEqual(context_payload["secFilingsSummary"]["sections"][0]["sentiment"]["label"], "negative")
         self.assertEqual(context_payload["filingChangeSummary"]["comparisonForm"], "10-K")
+        self.assertEqual(context_payload["sentimentSummary"]["news"]["label"], "neutral")
+        self.assertEqual(context_payload["sentimentSummary"]["filings"]["label"], "negative")
         self.assertEqual(context_payload["insiderActivitySummary"][0]["insiderName"], "Tim Cook")
         self.assertEqual(context_payload["beneficialOwnershipSummary"][0]["ownershipPercent"], 6.8)
 

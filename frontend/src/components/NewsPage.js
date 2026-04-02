@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, TrendingUp, Zap, Globe, RefreshCw, Filter } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import { getSentimentLabel, getSentimentToneClasses } from './ui/sentimentUtils';
 
 const NEWS_IMAGE_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
@@ -60,6 +61,7 @@ const NewsPage = () => {
             summary: article.summary || article.description || '',
             image,
             publishTime: formatPublishTime(article),
+            sentiment: article.sentiment || null,
         };
     };
 
@@ -200,6 +202,14 @@ const NewsPage = () => {
                                         </span>
                                         <span>•</span>
                                         <span>{article.publishTime}</span>
+                                        {getSentimentLabel(article.sentiment) ? (
+                                            <>
+                                                <span>•</span>
+                                                <span className={`inline-flex rounded-pill border px-2 py-0.5 font-semibold ${getSentimentToneClasses(article.sentiment)}`}>
+                                                    {getSentimentLabel(article.sentiment)}
+                                                </span>
+                                            </>
+                                        ) : null}
                                     </div>
 
                                     <h2 className="mb-3 line-clamp-2 text-lg font-semibold leading-snug text-mm-text-primary transition hover:text-mm-accent-primary">

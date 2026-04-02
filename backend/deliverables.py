@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from openrouter_client import DEFAULT_OPENROUTER_MODEL, create_structured_completion
 from prediction_service import get_prediction_snapshot
+import sentiment_service
 from user_state_store import (
     Deliverable,
     DeliverableAssumption,
@@ -398,9 +399,10 @@ def _recent_news(ticker: str) -> List[Dict[str, Any]]:
                 "publisher": item.get("publisher"),
                 "link": item.get("link"),
                 "publishedAt": item.get("providerPublishTime"),
+                "summary": item.get("summary"),
             }
         )
-    return formatted
+    return sentiment_service.annotate_news_items(formatted)
 
 
 def _fundamentals_summary(ticker: str) -> Dict[str, Any]:

@@ -29,6 +29,7 @@ from openrouter_client import (
 import exchange_session_service
 import research_retrieval_service
 import sec_filings_service
+import sentiment_service
 from user_state_store import (
     Deliverable,
     DeliverableMemo,
@@ -511,7 +512,53 @@ def _compact_context_summary(context: Optional[Dict[str, Any]]) -> Optional[Dict
             else None
         ),
         "newsCount": len(context.get("recentNews") or []),
+        "sentimentHeadline": (
+            f"{(context.get('sentimentSummary') or {}).get('overall', {}).get('label')} tone across "
+            f"{(context.get('sentimentSummary') or {}).get('overall', {}).get('scoredCount')} scored items"
+            if (context.get("sentimentSummary") or {}).get("overall")
+            else None
+        ),
     }
+
+
+def _build_context_sentiment_summary(context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not context:
+        return None
+
+    news_summary = sentiment_service.summarize_collection(
+        context.get("recentNews") or [],
+        source_types=["news"],
+    )
+
+    company_research = context.get("companyResearchSummary") or {}
+    announcements_summary = (
+        company_research.get("announcementsSentimentSummary")
+        or sentiment_service.summarize_collection(
+            company_research.get("announcements") or [],
+            source_types=["announcement"],
+        )
+    )
+
+    filings_summary = (
+        context.get("filingSentimentSummary")
+        or (context.get("secFilingsSummary") or {}).get("filingSentimentSummary")
+        or (context.get("filingChangeSummary") or {}).get("filingSentimentSummary")
+    )
+
+    overall_summary = sentiment_service.merge_summaries(
+        [news_summary, filings_summary, announcements_summary]
+    )
+
+    payload = {}
+    if news_summary:
+        payload["news"] = news_summary
+    if filings_summary:
+        payload["filings"] = filings_summary
+    if announcements_summary:
+        payload["announcements"] = announcements_summary
+    if overall_summary:
+        payload["overall"] = overall_summary
+    return payload or None
 
 
 def _condense_retrieved_evidence(retrieved_evidence: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
@@ -696,6 +743,12 @@ def _build_grounded_fallback_reply(
     else:
         bullets.append("Recent news: no fresh headlines are attached to this chat right now.")
 
+    overall_sentiment = (context.get("sentimentSummary") or {}).get("overall") or {}
+    if overall_sentiment.get("label"):
+        bullets.append(
+            f"Evidence tone: overall **{overall_sentiment.get('label')}** across **{overall_sentiment.get('scoredCount') or 0}** scored item(s)."
+        )
+
     if sec_filing.get("type") and sec_filing.get("date"):
         section_titles = [section.get("title") for section in (sec_filing.get("sections") or []) if section.get("title")]
         section_suffix = f" covering {', '.join(section_titles)}" if section_titles else ""
@@ -826,6 +879,11 @@ def _build_grounded_compare_reply(
             lines.append(f"- Recent news: **{len(news_items)}** headline(s); latest is “{news_items[0].get('title', 'Untitled headline')}”.")
         else:
             lines.append("- Recent news: no fresh headlines are attached right now.")
+        overall_sentiment = (context.get("sentimentSummary") or {}).get("overall") or {}
+        if overall_sentiment.get("label"):
+            lines.append(
+                f"- Evidence tone: **{overall_sentiment.get('label')}** across **{overall_sentiment.get('scoredCount') or 0}** scored item(s)."
+            )
         fundamentals = context.get("fundamentalsSummary") or {}
         if fundamentals.get("sector"):
             lines.append(f"- Sector context: **{fundamentals.get('sector')}**.")
@@ -1390,6 +1448,11 @@ def build_marketmind_ai_context(
             base_context["insiderActivitySummary"] = sec_intelligence["insiderActivity"]
         if sec_intelligence.get("beneficialOwnership"):
             base_context["beneficialOwnershipSummary"] = sec_intelligence["beneficialOwnership"]
+        if sec_intelligence.get("filingSentimentSummary"):
+            base_context["filingSentimentSummary"] = sec_intelligence["filingSentimentSummary"]
+    sentiment_summary = _build_context_sentiment_summary(base_context)
+    if sentiment_summary:
+        base_context["sentimentSummary"] = sentiment_summary
     return base_context
 
 

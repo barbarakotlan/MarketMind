@@ -127,6 +127,23 @@ describe('MarketMindAIPage', () => {
                         companyName: 'NVIDIA Corporation',
                         sector: 'Technology',
                     },
+                    sentimentSummary: {
+                        overall: {
+                            status: 'scored',
+                            label: 'negative',
+                            scoredCount: 3,
+                        },
+                        news: {
+                            status: 'scored',
+                            label: 'negative',
+                            scoredCount: 2,
+                        },
+                        filings: {
+                            status: 'scored',
+                            label: 'neutral',
+                            scoredCount: 1,
+                        },
+                    },
                     paperTradeHistory: [],
                     currentPaperPosition: {},
                 });
@@ -242,6 +259,8 @@ describe('MarketMindAIPage', () => {
         expect((await screen.findAllByText(/Summarize the current setup for NVDA using predictions, news, and fundamentals\./i)).length).toBeGreaterThan(0);
         expect(await screen.findByText('Market session')).toBeInTheDocument();
         expect(screen.getByText('Open')).toBeInTheDocument();
+        expect(screen.getByText('Sentiment')).toBeInTheDocument();
+        expect(screen.getByText('Overall Negative')).toBeInTheDocument();
         expect(await screen.findByText(/Retrieved evidence/i)).toBeInTheDocument();
         expect((await screen.findAllByText(/10-K · Risk Factors/i)).length).toBeGreaterThan(0);
 

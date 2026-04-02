@@ -68,7 +68,13 @@ class PublicApiBetaTests(unittest.TestCase):
             [{"date": "2026-03-28 00:00:00", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 10}]
         )
         backend_api.market_data_handlers.get_query_news_handler = lambda *args, **kwargs: kwargs["jsonify_fn"](
-            [{"title": "Apple rally", "publisher": "News Wire", "link": "https://example.com/apple", "publishTime": "2026-03-30T12:00:00Z"}]
+            [{
+                "title": "Apple rally",
+                "publisher": "News Wire",
+                "link": "https://example.com/apple",
+                "publishTime": "2026-03-30T12:00:00Z",
+                "sentiment": {"status": "scored", "label": "positive"},
+            }]
         )
         backend_api.market_data_handlers.search_symbols_handler = lambda *args, **kwargs: kwargs["jsonify_fn"](
             [{"symbol": "AAPL", "name": "Apple Inc."}]
@@ -91,13 +97,31 @@ class PublicApiBetaTests(unittest.TestCase):
             }
         )
         backend_api.reference_data_handlers.get_fundamentals_handler = lambda *args, **kwargs: kwargs["jsonify_fn"](
-            {"symbol": "AAPL", "name": "Apple Inc.", "market_cap": "3100000000000"}
+            {
+                "symbol": "AAPL",
+                "name": "Apple Inc.",
+                "market_cap": "3100000000000",
+                "marketSession": {"status": "open"},
+                "sentimentSummary": {"status": "scored", "label": "neutral"},
+                "announcements": [
+                    {
+                        "title": "Announcement",
+                        "sentiment": {"status": "scored", "label": "negative"},
+                    }
+                ],
+            }
         )
         backend_api.reference_data_handlers.get_macro_overview_handler = lambda *args, **kwargs: kwargs["jsonify_fn"](
             [{"symbol": "URATE", "name": "Unemployment Rate", "unit": "%", "value": 4.1, "prev": 4.0, "date": "2026-02-01", "sparkline": []}]
         )
         backend_api.get_general_news = lambda: [
-            {"headline": "Macro update", "source": "Finnhub", "url": "https://example.com/macro", "datetime": "2026-03-30T12:00:00Z"}
+            {
+                "headline": "Macro update",
+                "source": "Finnhub",
+                "url": "https://example.com/macro",
+                "datetime": "2026-03-30T12:00:00Z",
+                "sentiment": {"status": "scored", "label": "negative"},
+            }
         ]
         backend_api.get_symbol_suggestions = lambda query: [{"symbol": query.upper(), "name": f"{query.title()} Inc."}]
 
@@ -183,6 +207,20 @@ class PublicApiBetaTests(unittest.TestCase):
         self.assertNotIn("abstain", payload)
         self.assertNotIn("selector_prob", payload)
         self.assertNotIn("selector_status", payload)
+
+    def test_public_contracts_strip_internal_sentiment_fields(self):
+        news_response = self.client.get("/api/public/v1/news", headers=self._public_headers())
+        fundamentals_response = self.client.get("/api/public/v1/fundamentals/AAPL", headers=self._public_headers())
+
+        self.assertEqual(news_response.status_code, 200)
+        news_payload = news_response.get_json()
+        self.assertNotIn("sentiment", news_payload["articles"][0])
+
+        self.assertEqual(fundamentals_response.status_code, 200)
+        fundamentals_payload = fundamentals_response.get_json()
+        self.assertNotIn("sentimentSummary", fundamentals_payload)
+        self.assertNotIn("marketSession", fundamentals_payload)
+        self.assertNotIn("sentiment", fundamentals_payload["announcements"][0])
 
     def test_public_docs_and_spec_available_when_enabled(self):
         docs_response = self.client.get("/api/public/docs")

@@ -219,6 +219,17 @@ class SecFilingsServiceTests(unittest.TestCase):
             sec_filings_service.importlib,
             "import_module",
             return_value=fake_module,
+        ), patch.object(
+            sec_filings_service.sentiment_service,
+            "annotate_sec_sections",
+            side_effect=lambda sections: [
+                {**section, "sentiment": {"status": "scored", "label": "negative", "confidence": 0.71, "scores": {"positive": 0.05, "neutral": 0.24, "negative": 0.71}}}
+                for section in sections
+            ],
+        ), patch.object(
+            sec_filings_service.sentiment_service,
+            "summarize_collection",
+            return_value={"status": "scored", "label": "negative", "confidence": 0.71, "scores": {"positive": 0.05, "neutral": 0.24, "negative": 0.71}, "scoredCount": 3},
         ):
             detail = sec_filings_service.get_filing_detail(
                 "AAPL",
@@ -231,6 +242,8 @@ class SecFilingsServiceTests(unittest.TestCase):
         self.assertEqual([section["key"] for section in detail["sections"]], ["business", "riskFactors", "managementDiscussion"])
         self.assertTrue(all(section["truncated"] for section in detail["sections"]))
         self.assertTrue(all(len(section["text"]) <= 80 for section in detail["sections"]))
+        self.assertEqual(detail["sections"][0]["sentiment"]["label"], "negative")
+        self.assertEqual(detail["filingSentimentSummary"]["label"], "negative")
 
     def test_get_filing_detail_returns_metadata_only_for_unsupported_forms(self):
         fake_module = FakeEdgarModule(
@@ -258,6 +271,65 @@ class SecFilingsServiceTests(unittest.TestCase):
         self.assertEqual(detail["type"], "8-K")
         self.assertFalse(detail["hasKeySections"])
         self.assertEqual(detail["sections"], [])
+
+    def test_get_filing_change_summary_includes_excerpt_sentiment(self):
+        fake_module = FakeEdgarModule(
+            {
+                "AAPL": [
+                    FakeFiling(
+                        form="10-K",
+                        filing_date="2026-01-31",
+                        accession_number="0000320193-26-000123",
+                        description="Current annual report",
+                        url="https://sec.gov/aapl-10k-current",
+                        filing_obj=FilingObj(risk_factors="Risk language materially worsened."),
+                    ),
+                    FakeFiling(
+                        form="10-K",
+                        filing_date="2025-10-31",
+                        accession_number="0000320193-25-000321",
+                        description="Previous annual report",
+                        url="https://sec.gov/aapl-10k-previous",
+                        filing_obj=FilingObj(risk_factors="Risk language was stable."),
+                    ),
+                ]
+            }
+        )
+
+        with patch.dict(os.environ, {"EDGAR_IDENTITY": "analyst@example.com"}, clear=False), patch.object(
+            sec_filings_service.importlib,
+            "import_module",
+            return_value=fake_module,
+        ), patch.object(
+            sec_filings_service.sentiment_service,
+            "annotate_sec_sections",
+            side_effect=lambda sections: sections,
+        ), patch.object(
+            sec_filings_service.sentiment_service,
+            "annotate_filing_section_changes",
+            side_effect=lambda items: [
+                {
+                    **item,
+                    "currentSentiment": {"status": "scored", "label": "negative", "confidence": 0.73, "scores": {"positive": 0.05, "neutral": 0.22, "negative": 0.73}},
+                    "previousSentiment": {"status": "scored", "label": "neutral", "confidence": 0.57, "scores": {"positive": 0.19, "neutral": 0.57, "negative": 0.24}},
+                }
+                for item in items
+            ],
+        ), patch.object(
+            sec_filings_service.sentiment_service,
+            "summarize_sentiments",
+            return_value={"status": "scored", "label": "negative", "confidence": 0.73, "scores": {"positive": 0.05, "neutral": 0.22, "negative": 0.73}, "scoredCount": 1},
+        ), patch.object(
+            sec_filings_service.sentiment_service,
+            "summarize_collection",
+            return_value=None,
+        ):
+            payload = sec_filings_service.get_filing_change_summary("AAPL")
+
+        self.assertEqual(payload["comparisonForm"], "10-K")
+        self.assertEqual(payload["sectionChanges"][0]["currentSentiment"]["label"], "negative")
+        self.assertEqual(payload["sectionChanges"][0]["previousSentiment"]["label"], "neutral")
+        self.assertEqual(payload["filingSentimentSummary"]["label"], "negative")
 
     def test_get_latest_sec_context_returns_latest_supported_excerpt(self):
         fake_module = FakeEdgarModule(

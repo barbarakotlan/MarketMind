@@ -28,6 +28,26 @@ def _normalize_news_articles(raw_articles):
     return normalized
 
 
+def _strip_internal_sentiment_fields(value):
+    blocked_keys = {
+        "sentiment",
+        "sentimentSummary",
+        "announcementsSentimentSummary",
+        "filingSentimentSummary",
+        "currentSentiment",
+        "previousSentiment",
+    }
+    if isinstance(value, dict):
+        return {
+            key: _strip_internal_sentiment_fields(item)
+            for key, item in value.items()
+            if key not in blocked_keys
+        }
+    if isinstance(value, list):
+        return [_strip_internal_sentiment_fields(item) for item in value]
+    return value
+
+
 def _normalize_public_market(value: Any, *, default: str = "US") -> str:
     candidate = str(value or "").strip().upper()
     return candidate if candidate in {"US", "HK", "CN"} else default
@@ -525,7 +545,7 @@ def fundamentals_handler(
             raise PublicApiError(404, "invalid_ticker", f"Ticker '{ticker}' is invalid or unavailable.")
         if status_code >= 500:
             raise PublicApiError(503, "upstream_unavailable", "Fundamental data is temporarily unavailable.")
-        payload = dict(raw_payload or {})
+        payload = _strip_internal_sentiment_fields(dict(raw_payload or {}))
         payload.pop("marketSession", None)
         return (payload, 200)
 
@@ -574,7 +594,7 @@ def fundamentals_handler_v2(
             raise PublicApiError(404, "invalid_ticker", f"Ticker '{ticker}' is invalid or unavailable.")
         if status_code >= 500:
             raise PublicApiError(503, "upstream_unavailable", "Fundamental data is temporarily unavailable.")
-        payload = dict(raw_payload or {})
+        payload = _strip_internal_sentiment_fields(dict(raw_payload or {}))
         payload.pop("marketSession", None)
         return (payload, 200)
 

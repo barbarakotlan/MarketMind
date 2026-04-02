@@ -20,6 +20,10 @@ import {
     getMarketSessionToneClasses,
     getTimezoneLabel,
 } from './ui/marketSessionUtils';
+import {
+    getSentimentLabel,
+    getSentimentToneClasses,
+} from './ui/sentimentUtils';
 
 const US_TABS = [
     { key: 'overview', label: 'Overview' },
@@ -184,6 +188,18 @@ const TabButton = ({ active, children, onClick }) => (
     </button>
 );
 
+const SentimentBadge = ({ sentiment, prefix = '' }) => {
+    const label = getSentimentLabel(sentiment);
+    if (!label) {
+        return null;
+    }
+    return (
+        <span className={`inline-flex items-center rounded-pill border px-2 py-0.5 text-[11px] font-semibold ${getSentimentToneClasses(sentiment)}`}>
+            {prefix ? `${prefix}: ${label}` : label}
+        </span>
+    );
+};
+
 const ResearchProfileList = ({ items }) => {
     if (!Array.isArray(items) || items.length === 0) return null;
     return (
@@ -232,6 +248,7 @@ const AnnouncementsPanel = ({ items }) => {
                             </span>
                             {item.date ? <span>{item.date}</span> : null}
                             {item.publisher ? <span>• {item.publisher}</span> : null}
+                            <SentimentBadge sentiment={item.sentiment} />
                         </div>
                         <p className="mt-3 text-sm font-semibold text-mm-text-primary">{item.title || item.description || 'Company announcement'}</p>
                         {item.description && item.description !== item.title ? (
@@ -716,9 +733,13 @@ const FundamentalsPage = () => {
                                                             <div key={sectionChange.key} className="rounded-card border border-mm-border bg-mm-surface-subtle px-3 py-3">
                                                                 <div className="flex items-center justify-between gap-3 mb-2">
                                                                     <h4 className="text-sm font-semibold text-mm-text-primary">{sectionChange.title}</h4>
-                                                                    <span className="inline-flex items-center rounded-pill border border-mm-warning/20 bg-mm-warning/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-mm-warning">
-                                                                        {sectionChange.status}
-                                                                    </span>
+                                                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                                                        <span className="inline-flex items-center rounded-pill border border-mm-warning/20 bg-mm-warning/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-mm-warning">
+                                                                            {sectionChange.status}
+                                                                        </span>
+                                                                        <SentimentBadge sentiment={sectionChange.currentSentiment} prefix="Current" />
+                                                                        <SentimentBadge sentiment={sectionChange.previousSentiment} prefix="Previous" />
+                                                                    </div>
                                                                 </div>
                                                                 <p className="text-xs leading-6 text-mm-text-secondary whitespace-pre-wrap">
                                                                     {sectionChange.currentExcerpt || sectionChange.previousExcerpt || 'No excerpt available.'}
@@ -935,10 +956,15 @@ const FundamentalsPage = () => {
                                                                                             {activeSection && (
                                                                                                 <div className="rounded-card border border-mm-border bg-mm-surface px-4 py-4">
                                                                                                     <div className="flex items-center justify-between gap-3 mb-3">
-                                                                                                        <h4 className="text-sm font-semibold text-mm-text-primary">{activeSection.title}</h4>
-                                                                                                        {activeSection.truncated ? (
-                                                                                                            <span className="text-[11px] uppercase tracking-[0.14em] text-mm-text-tertiary">Excerpt</span>
-                                                                                                        ) : null}
+                                                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                                                            <h4 className="text-sm font-semibold text-mm-text-primary">{activeSection.title}</h4>
+                                                                                                            <SentimentBadge sentiment={activeSection.sentiment} />
+                                                                                                        </div>
+                                                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                                                            {activeSection.truncated ? (
+                                                                                                                <span className="text-[11px] uppercase tracking-[0.14em] text-mm-text-tertiary">Excerpt</span>
+                                                                                                            ) : null}
+                                                                                                        </div>
                                                                                                     </div>
                                                                                                     <p className="text-sm leading-7 text-mm-text-secondary whitespace-pre-wrap">
                                                                                                         {activeSection.text}

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from asset_identity import market_exchange, market_label, parse_asset_reference
+import sentiment_service
 
 
 SEARCH_CACHE_TTL_SECONDS = 60 * 60
@@ -231,6 +232,8 @@ def get_equity_ai_context(ticker: str, *, market: Optional[str] = None) -> Dict[
                 "publisher": item.get("publisher", "CNInfo"),
                 "link": item.get("link"),
                 "publishTime": item.get("publishTime"),
+                "summary": item.get("description"),
+                "sentiment": item.get("sentiment"),
             }
             for item in announcements[:5]
         ],
@@ -242,6 +245,7 @@ def get_equity_ai_context(ticker: str, *, market: Optional[str] = None) -> Dict[
         "companyResearch": {
             "profile": fundamentals.get("researchProfile") or [],
             "announcements": announcements[:5],
+            "announcementsSentimentSummary": fundamentals.get("announcementsSentimentSummary"),
         },
     }
 
@@ -517,7 +521,11 @@ def _build_hk_fundamentals(asset: Dict[str, Any]) -> Dict[str, Any]:
     quote_row = _load_hk_spot_row(asset["symbol"])
     profile = _load_hk_profile(asset["symbol"])
     history_df = _load_history(asset, period="1y")
-    announcements = _load_announcements(asset, limit=8)
+    announcements = sentiment_service.annotate_announcement_items(_load_announcements(asset, limit=8))
+    announcements_sentiment_summary = sentiment_service.summarize_collection(
+        announcements,
+        source_types=["announcement"],
+    )
     week_high, week_low, day50, day200 = _compute_history_levels(history_df)
 
     description = _clean_string(profile.get("公司介绍"))
@@ -578,6 +586,7 @@ def _build_hk_fundamentals(asset: Dict[str, Any]) -> Dict[str, Any]:
         "shares_outstanding": None,
         "researchProfile": research_profile,
         "announcements": announcements,
+        "announcementsSentimentSummary": announcements_sentiment_summary,
         "provider": "akshare",
     }
 
@@ -587,7 +596,11 @@ def _build_cn_fundamentals(asset: Dict[str, Any]) -> Dict[str, Any]:
     profile = _load_cn_profile(asset["symbol"])
     info_map = _load_cn_info(asset["symbol"])
     history_df = _load_history(asset, period="1y")
-    announcements = _load_announcements(asset, limit=8)
+    announcements = sentiment_service.annotate_announcement_items(_load_announcements(asset, limit=8))
+    announcements_sentiment_summary = sentiment_service.summarize_collection(
+        announcements,
+        source_types=["announcement"],
+    )
     week_high, week_low, day50, day200 = _compute_history_levels(history_df)
 
     research_profile = _profile_rows(
@@ -647,6 +660,7 @@ def _build_cn_fundamentals(asset: Dict[str, Any]) -> Dict[str, Any]:
         "shares_outstanding": _safe_float(info_map.get("总股本")),
         "researchProfile": research_profile,
         "announcements": announcements,
+        "announcementsSentimentSummary": announcements_sentiment_summary,
         "provider": "akshare",
     }
 
