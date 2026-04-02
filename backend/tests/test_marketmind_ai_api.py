@@ -88,9 +88,54 @@ class MarketMindAiApiTests(unittest.TestCase):
                 "targetMeanPrice": 205.0,
             },
         )
+        self.sec_filings_patch = patch.object(
+            marketmind_ai_module.sec_filings_service,
+            "get_company_sec_intelligence",
+            return_value={
+                "latestAnnualOrQuarterly": {
+                    "accessionNumber": "0000320193-26-000123",
+                    "type": "10-K",
+                    "date": "2026-01-31",
+                    "url": "https://www.sec.gov/example-10k",
+                    "sections": [
+                        {
+                            "key": "riskFactors",
+                            "title": "Risk Factors",
+                            "text": "Supply chain disruption remains a material risk.",
+                            "truncated": False,
+                        }
+                    ],
+                },
+                "filingChangeSummary": {
+                    "comparisonForm": "10-K",
+                    "sectionChanges": [
+                        {
+                            "key": "managementDiscussion",
+                            "title": "Management's Discussion",
+                            "status": "material",
+                        }
+                    ],
+                },
+                "insiderActivity": [
+                    {
+                        "insiderName": "Tim Cook",
+                        "type": "4",
+                        "activity": "Purchase",
+                    }
+                ],
+                "beneficialOwnership": [
+                    {
+                        "owners": ["Berkshire Hathaway Inc."],
+                        "type": "SC 13D",
+                        "ownershipPercent": 6.8,
+                    }
+                ],
+            },
+        )
         self.prediction_patch.start()
         self.news_patch.start()
         self.fundamentals_patch.start()
+        self.sec_filings_patch.start()
 
         os.environ["OPENROUTER_API_KEY"] = "test-openrouter-key"
 
@@ -98,6 +143,7 @@ class MarketMindAiApiTests(unittest.TestCase):
         self.prediction_patch.stop()
         self.news_patch.stop()
         self.fundamentals_patch.stop()
+        self.sec_filings_patch.stop()
 
         backend_api.BASE_DIR = self.original_state["BASE_DIR"]
         backend_api.DATABASE = self.original_state["DATABASE"]
@@ -168,6 +214,11 @@ class MarketMindAiApiTests(unittest.TestCase):
         context_payload = context_response.get_json()
         self.assertTrue(context_payload["watchlistMembership"])
         self.assertEqual(context_payload["fundamentalsSummary"]["companyName"], "Apple Inc.")
+        self.assertEqual(context_payload["secFilingsSummary"]["type"], "10-K")
+        self.assertEqual(context_payload["secFilingsSummary"]["sections"][0]["key"], "riskFactors")
+        self.assertEqual(context_payload["filingChangeSummary"]["comparisonForm"], "10-K")
+        self.assertEqual(context_payload["insiderActivitySummary"][0]["insiderName"], "Tim Cook")
+        self.assertEqual(context_payload["beneficialOwnershipSummary"][0]["ownershipPercent"], 6.8)
 
         with patch.object(
             marketmind_ai_module,
@@ -363,6 +414,7 @@ class MarketMindAiApiTests(unittest.TestCase):
         self.assertEqual(context_payload["fundamentalsSummary"]["companyName"], "Bitcoin")
         self.assertEqual(context_payload["fundamentalsSummary"]["sector"], "Cryptocurrency")
         self.assertEqual(context_payload["cryptoQuote"]["fromCrypto"]["code"], "BTC")
+        self.assertNotIn("secFilingsSummary", context_payload)
 
         with patch.object(
             marketmind_ai_module,
