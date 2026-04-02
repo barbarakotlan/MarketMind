@@ -65,6 +65,9 @@ describe('API_ENDPOINTS', () => {
         expect(API_ENDPOINTS.MARKETMIND_AI_CONTEXT('HK:00700', 'HK')).toBe(
             `${API_BASE_URL}/marketmind-ai/context?ticker=HK%3A00700&market=hk`
         );
+        expect(API_ENDPOINTS.MARKETMIND_AI_RETRIEVAL_STATUS('HK:00700', 'HK')).toBe(
+            `${API_BASE_URL}/marketmind-ai/retrieval-status?ticker=HK%3A00700&market=hk`
+        );
     });
 
     test('builds the SEC intelligence endpoint for fundamentals research', () => {

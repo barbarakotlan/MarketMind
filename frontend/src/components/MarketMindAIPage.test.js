@@ -43,6 +43,23 @@ const artifactDetailPayload = {
             version: 1,
             generationStatus: 'completed',
             hasArtifact: true,
+            retrievedEvidence: [
+                {
+                    docType: 'sec_section',
+                    title: '10-K · Risk Factors',
+                    snippet: 'Supply chain disruption remains a material risk.',
+                    source: 'sec',
+                    sourceUrl: 'https://www.sec.gov/example-10k',
+                    assetId: 'AAPL',
+                    ticker: 'AAPL',
+                },
+            ],
+            retrievalStatus: {
+                enabled: true,
+                available: true,
+                used: true,
+                rerankUsed: true,
+            },
             structuredContent: {
                 executive_summary: 'Generated memo preview',
                 investment_thesis: 'The thesis is grounded in current context.',
@@ -126,6 +143,23 @@ describe('MarketMindAIPage', () => {
                             '| Valuation | Premium multiple creates downside if growth slows. |',
                         ].join('\n'),
                     },
+                    retrievedEvidence: [
+                        {
+                            docType: 'sec_section',
+                            title: '10-K · Risk Factors',
+                            snippet: 'Supply chain disruption remains a material risk.',
+                            source: 'sec',
+                            sourceUrl: 'https://www.sec.gov/example-10k',
+                            assetId: 'NVDA',
+                            ticker: 'NVDA',
+                        },
+                    ],
+                    retrievalStatus: {
+                        enabled: true,
+                        available: true,
+                        used: true,
+                        rerankUsed: true,
+                    },
                     suggestedActions: [],
                     artifactIntent: {
                         templateKey: 'investment_thesis_memo',
@@ -208,6 +242,8 @@ describe('MarketMindAIPage', () => {
         expect((await screen.findAllByText(/Summarize the current setup for NVDA using predictions, news, and fundamentals\./i)).length).toBeGreaterThan(0);
         expect(await screen.findByText('Market session')).toBeInTheDocument();
         expect(screen.getByText('Open')).toBeInTheDocument();
+        expect(await screen.findByText(/Retrieved evidence/i)).toBeInTheDocument();
+        expect((await screen.findAllByText(/10-K · Risk Factors/i)).length).toBeGreaterThan(0);
 
         await waitFor(() => {
             expect(apiRequest).toHaveBeenCalledWith(
@@ -218,6 +254,7 @@ describe('MarketMindAIPage', () => {
 
         expect((await screen.findAllByText(/Investment Thesis Memo/i)).length).toBeGreaterThan(0);
         expect(await screen.findByText(/Generated memo preview/i)).toBeInTheDocument();
+        expect(await screen.findByText(/Memo evidence/i)).toBeInTheDocument();
     });
 
     test('reconciles a stale saved ticker with the backend-resolved ticker and closes mismatched artifacts', async () => {

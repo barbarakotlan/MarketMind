@@ -123,6 +123,7 @@ from marketmind_ai import (
     get_marketmind_ai_artifact_detail,
     get_marketmind_ai_artifact_download,
     get_marketmind_ai_chat_detail,
+    get_marketmind_ai_retrieval_status,
     list_marketmind_ai_artifacts,
     list_marketmind_ai_chats,
 )
@@ -1170,6 +1171,27 @@ def get_marketmind_ai_context():
         session_scope=user_state_session_scope,
         database_url=DATABASE_URL,
         build_context_fn=build_marketmind_ai_context,
+        get_current_user_id_fn=get_current_user_id,
+        error_cls=MarketMindAIError,
+        jsonify_fn=jsonify,
+    )
+
+
+@app.route('/marketmind-ai/retrieval-status', methods=['GET'])
+@require_auth
+@limiter.limit(RateLimits.LIGHT)
+def get_marketmind_ai_retrieval_status_route():
+    ticker = request.args.get('ticker', '').strip().upper()
+    market = request.args.get('market', '').strip()
+    return marketmind_ai_handlers.get_retrieval_status_handler(
+        ticker=ticker,
+        market=market,
+        deliverables_ready_fn=_deliverables_ready,
+        not_configured_response_fn=_marketmind_ai_not_configured_response,
+        ensure_storage_ready_fn=_ensure_user_state_storage_ready,
+        session_scope=user_state_session_scope,
+        database_url=DATABASE_URL,
+        get_retrieval_status_fn=get_marketmind_ai_retrieval_status,
         get_current_user_id_fn=get_current_user_id,
         error_cls=MarketMindAIError,
         jsonify_fn=jsonify,

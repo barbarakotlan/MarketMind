@@ -442,6 +442,121 @@ class MarketMindAiApiTests(unittest.TestCase):
             404,
         )
 
+    def test_marketmind_ai_surfaces_retrieved_evidence_and_retrieval_status(self):
+        self._seed_marketmind_context()
+        retrieved_evidence = [
+            {
+                "docType": "sec_section",
+                "title": "10-K · Risk Factors",
+                "snippet": "Supply chain disruption remains a material risk.",
+                "source": "sec",
+                "sourceUrl": "https://www.sec.gov/example-10k",
+                "assetId": "AAPL",
+                "ticker": "AAPL",
+                "score": 0.91,
+                "rank": 1,
+            }
+        ]
+        retrieval_status = {
+            "enabled": True,
+            "available": True,
+            "used": True,
+            "candidateCount": 3,
+            "rerankUsed": True,
+        }
+
+        with patch.object(
+            marketmind_ai_module.research_retrieval_service,
+            "retrieve_for_context",
+            return_value={
+                "retrievedEvidence": retrieved_evidence,
+                "retrievalStatus": retrieval_status,
+            },
+        ), patch.object(
+            marketmind_ai_module.research_retrieval_service,
+            "index_memo_version",
+            return_value={"enabled": True, "available": True, "used": True},
+        ), patch.object(
+            marketmind_ai_module.research_retrieval_service,
+            "get_status_for_context",
+            return_value={
+                "enabled": True,
+                "available": True,
+                "assetId": "AAPL",
+                "ticker": "AAPL",
+                "globalSync": {"docCount": 4},
+                "userSync": {"docCount": 1},
+            },
+        ), patch.object(
+            marketmind_ai_module,
+            "create_chat_completion",
+            return_value={"model": "nvidia/nemotron-3-super-120b-a12b:free", "assistant_text": "Here is the grounded answer with evidence."},
+        ), patch.object(
+            marketmind_ai_module,
+            "create_structured_completion",
+            return_value={
+                "model": "nvidia/nemotron-3-super-120b-a12b:free",
+                "structured_content": {
+                    "executive_summary": "Generated memo preview",
+                    "investment_thesis": "The thesis is grounded in retrieved evidence.",
+                    "supporting_evidence": ["Supply chain disruption remains a material risk."],
+                    "key_assumptions": [],
+                    "risks": [],
+                    "invalidation_conditions": [],
+                    "catalysts": [],
+                    "signals_and_market_context": [],
+                    "linked_positioning": "Current paper portfolio already holds 5 shares.",
+                    "what_would_change_my_mind": "A sharp demand reset.",
+                    "conclusion": "Monitor closely.",
+                },
+            },
+        ), patch.object(
+            marketmind_ai_module,
+            "_render_docx",
+            return_value=b"docx-bytes",
+        ):
+            retrieval_status_response = self.client.get(
+                "/marketmind-ai/retrieval-status?ticker=AAPL",
+                headers=self._auth_headers(),
+            )
+            self.assertEqual(retrieval_status_response.status_code, 200)
+            self.assertEqual(retrieval_status_response.get_json()["assetId"], "AAPL")
+
+            chat_response = self.client.post(
+                "/marketmind-ai/chat",
+                headers=self._auth_headers(),
+                json={
+                    "messages": [{"role": "user", "content": "What is the strongest evidence for Apple right now?"}],
+                    "attachedTicker": "AAPL",
+                },
+            )
+            self.assertEqual(chat_response.status_code, 200)
+            chat_payload = chat_response.get_json()
+            self.assertEqual(chat_payload["retrievedEvidence"][0]["docType"], "sec_section")
+            self.assertTrue(chat_payload["retrievalStatus"]["rerankUsed"])
+
+            artifact_response = self.client.post(
+                "/marketmind-ai/artifacts",
+                headers=self._auth_headers(),
+                json={
+                    "templateKey": "investment_thesis_memo",
+                    "messages": [{"role": "user", "content": "Write a balanced memo for Apple using the current MarketMind context."}],
+                    "attachedTicker": "AAPL",
+                },
+            )
+            self.assertEqual(artifact_response.status_code, 201)
+            artifact_payload = artifact_response.get_json()
+            self.assertEqual(artifact_payload["version"]["retrievedEvidence"][0]["title"], "10-K · Risk Factors")
+            self.assertTrue(artifact_payload["version"]["retrievalStatus"]["used"])
+
+            artifact_detail_response = self.client.get(
+                f"/marketmind-ai/artifacts/{artifact_payload['artifact']['id']}",
+                headers=self._auth_headers(),
+            )
+            self.assertEqual(artifact_detail_response.status_code, 200)
+            detail_payload = artifact_detail_response.get_json()
+            self.assertEqual(detail_payload["versions"][0]["retrievedEvidence"][0]["source"], "sec")
+
     def test_marketmind_ai_recognizes_bitcoin_and_builds_crypto_context(self):
         crypto_quote = {
             "from_crypto": {"code": "BTC", "name": "Bitcoin"},
