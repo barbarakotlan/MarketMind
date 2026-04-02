@@ -26,8 +26,16 @@ def get_symbol_suggestions(query, *, alpha_vantage_api_key, requests_get, logger
         formatted_matches = []
         for match in matches:
             if "." not in match.get("1. symbol") and match.get("4. region") == "United States":
+                symbol = match.get("1. symbol")
                 formatted_matches.append(
-                    {"symbol": match.get("1. symbol"), "name": match.get("2. name")}
+                    {
+                        "symbol": symbol,
+                        "name": match.get("2. name"),
+                        "displayName": match.get("2. name"),
+                        "market": "US",
+                        "exchange": match.get("4. region") or "US",
+                        "assetId": f"US:{symbol}",
+                    }
                 )
         return formatted_matches
     except Exception as exc:

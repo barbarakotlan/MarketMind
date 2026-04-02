@@ -26,6 +26,13 @@ class PublicApiV2Tests(unittest.TestCase):
             "PUBLIC_API_CACHE_URL": backend_api.PUBLIC_API_CACHE_URL,
             "PUBLIC_API_DEFAULT_DAILY_QUOTA": backend_api.PUBLIC_API_DEFAULT_DAILY_QUOTA,
             "verify_clerk_token": backend_api.verify_clerk_token,
+            "stock_handler": backend_api.market_data_handlers.get_stock_data_handler,
+            "chart_handler": backend_api.market_data_handlers.get_chart_data_handler,
+            "search_handler": backend_api.market_data_handlers.search_symbols_handler,
+            "fundamentals_handler": backend_api.reference_data_handlers.get_fundamentals_handler,
+            "macro_handler": backend_api.reference_data_handlers.get_macro_overview_handler,
+            "get_symbol_suggestions": backend_api.get_symbol_suggestions,
+            "akshare_search": backend_api.akshare_service.search_equities,
             "options_stock_price_handler": backend_api.market_data_handlers.get_options_stock_price_handler,
             "option_expirations_handler": backend_api.market_data_handlers.get_option_expirations_handler,
             "option_chain_handler": backend_api.market_data_handlers.get_option_chain_handler,
@@ -58,6 +65,40 @@ class PublicApiV2Tests(unittest.TestCase):
         backend_api.app.testing = True
         backend_api.api_public_helpers._PUBLIC_CACHE_BACKEND = None
         backend_api.api_public_helpers._PUBLIC_CACHE_BACKEND_KEY = None
+
+        backend_api.market_data_handlers.get_stock_data_handler = self._stub_stock_handler
+        backend_api.market_data_handlers.get_chart_data_handler = self._stub_chart_handler
+        backend_api.market_data_handlers.search_symbols_handler = self._stub_search_handler
+        backend_api.reference_data_handlers.get_fundamentals_handler = self._stub_fundamentals_handler
+        backend_api.reference_data_handlers.get_macro_overview_handler = self._stub_macro_handler
+        backend_api.get_symbol_suggestions = lambda query: [
+            {
+                "symbol": "AAPL",
+                "name": "Apple Inc.",
+                "displayName": "Apple Inc.",
+                "market": "US",
+                "exchange": "United States",
+                "assetId": "US:AAPL",
+            }
+        ] if query.lower().startswith("a") or query.lower().startswith("t") else []
+        backend_api.akshare_service.search_equities = lambda query, market="all": [
+            {
+                "symbol": "00700",
+                "name": "Tencent Holdings Ltd.",
+                "displayName": "Tencent Holdings Ltd.",
+                "market": "HK",
+                "exchange": "HKEX",
+                "assetId": "HK:00700",
+            },
+            {
+                "symbol": "600519",
+                "name": "Kweichow Moutai",
+                "displayName": "Kweichow Moutai",
+                "market": "CN",
+                "exchange": "SSE",
+                "assetId": "CN:600519",
+            },
+        ] if market in {"hk", "cn", "all"} else []
 
         backend_api.market_data_handlers.get_options_stock_price_handler = (
             lambda ticker, **kwargs: kwargs["jsonify_fn"](
@@ -187,6 +228,13 @@ class PublicApiV2Tests(unittest.TestCase):
         backend_api.PUBLIC_API_CACHE_URL = self.original["PUBLIC_API_CACHE_URL"]
         backend_api.PUBLIC_API_DEFAULT_DAILY_QUOTA = self.original["PUBLIC_API_DEFAULT_DAILY_QUOTA"]
         backend_api.verify_clerk_token = self.original["verify_clerk_token"]
+        backend_api.market_data_handlers.get_stock_data_handler = self.original["stock_handler"]
+        backend_api.market_data_handlers.get_chart_data_handler = self.original["chart_handler"]
+        backend_api.market_data_handlers.search_symbols_handler = self.original["search_handler"]
+        backend_api.reference_data_handlers.get_fundamentals_handler = self.original["fundamentals_handler"]
+        backend_api.reference_data_handlers.get_macro_overview_handler = self.original["macro_handler"]
+        backend_api.get_symbol_suggestions = self.original["get_symbol_suggestions"]
+        backend_api.akshare_service.search_equities = self.original["akshare_search"]
         backend_api.market_data_handlers.get_options_stock_price_handler = self.original["options_stock_price_handler"]
         backend_api.market_data_handlers.get_option_expirations_handler = self.original["option_expirations_handler"]
         backend_api.market_data_handlers.get_option_chain_handler = self.original["option_chain_handler"]
@@ -212,6 +260,215 @@ class PublicApiV2Tests(unittest.TestCase):
     def _public_headers(self):
         return {"Authorization": f"Bearer {self.public_key}"}
 
+    def _stub_stock_handler(self, ticker, **kwargs):
+        market = str(kwargs["request_obj"].args.get("market", "us")).lower()
+        if market == "hk":
+            return kwargs["jsonify_fn"](
+                {
+                    "symbol": "00700",
+                    "assetId": "HK:00700",
+                    "market": "HK",
+                    "exchange": "HKEX",
+                    "currency": "HKD",
+                    "companyName": "Tencent Holdings Ltd.",
+                    "price": 320.5,
+                    "change": 4.8,
+                    "changePercent": 1.52,
+                    "marketCap": "N/A",
+                    "sparkline": [312.0, 316.4, 320.5],
+                    "readOnlyResearchOnly": True,
+                }
+            )
+        if market == "cn":
+            return kwargs["jsonify_fn"](
+                {
+                    "symbol": "600519",
+                    "assetId": "CN:600519",
+                    "market": "CN",
+                    "exchange": "SSE",
+                    "currency": "CNY",
+                    "companyName": "Kweichow Moutai",
+                    "price": 1688.0,
+                    "change": -12.0,
+                    "changePercent": -0.71,
+                    "marketCap": "2.11T",
+                    "sparkline": [1715.0, 1701.0, 1688.0],
+                    "readOnlyResearchOnly": True,
+                }
+            )
+        return kwargs["jsonify_fn"](
+            {
+                "symbol": "AAPL",
+                "assetId": "US:AAPL",
+                "market": "US",
+                "exchange": "NASDAQ",
+                "currency": "USD",
+                "companyName": "Apple Inc.",
+                "price": 213.45,
+                "change": 1.23,
+                "changePercent": 0.58,
+                "marketCap": "3.10T",
+                "sparkline": [210.0, 211.0, 213.45],
+            }
+        )
+
+    def _stub_chart_handler(self, ticker, **kwargs):
+        market = str(kwargs["request_obj"].args.get("market", "us")).lower()
+        base = "00700" if market == "hk" else "600519" if market == "cn" else "AAPL"
+        return kwargs["jsonify_fn"](
+            [
+                {"date": "2026-03-28 00:00:00", "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 10},
+                {"date": "2026-03-29 00:00:00", "open": 1.5, "high": 2.1, "low": 1.0, "close": 1.8, "volume": 12},
+                {"date": f"2026-03-30 00:00:00", "open": 1.8, "high": 2.4, "low": 1.6, "close": 2.2 if base == 'AAPL' else 2.0, "volume": 15},
+            ]
+        )
+
+    def _stub_search_handler(self, **kwargs):
+        market = str(kwargs["request_obj"].args.get("market", "us")).lower()
+        matches = []
+        if market in {"us", "all"}:
+            matches.append(
+                {
+                    "symbol": "AAPL",
+                    "name": "Apple Inc.",
+                    "displayName": "Apple Inc.",
+                    "market": "US",
+                    "exchange": "United States",
+                    "assetId": "US:AAPL",
+                }
+            )
+        if market in {"hk", "all"}:
+            matches.append(
+                {
+                    "symbol": "00700",
+                    "name": "Tencent Holdings Ltd.",
+                    "displayName": "Tencent Holdings Ltd.",
+                    "market": "HK",
+                    "exchange": "HKEX",
+                    "assetId": "HK:00700",
+                }
+            )
+        if market in {"cn", "all"}:
+            matches.append(
+                {
+                    "symbol": "600519",
+                    "name": "Kweichow Moutai",
+                    "displayName": "Kweichow Moutai",
+                    "market": "CN",
+                    "exchange": "SSE",
+                    "assetId": "CN:600519",
+                }
+            )
+        return kwargs["jsonify_fn"](matches)
+
+    def _stub_fundamentals_handler(self, ticker, **kwargs):
+        market = str(kwargs["request_obj"].args.get("market", "us")).lower()
+        if market == "hk":
+            return kwargs["jsonify_fn"](
+                {
+                    "symbol": "00700",
+                    "assetId": "HK:00700",
+                    "market": "HK",
+                    "exchange": "HKEX",
+                    "currency": "HKD",
+                    "name": "Tencent Holdings Ltd.",
+                    "description": "Company profile data is available from Eastmoney via Akshare.",
+                    "sector": "Communication Services",
+                    "industry": "Internet Content & Information",
+                    "researchProfile": [{"label": "Company", "value": "Tencent Holdings Ltd."}],
+                    "announcements": [
+                        {
+                            "title": "Tencent announces annual results",
+                            "publisher": "CNInfo",
+                            "date": "2026-03-20",
+                            "link": "https://example.com/tencent-results",
+                        }
+                    ],
+                }
+            )
+        if market == "cn":
+            return kwargs["jsonify_fn"](
+                {
+                    "symbol": "600519",
+                    "assetId": "CN:600519",
+                    "market": "CN",
+                    "exchange": "SSE",
+                    "currency": "CNY",
+                    "name": "Kweichow Moutai",
+                    "description": "Company overview data is available from CNInfo via Akshare.",
+                    "sector": "Consumer Staples",
+                    "industry": "Beverages",
+                    "researchProfile": [{"label": "Company", "value": "Kweichow Moutai Co., Ltd."}],
+                    "announcements": [
+                        {
+                            "title": "Annual report published",
+                            "publisher": "CNInfo",
+                            "date": "2026-03-18",
+                            "link": "https://example.com/moutai-report",
+                        }
+                    ],
+                }
+            )
+        return kwargs["jsonify_fn"](
+            {
+                "symbol": "AAPL",
+                "assetId": "US:AAPL",
+                "market": "US",
+                "exchange": "NASDAQ",
+                "currency": "USD",
+                "name": "Apple Inc.",
+                "market_cap": "3100000000000",
+            }
+        )
+
+    def _stub_macro_handler(self, **kwargs):
+        region = str(kwargs.get("request_obj").args.get("region", "us")).lower() if kwargs.get("request_obj") else "us"
+        if region == "asia":
+            return kwargs["jsonify_fn"](
+                {
+                    "region": "asia",
+                    "source": "akshare",
+                    "sourceNote": "Data via Akshare aggregating Jin10 and Eastmoney sources.",
+                    "indicators": [
+                        {
+                            "symbol": "CN_CPI",
+                            "name": "China CPI YoY",
+                            "market": "CN",
+                            "unit": "%",
+                            "value": 0.7,
+                            "prev": 0.5,
+                            "date": "2026-02-01",
+                            "description": "Mainland China consumer inflation on a year-over-year basis.",
+                            "sparkline": [{"date": "2026-01-01", "value": 0.5}, {"date": "2026-02-01", "value": 0.7}],
+                        }
+                    ],
+                    "marketSignals": [
+                        {
+                            "symbol": "USDCNH",
+                            "name": "USD/CNH",
+                            "category": "FX",
+                            "value": 7.2145,
+                            "change": 0.0158,
+                            "changePercent": 0.22,
+                            "date": "2026-04-02",
+                        }
+                    ],
+                }
+            )
+        return kwargs["jsonify_fn"](
+            [
+                {
+                    "symbol": "URATE",
+                    "name": "Unemployment Rate",
+                    "unit": "%",
+                    "value": 4.1,
+                    "prev": 4.0,
+                    "date": "2026-02-01",
+                    "sparkline": [],
+                }
+            ]
+        )
+
     def test_public_v2_requires_marketmind_developer_key(self):
         response = self.client.get("/api/public/v2/health")
         self.assertEqual(response.status_code, 401)
@@ -225,11 +482,124 @@ class PublicApiV2Tests(unittest.TestCase):
         docs_body = docs_response.get_data(as_text=True)
         self.assertIn("OpenAPI v2", docs_body)
         self.assertIn("/api/public/v2/options/chain/AAPL", docs_body)
+        self.assertIn("/api/public/v2/stock/00700?market=hk", docs_body)
 
         self.assertEqual(spec_response.status_code, 200)
         spec_body = spec_response.get_data(as_text=True)
         self.assertIn("openapi: 3.1.0", spec_body)
         self.assertIn("/api/public/v2/options/chain/{ticker}", spec_body)
+        self.assertIn("/api/public/v2/search-symbols", spec_body)
+        self.assertIn("/api/public/v2/stock/{ticker}", spec_body)
+        self.assertIn("/api/public/v2/chart/{ticker}", spec_body)
+        self.assertIn("/api/public/v2/fundamentals/{ticker}", spec_body)
+        self.assertIn("/api/public/v2/macro/overview", spec_body)
+
+    def test_public_v2_market_aware_search_contract(self):
+        response = self.client.get(
+            "/api/public/v2/search-symbols?q=tencent&market=all",
+            headers=self._public_headers(),
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["query"], "tencent")
+        self.assertEqual(payload["market"], "all")
+        self.assertEqual(
+            [item["assetId"] for item in payload["matches"]],
+            ["US:AAPL", "HK:00700", "CN:600519"],
+        )
+
+    def test_public_v2_market_aware_equity_contracts(self):
+        stock_response = self.client.get(
+            "/api/public/v2/stock/00700?market=hk",
+            headers=self._public_headers(),
+        )
+        chart_response = self.client.get(
+            "/api/public/v2/chart/00700?market=hk&period=6mo",
+            headers=self._public_headers(),
+        )
+        fundamentals_response = self.client.get(
+            "/api/public/v2/fundamentals/00700?market=hk",
+            headers=self._public_headers(),
+        )
+
+        self.assertEqual(stock_response.status_code, 200)
+        stock_payload = stock_response.get_json()
+        self.assertEqual(stock_payload["assetId"], "HK:00700")
+        self.assertEqual(stock_payload["market"], "HK")
+        self.assertEqual(stock_payload["exchange"], "HKEX")
+        self.assertEqual(stock_payload["currency"], "HKD")
+        self.assertTrue(stock_payload["readOnlyResearchOnly"])
+
+        self.assertEqual(chart_response.status_code, 200)
+        chart_payload = chart_response.get_json()
+        self.assertEqual(chart_payload["assetId"], "HK:00700")
+        self.assertEqual(chart_payload["market"], "HK")
+        self.assertEqual(chart_payload["period"], "6mo")
+        self.assertEqual(len(chart_payload["candles"]), 3)
+
+        self.assertEqual(fundamentals_response.status_code, 200)
+        fundamentals_payload = fundamentals_response.get_json()
+        self.assertEqual(fundamentals_payload["assetId"], "HK:00700")
+        self.assertIn("researchProfile", fundamentals_payload)
+        self.assertIn("announcements", fundamentals_payload)
+
+    def test_public_v2_market_aware_macro_contract(self):
+        response = self.client.get(
+            "/api/public/v2/macro/overview?region=asia",
+            headers=self._public_headers(),
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["region"], "asia")
+        self.assertEqual(payload["source"], "akshare")
+        self.assertEqual(payload["indicators"][0]["symbol"], "CN_CPI")
+        self.assertEqual(payload["marketSignals"][0]["symbol"], "USDCNH")
+
+    def test_public_v2_international_provider_unavailable_maps_to_upstream_error(self):
+        backend_api.market_data_handlers.get_stock_data_handler = (
+            lambda *args, **kwargs: ({"error": "Akshare disabled"}, 503)
+        )
+        backend_api.market_data_handlers.get_chart_data_handler = (
+            lambda *args, **kwargs: ({"error": "Akshare disabled"}, 503)
+        )
+        backend_api.reference_data_handlers.get_fundamentals_handler = (
+            lambda *args, **kwargs: ({"error": "Akshare disabled"}, 503)
+        )
+        backend_api.reference_data_handlers.get_macro_overview_handler = (
+            lambda *args, **kwargs: ({"error": "Akshare disabled"}, 503)
+        )
+        backend_api.api_public_helpers._PUBLIC_CACHE_BACKEND = None
+        backend_api.api_public_helpers._PUBLIC_CACHE_BACKEND_KEY = None
+
+        stock_response = self.client.get("/api/public/v2/stock/00700?market=hk", headers=self._public_headers())
+        chart_response = self.client.get("/api/public/v2/chart/00700?market=hk", headers=self._public_headers())
+        fundamentals_response = self.client.get("/api/public/v2/fundamentals/00700?market=hk", headers=self._public_headers())
+        macro_response = self.client.get("/api/public/v2/macro/overview?region=asia", headers=self._public_headers())
+
+        for response in [stock_response, chart_response, fundamentals_response, macro_response]:
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.get_json()["error"]["code"], "upstream_unavailable")
+
+    def test_public_v2_cache_keys_vary_by_query_params(self):
+        us_response = self.client.get(
+            "/api/public/v2/macro/overview",
+            headers=self._public_headers(),
+        )
+        asia_first = self.client.get(
+            "/api/public/v2/macro/overview?region=asia",
+            headers=self._public_headers(),
+        )
+        asia_second = self.client.get(
+            "/api/public/v2/macro/overview?region=asia",
+            headers=self._public_headers(),
+        )
+
+        self.assertEqual(us_response.status_code, 200)
+        self.assertEqual(asia_first.status_code, 200)
+        self.assertEqual(asia_second.status_code, 200)
+        self.assertEqual(us_response.headers["X-Cache"], "MISS")
+        self.assertEqual(asia_first.headers["X-Cache"], "MISS")
+        self.assertEqual(asia_second.headers["X-Cache"], "HIT")
 
     def test_public_v2_options_chain_contract(self):
         response = self.client.get(

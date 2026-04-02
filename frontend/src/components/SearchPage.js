@@ -6,6 +6,63 @@ import PredictionPreviewCard from './ui/PredictionPreviewCard';
 import AssetCompareCard from './ui/AssetCompareCard';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
+const MARKET_OPTIONS = [
+    { value: 'us', label: 'US' },
+    { value: 'hk', label: 'HK' },
+    { value: 'cn', label: 'CN' },
+    { value: 'all', label: 'All' },
+];
+
+const normalizeMarket = (market = 'us') => {
+    const normalized = String(market || 'us').trim().toLowerCase();
+    return MARKET_OPTIONS.some((option) => option.value === normalized) ? normalized : 'us';
+};
+
+const normalizeAssetInput = (input, fallbackMarket = 'us') => {
+    if (!input) return null;
+    if (typeof input === 'object') {
+        const market = normalizeMarket(input.market || fallbackMarket);
+        const symbol = String(input.symbol || input.displaySymbol || '').trim().toUpperCase();
+        if (!symbol) return null;
+        const assetId = String(input.assetId || `${market.toUpperCase()}:${symbol}`).trim().toUpperCase();
+        return {
+            symbol,
+            market: market.toUpperCase(),
+            assetId,
+            displayLabel: market === 'us' ? symbol : assetId,
+            name: input.name || input.displayName || symbol,
+            exchange: input.exchange || (market === 'hk' ? 'HKEX' : market === 'cn' ? 'CN' : 'US'),
+        };
+    }
+
+    const rawValue = String(input).trim();
+    if (!rawValue) return null;
+    const prefixed = rawValue.match(/^([A-Za-z]{2}):(.+)$/);
+    const market = normalizeMarket(prefixed?.[1] || fallbackMarket);
+    const rawSymbol = prefixed?.[2] || rawValue;
+    const symbol = market === 'us'
+        ? rawSymbol.trim().toUpperCase()
+        : rawSymbol.replace(/\D/g, '').padStart(market === 'hk' ? 5 : 6, '0');
+    const assetId = market === 'us' ? `US:${symbol}` : `${market.toUpperCase()}:${symbol}`;
+    return {
+        symbol,
+        market: market.toUpperCase(),
+        assetId,
+        displayLabel: market === 'us' ? symbol : assetId,
+        name: symbol,
+        exchange: market === 'hk' ? 'HKEX' : market === 'cn' ? 'CN' : 'US',
+    };
+};
+
+const isUsAsset = (asset) => !asset || asset.market === 'US';
+
+const groupSuggestionsByMarket = (items = []) => items.reduce((groups, item) => {
+    const market = item.market || 'US';
+    groups[market] = groups[market] || [];
+    groups[market].push(item);
+    return groups;
+}, {});
+
 // --- Helpers for Jimmy's cards ---
 const formatLargeNumber = (num) => {
     if (!num || isNaN(num)) return 'N/A';
@@ -259,7 +316,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         }
         
         try {
-            const data = await apiRequest(API_ENDPOINTS.SEARCH_SYMBOLS(query));
+            const data = await apiRequest(API_ENDPOINTS.SEARCH_SYMBOLS(query, selectedMarket));
             setAutocompleteSuggestions(data.slice(0, 8));
             setShowAutocomplete(data.length > 0);
         } catch (error) {
@@ -271,8 +328,8 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
     // --- END AUTOCOMPLETE ---
 
     // Handle suggestion click
-    const handleSuggestionClick = async (ticker) => {
-        await runSearch(ticker);
+    const handleSuggestionClick = async (asset) => {
+        await runSearch(asset);
     };
 
     // Fetch suggestions on component mount
@@ -290,6 +347,8 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
     const [ticker, setTicker] = useState('');
     const [searchedTicker, setSearchedTicker] = useState('');
+    const [searchedAsset, setSearchedAsset] = useState(null);
+    const [selectedMarket, setSelectedMarket] = useState('us');
     const [stockData, setStockData] = useState(null);
     const [chartData, setChartData] = useState(null);
     const [activeTimeFrame, setActiveTimeFrame] = useState(timeFrames.find(f => f.value === '14d'));
@@ -327,17 +386,22 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         const saved = localStorage.getItem('recentSearches');
         if (saved) {
             try {
-                setRecentSearches(JSON.parse(saved));
+                const parsed = JSON.parse(saved);
+                setRecentSearches(Array.isArray(parsed) ? parsed.map((entry) => normalizeAssetInput(entry, 'us')).filter(Boolean) : []);
             } catch (e) {
                 console.error('Failed to load recent searches:', e);
             }
         }
     }, []); 
 
-    const saveRecentSearch = (ticker) => {
-        const normalizedTicker = ticker.toUpperCase();
+    const saveRecentSearch = (asset) => {
+        const normalizedAsset = normalizeAssetInput(asset, selectedMarket);
+        if (!normalizedAsset) return;
         setRecentSearches((prevSearches) => {
-            const updated = [normalizedTicker, ...prevSearches.filter(t => t !== normalizedTicker)].slice(0, 8);
+            const updated = [
+                normalizedAsset,
+                ...prevSearches.filter((item) => item?.assetId !== normalizedAsset.assetId),
+            ].slice(0, 8);
             localStorage.setItem('recentSearches', JSON.stringify(updated));
             return updated;
         });
@@ -348,7 +412,14 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         localStorage.removeItem('recentSearches');
     };
 
-    const fetchNewsData = async (companyName, requestId) => {
+    const fetchNewsData = async (companyName, requestId, market = 'US', relatedNews = null) => {
+        if (market !== 'US') {
+            if (isCurrentSearchRequest(requestId)) {
+                setNewsData(Array.isArray(relatedNews) && relatedNews.length ? relatedNews : null);
+                setNewsLoading(false);
+            }
+            return;
+        }
         if (!companyName) {
             if (isCurrentSearchRequest(requestId)) {
                 setNewsData(null);
@@ -372,7 +443,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         }
     };
 
-    const fetchChartData = async (symbol, timeFrame, requestId = null) => {
+    const fetchChartData = async (asset, timeFrame, requestId = null) => {
         const chartRequestId = latestChartRequestIdRef.current + 1;
         latestChartRequestIdRef.current = chartRequestId;
         if (requestId === null || isCurrentSearchRequest(requestId)) {
@@ -380,7 +451,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         }
         setChartLoading(true);
         try {
-            const chartJson = await apiRequest(API_ENDPOINTS.CHART(symbol, timeFrame.value));
+            const chartJson = await apiRequest(API_ENDPOINTS.CHART(asset.symbol, timeFrame.value, asset.market));
             if ((requestId !== null && !isCurrentSearchRequest(requestId)) || !isCurrentChartRequest(chartRequestId)) {
                 return false;
             }
@@ -400,9 +471,15 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         }
     };
 
-    const fetchPredictionData = async (symbol, requestId) => {
+    const fetchPredictionData = async (asset, requestId) => {
+        if (!isUsAsset(asset)) {
+            if (isCurrentSearchRequest(requestId)) {
+                setPredictionData(null);
+            }
+            return;
+        }
         try {
-            const predJson = await apiRequest(API_ENDPOINTS.PREDICT_ENSEMBLE(symbol));
+            const predJson = await apiRequest(API_ENDPOINTS.PREDICT_ENSEMBLE(asset.symbol));
             if (!isCurrentSearchRequest(requestId)) return;
             setPredictionData(predJson);
         } catch {
@@ -416,12 +493,12 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         latestComparisonRequestIdRef.current = comparisonRequestId;
 
         try {
-            const stockJson = await apiRequest(API_ENDPOINTS.STOCK(symbol));
+            const stockJson = await apiRequest(API_ENDPOINTS.STOCK(symbol, 'us'));
             if (!isCurrentComparisonRequest(comparisonRequestId)) {
                 return false;
             }
             const [chartResult, predictionResult, newsResult] = await Promise.allSettled([
-                apiRequest(API_ENDPOINTS.CHART(symbol, timeFrame.value)),
+                apiRequest(API_ENDPOINTS.CHART(symbol, timeFrame.value, 'us')),
                 apiRequest(API_ENDPOINTS.PREDICT_ENSEMBLE(symbol)),
                 stockJson.companyName ? apiRequest(API_ENDPOINTS.NEWS(stockJson.companyName)) : Promise.resolve([]),
             ]);
@@ -449,15 +526,16 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
     };
 
     const runSearch = async (rawTicker) => {
-        const searchTicker = (rawTicker || '').trim().toUpperCase();
-        if (!searchTicker) return;
+        const asset = normalizeAssetInput(rawTicker, selectedMarket);
+        if (!asset) return;
 
         const requestId = latestSearchRequestIdRef.current + 1;
         latestSearchRequestIdRef.current = requestId;
         latestChartRequestIdRef.current += 1;
         latestComparisonRequestIdRef.current += 1;
 
-        setTicker(searchTicker);
+        setTicker(asset.displayLabel);
+        setSelectedMarket(asset.market.toLowerCase());
         setShowAutocomplete(false);
         setAutocompleteSuggestions([]);
         setLoading(true);
@@ -470,26 +548,41 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         setNewsLoading(false);
         setError('');
         setSearchedTicker('');
+        setSearchedAsset(null);
 
         const defaultTimeFrame = timeFrames.find(f => f.value === '14d');
         setActiveTimeFrame(defaultTimeFrame);
 
         try {
-            const stockJson = await apiRequest(API_ENDPOINTS.STOCK(searchTicker));
+            const stockJson = await apiRequest(API_ENDPOINTS.STOCK(asset.symbol, asset.market));
             if (!isCurrentSearchRequest(requestId)) return;
 
             setStockData(stockJson);
-            setSearchedTicker(searchTicker);
-            saveRecentSearch(searchTicker);
+            const resolvedAsset = normalizeAssetInput(
+                {
+                    symbol: stockJson.symbol || asset.symbol,
+                    market: stockJson.market || asset.market,
+                    assetId: stockJson.assetId || asset.assetId,
+                    name: stockJson.companyName || asset.name,
+                    exchange: stockJson.exchange || asset.exchange,
+                },
+                asset.market
+            );
+            setSearchedAsset(resolvedAsset);
+            setSearchedTicker(resolvedAsset?.displayLabel || asset.displayLabel);
+            if (resolvedAsset?.market) {
+                setSelectedMarket(resolvedAsset.market.toLowerCase());
+            }
+            saveRecentSearch(resolvedAsset || asset);
 
             await Promise.allSettled([
-                fetchNewsData(stockJson.companyName, requestId),
-                fetchChartData(searchTicker, defaultTimeFrame, requestId),
-                fetchPredictionData(searchTicker, requestId),
+                fetchNewsData(stockJson.companyName, requestId, resolvedAsset?.market || asset.market, stockJson.relatedNews),
+                fetchChartData(resolvedAsset || asset, defaultTimeFrame, requestId),
+                fetchPredictionData(resolvedAsset || asset, requestId),
             ]);
         } catch (err) {
             if (!isCurrentSearchRequest(requestId)) return;
-            setError(err.message || 'An error occurred. Try "AAPL", "GOOGL", or "TSLA".');
+            setError(err.message || 'An error occurred. Try "AAPL", "HK:00700", or "CN:600519".');
             setSearchedTicker('');
         } finally {
             if (isCurrentSearchRequest(requestId)) {
@@ -500,7 +593,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
     // --- NEW: Autocomplete handlers ---
     const handleAutocompleteClick = (suggestion) => {
-        runSearch(suggestion.symbol);
+        runSearch(suggestion);
     };
 
     const handleTickerChange = (e) => {
@@ -531,7 +624,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         e.preventDefault();
         if (!compareTicker || !activeTimeFrame) return;
         const normalizedTicker = compareTicker.trim().toUpperCase();
-        if (normalizedTicker === searchedTicker) {
+        if (normalizedTicker === searchedAsset?.symbol) {
             alert('Choose a different ticker to compare.');
             return;
         }
@@ -544,15 +637,15 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
         }
     };
 
-    const handleRecentSearchClick = (recentTicker) => {
-        runSearch(recentTicker);
+    const handleRecentSearchClick = (recentAsset) => {
+        runSearch(recentAsset);
     };
 
     const handleTimeFrameChange = (timeFrame) => {
         setActiveTimeFrame(timeFrame);
-        if (searchedTicker) {
-            fetchChartData(searchedTicker, timeFrame);
-            if (comparisonData) {
+        if (searchedAsset) {
+            fetchChartData(searchedAsset, timeFrame);
+            if (comparisonData && isUsAsset(searchedAsset)) {
                 (async () => {
                     try {
                         await fetchComparisonBundle(comparisonData.ticker, timeFrame);
@@ -565,6 +658,9 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
     };
 
     const handleAddToWatchlist = async (tickerToAdd) => {
+        if (!isUsAsset(searchedAsset)) {
+            return;
+        }
         try {
             const result = await apiRequest(API_ENDPOINTS.WATCHLIST_ITEM(tickerToAdd), {
                 method: 'POST',
@@ -594,7 +690,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                             onChange={handleTickerChange}
                             onFocus={handleTickerFocus}
                             onBlur={handleTickerBlur}
-                            placeholder="e.g., AAPL or Apple"
+                            placeholder="e.g., AAPL, HK:00700, CN:600519"
                             className="ui-input w-full py-4 pl-12 pr-32 text-lg"
                             autoComplete="off"
                         />
@@ -608,21 +704,46 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
                         {showAutocomplete && autocompleteSuggestions.length > 0 && (
                             <div className="ui-panel-elevated absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden animate-fade-in">
-                                <ul className="divide-y divide-mm-border">
-                                    {autocompleteSuggestions.map((stock) => (
-                                        <li
-                                            key={stock.symbol}
-                                            onMouseDown={() => handleAutocompleteClick(stock)}
-                                            className="cursor-pointer px-4 py-3 text-left hover:bg-mm-surface-subtle"
-                                        >
-                                            <span className="font-semibold text-mm-text-primary">{stock.symbol}</span>
-                                            <span className="ml-3 text-mm-text-secondary">{stock.name}</span>
-                                        </li>
-                                    ))}
-                                </ul>
+                                {Object.entries(groupSuggestionsByMarket(autocompleteSuggestions)).map(([market, items]) => (
+                                    <div key={market}>
+                                        <div className="border-b border-mm-border bg-mm-surface-subtle px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-mm-text-tertiary">
+                                            {market}
+                                        </div>
+                                        <ul className="divide-y divide-mm-border">
+                                            {items.map((stock) => (
+                                                <li
+                                                    key={stock.assetId || `${stock.market}:${stock.symbol}`}
+                                                    onMouseDown={() => handleAutocompleteClick(stock)}
+                                                    className="cursor-pointer px-4 py-3 text-left hover:bg-mm-surface-subtle"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="rounded-full border border-mm-border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-mm-text-tertiary">
+                                                            {stock.market || 'US'}
+                                                        </span>
+                                                        <span className="font-semibold text-mm-text-primary">{stock.symbol}</span>
+                                                        <span className="text-mm-text-secondary">{stock.name}</span>
+                                                    </div>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </form>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                        {MARKET_OPTIONS.map((option) => (
+                            <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => setSelectedMarket(option.value)}
+                                className={selectedMarket === option.value ? 'ui-chip bg-mm-accent-primary text-white border-mm-accent-primary' : 'ui-chip'}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
+                    </div>
 
                     {recentSearches.length > 0 && (
                         <div className="mt-6 animate-fade-in">
@@ -638,11 +759,11 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                             <div className="flex flex-wrap gap-2">
                                 {recentSearches.map((recentTicker) => (
                                     <button
-                                        key={recentTicker}
+                                        key={recentTicker.assetId}
                                         onClick={() => handleRecentSearchClick(recentTicker)}
                                         className="ui-chip"
                                     >
-                                        {recentTicker}
+                                        {recentTicker.displayLabel}
                                     </button>
                                 ))}
                             </div>
@@ -791,9 +912,15 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                     </div>
                 )}
 
-                {stockData && <StockDataCard data={stockData} onAddToWatchlist={handleAddToWatchlist} />}
+                {stockData && (
+                    <StockDataCard
+                        data={stockData}
+                        onAddToWatchlist={handleAddToWatchlist}
+                        canAddToWatchlist={isUsAsset(searchedAsset)}
+                    />
+                )}
 
-                {predictionData && (
+                {predictionData && isUsAsset(searchedAsset) && (
                     <PredictionPreviewCard
                         predictionData={predictionData}
                         onViewFullPredictions={() => {
@@ -804,7 +931,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                     />
                 )}
 
-                {stockData && comparisonData && (
+                {stockData && comparisonData && isUsAsset(searchedAsset) && (
                     <div className="ui-panel mt-8 p-6">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                             <div>
@@ -868,23 +995,29 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                 {chartLoading && <div className="p-8 text-center text-mm-text-secondary">Loading chart...</div>}
                 {chartData && !chartLoading && (
                     <div className="mt-8 animate-fade-in">
-                        <div className="ui-panel p-4 sm:p-5">
-                            <form onSubmit={handleAddComparison} className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={compareTicker}
-                                    onChange={(e) => setCompareTicker(e.target.value.toUpperCase())}
-                                    placeholder="Compare (e.g., MSFT)"
-                                    className="ui-input"
-                                />
-                                <button
-                                    type="submit"
-                                    className="ui-button-secondary px-6"
-                                >
-                                    Add
-                                </button>
-                            </form>
-                        </div>
+                        {isUsAsset(searchedAsset) ? (
+                            <div className="ui-panel p-4 sm:p-5">
+                                <form onSubmit={handleAddComparison} className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={compareTicker}
+                                        onChange={(e) => setCompareTicker(e.target.value.toUpperCase())}
+                                        placeholder="Compare (e.g., MSFT)"
+                                        className="ui-input"
+                                    />
+                                    <button
+                                        type="submit"
+                                        className="ui-button-secondary px-6"
+                                    >
+                                        Add
+                                    </button>
+                                </form>
+                            </div>
+                        ) : (
+                            <div className="ui-panel-subtle mb-4 p-4 text-sm text-mm-text-secondary">
+                                International research mode is read-only in this first Akshare rollout, so comparison, predictions, and watchlist actions stay US-only for now.
+                            </div>
+                        )}
 
                         <StockChart
                             chartData={chartData}

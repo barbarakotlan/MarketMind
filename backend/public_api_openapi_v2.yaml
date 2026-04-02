@@ -5,8 +5,8 @@ info:
   summary: Private beta, expanded read-only API surface for market research workflows.
   description: |
     MarketMind Public API v2 keeps the same private-beta, API-key-authenticated model as v1,
-    and adds read-only research surfaces including options, FX, crypto, commodities,
-    prediction markets metadata, and the economic calendar.
+    and expands read-only research surfaces to include market-aware equities, macro,
+    options, FX, crypto, commodities, prediction markets metadata, and the economic calendar.
 servers:
   - url: https://api.marketmind.example.com
   - url: http://127.0.0.1:5001
@@ -14,6 +14,9 @@ security:
   - MarketMindDeveloperKey: []
 tags:
   - name: Health
+  - name: Market Data
+  - name: Fundamentals
+  - name: Macro
   - name: Options
   - name: Forex
   - name: Crypto
@@ -34,6 +37,107 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
         '401': { $ref: '#/components/responses/PublicAuthError' }
         '429': { $ref: '#/components/responses/PublicRateLimitError' }
+  /api/public/v2/search-symbols:
+    get:
+      tags: [Market Data]
+      summary: Search for U.S., Hong Kong, and China A-share symbols
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - $ref: '#/components/parameters/SearchMarket'
+      responses:
+        '200':
+          description: Search matches grouped into a single market-aware response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchSymbolsV2Response'
+        '400': { $ref: '#/components/responses/PublicInvalidQueryError' }
+        '401': { $ref: '#/components/responses/PublicAuthError' }
+        '429': { $ref: '#/components/responses/PublicRateLimitError' }
+        '503': { $ref: '#/components/responses/PublicUpstreamError' }
+  /api/public/v2/stock/{ticker}:
+    get:
+      tags: [Market Data]
+      summary: Get a market-aware stock quote summary
+      parameters:
+        - $ref: '#/components/parameters/Ticker'
+        - $ref: '#/components/parameters/Market'
+      responses:
+        '200':
+          description: Quote summary with market identity fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockResponseV2'
+        '401': { $ref: '#/components/responses/PublicAuthError' }
+        '404': { $ref: '#/components/responses/PublicNotFoundError' }
+        '429': { $ref: '#/components/responses/PublicRateLimitError' }
+        '503': { $ref: '#/components/responses/PublicUpstreamError' }
+  /api/public/v2/chart/{ticker}:
+    get:
+      tags: [Market Data]
+      summary: Get historical chart candles for a market-qualified equity
+      parameters:
+        - $ref: '#/components/parameters/Ticker'
+        - $ref: '#/components/parameters/Market'
+        - in: query
+          name: period
+          required: false
+          schema:
+            type: string
+            enum: [1d, 5d, 14d, 1mo, 6mo, 1y]
+            default: 6mo
+      responses:
+        '200':
+          description: Historical candles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartResponseV2'
+        '400': { $ref: '#/components/responses/PublicInvalidQueryError' }
+        '401': { $ref: '#/components/responses/PublicAuthError' }
+        '404': { $ref: '#/components/responses/PublicNotFoundError' }
+        '429': { $ref: '#/components/responses/PublicRateLimitError' }
+        '503': { $ref: '#/components/responses/PublicUpstreamError' }
+  /api/public/v2/fundamentals/{ticker}:
+    get:
+      tags: [Fundamentals]
+      summary: Get company fundamentals for U.S., Hong Kong, or China A-share equities
+      parameters:
+        - $ref: '#/components/parameters/Ticker'
+        - $ref: '#/components/parameters/Market'
+      responses:
+        '200':
+          description: Fundamentals payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FundamentalsResponseV2'
+        '401': { $ref: '#/components/responses/PublicAuthError' }
+        '404': { $ref: '#/components/responses/PublicNotFoundError' }
+        '429': { $ref: '#/components/responses/PublicRateLimitError' }
+        '503': { $ref: '#/components/responses/PublicUpstreamError' }
+  /api/public/v2/macro/overview:
+    get:
+      tags: [Macro]
+      summary: Get the U.S. or Asia macro overview
+      parameters:
+        - $ref: '#/components/parameters/MacroRegion'
+      responses:
+        '200':
+          description: Macro overview response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MacroOverviewResponseV2'
+        '401': { $ref: '#/components/responses/PublicAuthError' }
+        '429': { $ref: '#/components/responses/PublicRateLimitError' }
+        '503': { $ref: '#/components/responses/PublicUpstreamError' }
   /api/public/v2/options/stock-price/{ticker}:
     get:
       tags: [Options]
@@ -295,13 +399,41 @@ components:
       type: http
       scheme: bearer
       bearerFormat: MarketMind developer API key
-      description: Use `Authorization: Bearer <marketmind_developer_api_key>`.
+      description: "Use `Authorization: Bearer <marketmind_developer_api_key>`."
   parameters:
     Ticker:
       in: path
       name: ticker
       required: true
       schema: { type: string }
+      description: Ticker or market-local symbol. Combine with the optional `market` query parameter for international equities.
+    Market:
+      in: query
+      name: market
+      required: false
+      schema:
+        type: string
+        enum: [us, hk, cn]
+        default: us
+      description: Market selector for market-aware equity routes.
+    SearchMarket:
+      in: query
+      name: market
+      required: false
+      schema:
+        type: string
+        enum: [us, hk, cn, all]
+        default: us
+      description: Market selector for symbol search.
+    MacroRegion:
+      in: query
+      name: region
+      required: false
+      schema:
+        type: string
+        enum: [us, asia]
+        default: us
+      description: Macro region selector.
   responses:
     PublicAuthError:
       description: Missing, invalid, revoked, or expired API key
@@ -337,6 +469,122 @@ components:
         version: { type: string, example: v2 }
         beta: { type: boolean, example: true }
       required: [status, api, version, beta]
+    SearchMatchV2:
+      type: object
+      properties:
+        symbol: { type: string, example: 00700 }
+        displayName: { type: string, example: Tencent Holdings Ltd. }
+        market: { type: string, example: HK }
+        exchange: { type: string, example: HKEX }
+        assetId: { type: string, example: "HK:00700" }
+      required: [symbol, displayName, market, exchange, assetId]
+    SearchSymbolsV2Response:
+      type: object
+      properties:
+        query: { type: string, example: tencent }
+        market: { type: string, example: all }
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchMatchV2'
+      required: [query, market, matches]
+    StockResponseV2:
+      type: object
+      properties:
+        symbol: { type: string, example: 00700 }
+        assetId: { type: string, example: "HK:00700" }
+        market: { type: string, example: HK }
+        exchange: { type: string, example: HKEX }
+        currency: { type: string, example: HKD }
+        company_name: { type: string, example: Tencent Holdings Ltd. }
+        price: { type: number, example: 320.5 }
+        change: { type: number, example: 4.8 }
+        change_percent: { type: number, example: 1.52 }
+        market_cap: { type: string, example: N/A }
+        sparkline:
+          type: array
+          items: { type: number }
+        readOnlyResearchOnly: { type: boolean, example: true }
+      required: [symbol, assetId, market, exchange, company_name, price, change, change_percent, market_cap, sparkline]
+    ChartResponseV2:
+      type: object
+      properties:
+        symbol: { type: string, example: 600519 }
+        assetId: { type: string, example: "CN:600519" }
+        market: { type: string, example: CN }
+        exchange: { type: string, example: SSE }
+        period: { type: string, example: 6mo }
+        candles:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [symbol, assetId, market, exchange, period, candles]
+    FundamentalsResponseV2:
+      type: object
+      additionalProperties: true
+      description: Fundamentals payload. HK/CN responses may include `researchProfile` and `announcements` instead of SEC-specific fields.
+      example:
+        symbol: "00700"
+        assetId: "HK:00700"
+        market: "HK"
+        exchange: "HKEX"
+        currency: "HKD"
+        name: "Tencent Holdings Ltd."
+        description: "Company profile data is available from Eastmoney via Akshare."
+        sector: "Communication Services"
+        industry: "Internet Content & Information"
+        researchProfile:
+          - label: "Company"
+            value: "Tencent Holdings Ltd."
+        announcements:
+          - title: "Tencent announces annual results"
+            publisher: "CNInfo"
+            date: "2026-03-20"
+            link: "https://example.com/tencent-results"
+    MacroIndicatorV2:
+      type: object
+      properties:
+        symbol: { type: string, example: CN_CPI }
+        name: { type: string, example: China CPI YoY }
+        market: { type: string, example: CN }
+        unit: { type: string, example: "%" }
+        value: { type: number, example: 0.7 }
+        previous_value: { type: number, example: 0.5 }
+        date: { type: string, example: "2026-02-01" }
+        description: { type: string, example: Mainland China consumer inflation on a year-over-year basis. }
+        sparkline:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [symbol, name, unit, value, date, sparkline]
+    MacroSignalV2:
+      type: object
+      properties:
+        symbol: { type: string, example: USDCNH }
+        name: { type: string, example: USD/CNH }
+        category: { type: string, example: FX }
+        value: { type: number, example: 7.2145 }
+        change: { type: number, example: 0.0158 }
+        changePercent: { type: number, example: 0.22 }
+        date: { type: string, example: "2026-04-02" }
+      required: [symbol, name, category]
+    MacroOverviewResponseV2:
+      type: object
+      properties:
+        region: { type: string, example: asia }
+        indicators:
+          type: array
+          items:
+            $ref: '#/components/schemas/MacroIndicatorV2'
+        marketSignals:
+          type: array
+          items:
+            $ref: '#/components/schemas/MacroSignalV2'
+        source: { type: string, example: akshare }
+        sourceNote: { type: string, example: Data via Akshare aggregating Jin10 and Eastmoney sources. }
+      required: [region, indicators]
     PublicErrorEnvelope:
       type: object
       properties:

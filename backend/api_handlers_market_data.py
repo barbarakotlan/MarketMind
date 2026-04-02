@@ -40,15 +40,28 @@ def remove_from_watchlist_handler(
 def get_stock_data_handler(
     ticker,
     *,
+    request_obj,
     alpha_vantage_api_key,
     yf_module,
     requests_module,
     jsonify_fn,
     logger,
     clean_value_fn,
+    resolve_asset_fn,
+    akshare_service_module,
 ):
     try:
-        sanitized_ticker = ticker.split(":")[0]
+        market = request_obj.args.get("market")
+        asset = resolve_asset_fn(ticker, market)
+        if asset["market"] in {"HK", "CN"}:
+            try:
+                return jsonify_fn(akshare_service_module.get_equity_snapshot(asset["assetId"]))
+            except akshare_service_module.AkshareUnavailableError as exc:
+                return jsonify_fn({"error": str(exc)}), 503
+            except akshare_service_module.AkshareAssetNotFoundError as exc:
+                return jsonify_fn({"error": str(exc)}), 404
+
+        sanitized_ticker = asset["symbol"]
         stock = yf_module.Ticker(sanitized_ticker)
         info = stock.info
         if info.get("regularMarketPrice") is None:
@@ -141,7 +154,11 @@ def get_stock_data_handler(
                 }
 
         formatted_data = {
-            "symbol": info.get("symbol", ticker.upper()),
+            "symbol": sanitized_ticker,
+            "assetId": asset["assetId"],
+            "market": asset["market"],
+            "exchange": info.get("exchange", asset["exchange"]),
+            "currency": info.get("currency"),
             "companyName": info.get("longName", "N/A"),
             "price": clean_value_fn(price),
             "change": clean_value_fn(change),
@@ -165,9 +182,21 @@ def get_chart_data_handler(
     logger,
     clean_value_fn,
     chart_prediction_points_fn,
+    resolve_asset_fn,
+    akshare_service_module,
 ):
     period = request_obj.args.get("period", "6mo")
-    sanitized_ticker = ticker.split(":")[0]
+    market = request_obj.args.get("market")
+    asset = resolve_asset_fn(ticker, market)
+    if asset["market"] in {"HK", "CN"}:
+        try:
+            return jsonify_fn(akshare_service_module.get_equity_chart(asset["assetId"], period=period))
+        except akshare_service_module.AkshareUnavailableError as exc:
+            return jsonify_fn({"error": str(exc)}), 503
+        except akshare_service_module.AkshareAssetNotFoundError as exc:
+            return jsonify_fn({"error": str(exc)}), 404
+
+    sanitized_ticker = asset["symbol"]
     period_interval_map = {
         "1d": {"period": "1d", "interval": "5m"},
         "5d": {"period": "5d", "interval": "15m"},
@@ -547,13 +576,34 @@ def evaluate_models_handler(
         return jsonify_fn({"error": f"Evaluation failed: {str(exc)}"}), 500
 
 
-def search_symbols_handler(*, request_obj, get_symbol_suggestions_fn, jsonify_fn, logger):
+def search_symbols_handler(
+    *,
+    request_obj,
+    get_symbol_suggestions_fn,
+    search_international_symbols_fn,
+    jsonify_fn,
+    logger,
+):
     query = request_obj.args.get("q")
     if not query:
         return jsonify_fn([])
+    market = str(request_obj.args.get("market", "us")).strip().lower()
     try:
-        formatted_matches = get_symbol_suggestions_fn(query)
-        return jsonify_fn(formatted_matches)
+        combined_matches = []
+        if market in {"us", "all"}:
+            combined_matches.extend(get_symbol_suggestions_fn(query))
+        if market in {"hk", "cn", "all"}:
+            combined_matches.extend(search_international_symbols_fn(query, market=market))
+
+        seen = set()
+        deduped = []
+        for match in combined_matches:
+            asset_id = match.get("assetId") or f"US:{match.get('symbol', '').upper()}"
+            if asset_id in seen:
+                continue
+            seen.add(asset_id)
+            deduped.append(match)
+        return jsonify_fn(deduped)
     except Exception as exc:
         logger.error(f"Error in symbol search: {exc}")
         return jsonify_fn({"error": str(exc)}), 500

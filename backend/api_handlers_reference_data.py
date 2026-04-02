@@ -95,15 +95,28 @@ def commodities_all_handler(*, get_commodities_by_category_fn, jsonify_fn, logge
 def get_fundamentals_handler(
     ticker,
     *,
+    request_obj,
     alpha_vantage_api_key,
     requests_module,
     jsonify_fn,
     logger,
     clean_value_fn,
     fundamentals_from_yfinance_fn,
+    resolve_asset_fn,
+    akshare_service_module,
 ):
     try:
-        sanitized_ticker = ticker.split(":")[0].upper()
+        market = request_obj.args.get("market")
+        asset = resolve_asset_fn(ticker, market)
+        if asset["market"] in {"HK", "CN"}:
+            try:
+                return jsonify_fn(akshare_service_module.get_equity_fundamentals(asset["assetId"]))
+            except akshare_service_module.AkshareUnavailableError as exc:
+                return jsonify_fn({"error": str(exc)}), 503
+            except akshare_service_module.AkshareAssetNotFoundError as exc:
+                return jsonify_fn({"error": str(exc)}), 404
+
+        sanitized_ticker = asset["symbol"]
 
         av_data = None
         if alpha_vantage_api_key:
@@ -128,10 +141,12 @@ def get_fundamentals_handler(
             return jsonify_fn({"error": f"No fundamental data found for {ticker}"}), 404
 
         formatted_data = {
-            "symbol": data.get("Symbol"),
+            "symbol": sanitized_ticker,
+            "assetId": asset["assetId"],
+            "market": asset["market"],
             "name": data.get("Name"),
             "description": data.get("Description"),
-            "exchange": data.get("Exchange"),
+            "exchange": data.get("Exchange") or asset.get("exchange"),
             "currency": data.get("Currency"),
             "sector": data.get("Sector"),
             "industry": data.get("Industry"),
@@ -568,9 +583,23 @@ def get_macro_overview_handler(
     yf_module,
     macro_indicators,
     requests_module,
+    request_obj=None,
+    akshare_service_module=None,
 ):
     result = []
     try:
+        request_args = getattr(request_obj, "args", None)
+        region = str(request_args.get("region", "us") if request_args else "us").strip().lower()
+        if region == "asia":
+            if akshare_service_module is None:
+                return jsonify_fn({"error": "Asia macro data is temporarily unavailable."}), 503
+            try:
+                return jsonify_fn(akshare_service_module.get_asia_macro_overview())
+            except akshare_service_module.AkshareUnavailableError as exc:
+                return jsonify_fn({"error": str(exc)}), 503
+            except akshare_service_module.AkshareAssetNotFoundError as exc:
+                return jsonify_fn({"error": str(exc)}), 404
+
         openbb_macro_supported = False
         openbb_macro_reason = None
         if openbb_available and obb_module is not None:

@@ -4,7 +4,7 @@ import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 jest.mock('../config/api', () => ({
     API_ENDPOINTS: {
-        MACRO_OVERVIEW: '/macro/overview',
+        MACRO_OVERVIEW: (region = 'us') => region === 'asia' ? '/macro/overview?region=asia' : '/macro/overview',
         ECONOMIC_CALENDAR: '/calendar/economic',
     },
     apiRequest: jest.fn(),
@@ -62,6 +62,57 @@ const calendarPayload = [
     },
 ];
 
+const asiaMacroPayload = {
+    region: 'asia',
+    title: 'Asia Macro Dashboard',
+    description: 'China and Hong Kong macro indicators with selected FX and commodity signals.',
+    sourceNote: 'Data via Akshare',
+    indicators: [
+        {
+            symbol: 'CN_CPI',
+            name: 'China CPI YoY',
+            unit: '%',
+            value: 0.7,
+            prev: 0.5,
+            date: '2026-02-01',
+            sparkline: [
+                { date: '2026-01-01', value: 0.5 },
+                { date: '2026-02-01', value: 0.7 },
+            ],
+        },
+        {
+            symbol: 'HK_URATE',
+            name: 'Hong Kong Unemployment Rate',
+            unit: '%',
+            value: 3.1,
+            prev: 3.2,
+            date: '2026-02-18',
+            sparkline: [
+                { date: '2026-01-18', value: 3.2 },
+                { date: '2026-02-18', value: 3.1 },
+            ],
+        },
+    ],
+    marketSignals: [
+        {
+            symbol: 'USDCNH',
+            name: 'USD/CNH',
+            category: 'FX',
+            value: 7.2145,
+            changePercent: 0.22,
+            date: '2026-04-02',
+        },
+        {
+            symbol: 'COPPER',
+            name: 'Copper',
+            category: 'Commodity',
+            value: 4.58,
+            changePercent: -0.84,
+            date: '2026-04-02',
+        },
+    ],
+};
+
 describe('MacroPage', () => {
     afterEach(() => {
         jest.clearAllMocks();
@@ -69,7 +120,7 @@ describe('MacroPage', () => {
 
     test('renders restored macro indicators and the next macro events panel', async () => {
         apiRequest.mockImplementation((url) => {
-            if (url === API_ENDPOINTS.MACRO_OVERVIEW) {
+            if (url === API_ENDPOINTS.MACRO_OVERVIEW()) {
                 return Promise.resolve(macroPayload);
             }
             if (url === API_ENDPOINTS.ECONOMIC_CALENDAR) {
@@ -95,7 +146,7 @@ describe('MacroPage', () => {
 
     test('keeps macro cards visible when the calendar preview fails', async () => {
         apiRequest.mockImplementation((url) => {
-            if (url === API_ENDPOINTS.MACRO_OVERVIEW) {
+            if (url === API_ENDPOINTS.MACRO_OVERVIEW()) {
                 return Promise.resolve(macroPayload);
             }
             if (url === API_ENDPOINTS.ECONOMIC_CALENDAR) {
@@ -108,5 +159,32 @@ describe('MacroPage', () => {
 
         expect(await screen.findByText('Unemployment Rate')).toBeInTheDocument();
         expect(screen.getByText('Economic calendar is temporarily unavailable.')).toBeInTheDocument();
+    });
+
+    test('switches into the Asia macro lane and renders Akshare market signals', async () => {
+        apiRequest.mockImplementation((url) => {
+            if (url === API_ENDPOINTS.MACRO_OVERVIEW()) {
+                return Promise.resolve(macroPayload);
+            }
+            if (url === API_ENDPOINTS.MACRO_OVERVIEW('asia')) {
+                return Promise.resolve(asiaMacroPayload);
+            }
+            if (url === API_ENDPOINTS.ECONOMIC_CALENDAR) {
+                return Promise.resolve(calendarPayload);
+            }
+            throw new Error(`Unhandled API request: ${url}`);
+        });
+
+        render(<MacroPage />);
+
+        expect(await screen.findByText('Unemployment Rate')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Asia' }));
+
+        expect(await screen.findByText('China CPI YoY')).toBeInTheDocument();
+        expect(screen.getByText('Asia Market Signals')).toBeInTheDocument();
+        expect(screen.getByText('USD/CNH')).toBeInTheDocument();
+        expect(screen.getByText('Copper')).toBeInTheDocument();
+        expect(screen.queryByText('Next Macro Events')).not.toBeInTheDocument();
     });
 });

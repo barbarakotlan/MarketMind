@@ -59,7 +59,7 @@
         </thead>
         <tbody>
           <tr><td><code>v1</code></td><td>Core market data + predictions</td><td>Stock, chart, news, symbol search, ensemble predictions, fundamentals, macro overview</td></tr>
-          <tr><td><code>v2</code></td><td>Expanded research surface</td><td>Options, forex, crypto, commodities, prediction markets metadata, economic calendar</td></tr>
+          <tr><td><code>v2</code></td><td>Expanded research surface</td><td>Market-aware equities, macro regions, options, forex, crypto, commodities, prediction markets metadata, economic calendar</td></tr>
         </tbody>
       </table>
     </section>
@@ -69,9 +69,13 @@
       <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
   "https://api.marketmind.example.com/api/public/v1/stock/AAPL"</pre>
       <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
-  "https://api.marketmind.example.com/api/public/v2/options/chain/AAPL?date=2026-04-17"</pre>
+  "https://api.marketmind.example.com/api/public/v2/stock/00700?market=hk"</pre>
       <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
-  "https://api.marketmind.example.com/api/public/v2/prediction-markets?exchange=polymarket&limit=25"</pre>
+  "https://api.marketmind.example.com/api/public/v2/search-symbols?q=tencent&market=all"</pre>
+      <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
+  "https://api.marketmind.example.com/api/public/v2/macro/overview?region=asia"</pre>
+      <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
+  "https://api.marketmind.example.com/api/public/v2/options/chain/AAPL?date=2026-04-17"</pre>
     </section>
 
     <section>

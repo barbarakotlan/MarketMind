@@ -205,6 +205,72 @@ class MarketMindAiApiTests(unittest.TestCase):
             user_id,
         )
 
+    def test_marketmind_ai_context_supports_hk_research_and_blocks_artifact_preflight(self):
+        with patch.object(
+            marketmind_ai_module.akshare_service,
+            "get_equity_ai_context",
+            return_value={
+                "assetId": "HK:00700",
+                "market": "HK",
+                "exchange": "HKEX",
+                "assetName": "Tencent Holdings",
+                "fundamentalsSummary": {
+                    "companyName": "Tencent Holdings",
+                    "sector": "Communication Services",
+                    "industry": "Internet Content & Information",
+                    "exchange": "HKEX",
+                    "currency": "HKD",
+                },
+                "recentNews": [
+                    {
+                        "title": "Tencent announces annual results",
+                        "publisher": "CNInfo",
+                        "link": "https://example.com/tencent-results",
+                        "publishTime": "2026-03-20",
+                    }
+                ],
+                "quoteSummary": {
+                    "price": 320.5,
+                    "change": 4.8,
+                    "changePercent": 1.52,
+                },
+                "companyResearch": {
+                    "profile": [{"label": "Company", "value": "Tencent Holdings Limited"}],
+                    "announcements": [{"title": "Tencent announces annual results"}],
+                },
+            },
+        ):
+            context_response = self.client.get(
+                "/marketmind-ai/context?ticker=00700&market=hk",
+                headers=self._auth_headers(),
+            )
+            self.assertEqual(context_response.status_code, 200)
+            context_payload = context_response.get_json()
+            self.assertEqual(context_payload["assetId"], "HK:00700")
+            self.assertEqual(context_payload["market"], "HK")
+            self.assertEqual(context_payload["fundamentalsSummary"]["companyName"], "Tencent Holdings")
+            self.assertEqual(context_payload["recentNews"][0]["title"], "Tencent announces annual results")
+            self.assertNotIn("secFilingsSummary", context_payload)
+
+            preflight_response = self.client.post(
+                "/marketmind-ai/artifacts/preflight",
+                headers=self._auth_headers(),
+                json={
+                    "templateKey": "investment_thesis_memo",
+                    "attachedTicker": "HK:00700",
+                    "messages": [{"role": "user", "content": "Write me a memo on HK:00700."}],
+                },
+            )
+            self.assertEqual(preflight_response.status_code, 200)
+            preflight_payload = preflight_response.get_json()
+            self.assertEqual(preflight_payload["status"], "blocked")
+            self.assertTrue(
+                any(
+                    "read-only AI research" in item["message"]
+                    for item in preflight_payload["requiredItems"]
+                )
+            )
+
     def test_marketmind_ai_chat_context_artifact_generation_and_download(self):
         self._seed_marketmind_context()
 

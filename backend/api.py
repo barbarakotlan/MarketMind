@@ -91,7 +91,9 @@ from prediction_market_analysis import (
     PredictionMarketAnalysisError,
     analyze_prediction_market as pm_analyze_market,
 )
+import akshare_service
 import sec_filings_service
+from asset_identity import parse_asset_reference
 from logger_config import setup_logger, log_api_error
 from deliverables import (
     DOCX_MIME_TYPE,
@@ -1156,8 +1158,10 @@ def delete_marketmind_ai_chat_route(chat_id):
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_context():
     ticker = request.args.get('ticker', '').strip().upper()
+    market = request.args.get('market', '').strip()
     return marketmind_ai_handlers.get_context_handler(
         ticker=ticker,
+        market=market,
         deliverables_ready_fn=_deliverables_ready,
         not_configured_response_fn=_marketmind_ai_not_configured_response,
         ensure_storage_ready_fn=_ensure_user_state_storage_ready,
@@ -1341,12 +1345,15 @@ def remove_from_watchlist(ticker):
 def get_stock_data(ticker):
     return market_data_handlers.get_stock_data_handler(
         ticker,
+        request_obj=request,
         alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
         yf_module=yf,
         requests_module=requests,
         jsonify_fn=jsonify,
         logger=logger,
         clean_value_fn=clean_value,
+        resolve_asset_fn=_resolve_market_asset,
+        akshare_service_module=akshare_service,
     )
 
 
@@ -1361,6 +1368,8 @@ def get_chart_data(ticker):
         logger=logger,
         clean_value_fn=clean_value,
         chart_prediction_points_fn=_chart_prediction_points,
+        resolve_asset_fn=_resolve_market_asset,
+        akshare_service_module=akshare_service,
     )
 
 
@@ -1964,16 +1973,23 @@ def _fundamentals_from_yfinance(sym):
     return api_market_utils_helpers.fundamentals_from_yfinance(sym, yf_module=yf, logger=logger)
 
 
+def _resolve_market_asset(ticker, market=None):
+    return parse_asset_reference(ticker, market)
+
+
 @app.route('/fundamentals/<string:ticker>')
 def get_fundamentals(ticker):
     return reference_data_handlers.get_fundamentals_handler(
         ticker,
+        request_obj=request,
         alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
         requests_module=requests,
         jsonify_fn=jsonify,
         logger=logger,
         clean_value_fn=clean_value,
         fundamentals_from_yfinance_fn=_fundamentals_from_yfinance,
+        resolve_asset_fn=_resolve_market_asset,
+        akshare_service_module=akshare_service,
     )
 # --- NEW: Autocomplete Symbol Search (from Jimmy's branch) ---
 @app.route('/search-symbols')
@@ -1981,6 +1997,7 @@ def search_symbols():
     return market_data_handlers.search_symbols_handler(
         request_obj=request,
         get_symbol_suggestions_fn=get_symbol_suggestions,
+        search_international_symbols_fn=akshare_service.search_equities,
         jsonify_fn=jsonify,
         logger=logger,
     )
@@ -2084,6 +2101,8 @@ def get_macro_overview():
         yf_module=yf,
         macro_indicators=MACRO_INDICATORS,
         requests_module=requests,
+        request_obj=request,
+        akshare_service_module=akshare_service,
     )
 
 
@@ -2135,6 +2154,7 @@ def public_api_stock(ticker):
     return _public_dispatch(
         public_handlers.stock_handler,
         ticker,
+        request_obj=request,
         cache_backend=_public_cache(),
         cache_key=_public_cache_key('stock', ticker=ticker.upper()),
         cache_ttl_seconds=30,
@@ -2144,6 +2164,8 @@ def public_api_stock(ticker):
         requests_module=requests,
         logger=logger,
         clean_value_fn=clean_value,
+        resolve_asset_fn=_resolve_market_asset,
+        akshare_service_module=akshare_service,
     )
 
 
@@ -2165,6 +2187,8 @@ def public_api_chart(ticker):
         yf_module=yf,
         logger=logger,
         clean_value_fn=clean_value,
+        resolve_asset_fn=_resolve_market_asset,
+        akshare_service_module=akshare_service,
     )
 
 
@@ -2203,6 +2227,7 @@ def public_api_search_symbols():
         cache_ttl_seconds=3600,
         search_symbols_handler_fn=market_data_handlers.search_symbols_handler,
         get_symbol_suggestions_fn=get_symbol_suggestions,
+        search_international_symbols_fn=lambda _query, market='us': [] if market != 'all' else [],
         logger=logger,
     )
 
@@ -2243,6 +2268,7 @@ def public_api_fundamentals(ticker):
     return _public_dispatch(
         public_handlers.fundamentals_handler,
         ticker,
+        request_obj=request,
         cache_backend=_public_cache(),
         cache_key=_public_cache_key('fundamentals', ticker=ticker.upper()),
         cache_ttl_seconds=3600,
@@ -2252,6 +2278,8 @@ def public_api_fundamentals(ticker):
         logger=logger,
         clean_value_fn=clean_value,
         fundamentals_from_yfinance_fn=_fundamentals_from_yfinance,
+        resolve_asset_fn=_resolve_market_asset,
+        akshare_service_module=akshare_service,
     )
 
 
@@ -2285,6 +2313,123 @@ def public_api_macro_overview():
 @require_public_api_auth('v2/health')
 def public_api_v2_health():
     return _public_dispatch(public_handlers.health_handler, version='v2')
+
+
+@app.route('/api/public/v2/search-symbols', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/search-symbols')
+def public_api_v2_search_symbols():
+    return _public_dispatch(
+        public_handlers.search_symbols_handler_v2,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/search-symbols'),
+        cache_ttl_seconds=3600,
+        search_symbols_handler_fn=market_data_handlers.search_symbols_handler,
+        get_symbol_suggestions_fn=get_symbol_suggestions,
+        search_international_symbols_fn=akshare_service.search_equities,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/stock/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/stock')
+def public_api_v2_stock(ticker):
+    return _public_dispatch(
+        public_handlers.stock_handler_v2,
+        ticker,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/stock', ticker=ticker.upper()),
+        cache_ttl_seconds=30,
+        get_stock_data_handler_fn=market_data_handlers.get_stock_data_handler,
+        alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
+        yf_module=yf,
+        requests_module=requests,
+        logger=logger,
+        clean_value_fn=clean_value,
+        resolve_asset_fn=_resolve_market_asset,
+        akshare_service_module=akshare_service,
+    )
+
+
+@app.route('/api/public/v2/chart/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/chart')
+def public_api_v2_chart(ticker):
+    return _public_dispatch(
+        public_handlers.chart_handler_v2,
+        ticker,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/chart', ticker=ticker.upper()),
+        cache_ttl_seconds=60,
+        get_chart_data_handler_fn=market_data_handlers.get_chart_data_handler,
+        yf_module=yf,
+        logger=logger,
+        clean_value_fn=clean_value,
+        resolve_asset_fn=_resolve_market_asset,
+        akshare_service_module=akshare_service,
+    )
+
+
+@app.route('/api/public/v2/fundamentals/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/fundamentals')
+def public_api_v2_fundamentals(ticker):
+    return _public_dispatch(
+        public_handlers.fundamentals_handler_v2,
+        ticker,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/fundamentals', ticker=ticker.upper()),
+        cache_ttl_seconds=3600,
+        get_fundamentals_handler_fn=reference_data_handlers.get_fundamentals_handler,
+        alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
+        requests_module=requests,
+        logger=logger,
+        clean_value_fn=clean_value,
+        fundamentals_from_yfinance_fn=_fundamentals_from_yfinance,
+        resolve_asset_fn=_resolve_market_asset,
+        akshare_service_module=akshare_service,
+    )
+
+
+@app.route('/api/public/v2/macro/overview', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/macro/overview')
+def public_api_v2_macro_overview():
+    return _public_dispatch(
+        public_handlers.macro_overview_handler_v2,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/macro/overview'),
+        cache_ttl_seconds=900,
+        get_macro_overview_handler_fn=reference_data_handlers.get_macro_overview_handler,
+        openbb_available=OPENBB_AVAILABLE,
+        obb_module=obb if OPENBB_AVAILABLE else None,
+        logger=logger,
+        yf_module=yf,
+        macro_indicators=MACRO_INDICATORS,
+        requests_module=requests,
+        akshare_service_module=akshare_service,
+    )
 
 
 @app.route('/api/public/v2/options/stock-price/<string:ticker>', methods=['GET'])

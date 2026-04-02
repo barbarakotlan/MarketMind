@@ -88,6 +88,7 @@ def delete_chat_handler(
 def get_context_handler(
     *,
     ticker,
+    market,
     deliverables_ready_fn,
     not_configured_response_fn,
     ensure_storage_ready_fn,
@@ -104,7 +105,7 @@ def get_context_handler(
     ensure_storage_ready_fn()
     try:
         with session_scope(database_url) as session:
-            payload = build_context_fn(session, get_current_user_id_fn(), ticker)
+            payload = build_context_fn(session, get_current_user_id_fn(), ticker, market=market)
         return jsonify_fn(payload)
     except error_cls as exc:
         body = {"error": str(exc), **exc.payload}

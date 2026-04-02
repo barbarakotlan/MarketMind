@@ -28,6 +28,34 @@ def _normalize_news_articles(raw_articles):
     return normalized
 
 
+def _normalize_public_market(value: Any, *, default: str = "US") -> str:
+    candidate = str(value or "").strip().upper()
+    return candidate if candidate in {"US", "HK", "CN"} else default
+
+
+def _normalize_public_search_match(item):
+    raw_item = dict(item or {})
+    market = _normalize_public_market(raw_item.get("market"))
+    symbol = str(raw_item.get("symbol") or "").strip().upper()
+    if not symbol:
+        symbol = str(raw_item.get("assetId") or "").split(":", 1)[-1].strip().upper()
+    exchange = raw_item.get("exchange") or ("HKEX" if market == "HK" else "CN" if market == "CN" else "US")
+    display_name = raw_item.get("displayName") or raw_item.get("name") or symbol
+    asset_id = raw_item.get("assetId") or f"{market}:{symbol}"
+    return {
+        "symbol": symbol,
+        "displayName": display_name,
+        "market": market,
+        "exchange": exchange,
+        "assetId": asset_id,
+    }
+
+
+def _public_asset_identity(*, ticker: str, request_obj, resolve_asset_fn):
+    market = request_obj.args.get("market")
+    return resolve_asset_fn(ticker, market)
+
+
 def _cached_json_payload(*, cache_backend, cache_key: str, cache_ttl_seconds: int, producer_fn):
     cached = get_cached_public_response(cache_backend, cache_key)
     if cached is not None:
@@ -54,6 +82,7 @@ def health_handler(*, version: str = "v1"):
 def stock_handler(
     ticker,
     *,
+    request_obj,
     cache_backend,
     cache_key: str,
     cache_ttl_seconds: int,
@@ -63,17 +92,22 @@ def stock_handler(
     requests_module,
     logger,
     clean_value_fn,
+    resolve_asset_fn,
+    akshare_service_module,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
             get_stock_data_handler_fn(
                 ticker,
+                request_obj=request_obj,
                 alpha_vantage_api_key=alpha_vantage_api_key,
                 yf_module=yf_module,
                 requests_module=requests_module,
                 jsonify_fn=lambda payload: payload,
                 logger=logger,
                 clean_value_fn=clean_value_fn,
+                resolve_asset_fn=resolve_asset_fn,
+                akshare_service_module=akshare_service_module,
             )
         )
         if status_code == 404:
@@ -101,6 +135,68 @@ def stock_handler(
     )
 
 
+def stock_handler_v2(
+    ticker,
+    *,
+    request_obj,
+    cache_backend,
+    cache_key: str,
+    cache_ttl_seconds: int,
+    get_stock_data_handler_fn,
+    alpha_vantage_api_key,
+    yf_module,
+    requests_module,
+    logger,
+    clean_value_fn,
+    resolve_asset_fn,
+    akshare_service_module,
+):
+    def producer():
+        asset = _public_asset_identity(ticker=ticker, request_obj=request_obj, resolve_asset_fn=resolve_asset_fn)
+        raw_payload, status_code = unwrap_handler_result(
+            get_stock_data_handler_fn(
+                ticker,
+                request_obj=request_obj,
+                alpha_vantage_api_key=alpha_vantage_api_key,
+                yf_module=yf_module,
+                requests_module=requests_module,
+                jsonify_fn=lambda payload: payload,
+                logger=logger,
+                clean_value_fn=clean_value_fn,
+                resolve_asset_fn=resolve_asset_fn,
+                akshare_service_module=akshare_service_module,
+            )
+        )
+        if status_code == 404:
+            raise PublicApiError(404, "invalid_ticker", f"Ticker '{ticker}' is invalid or unavailable.")
+        if status_code >= 500:
+            raise PublicApiError(503, "upstream_unavailable", "Stock data is temporarily unavailable.")
+
+        payload = {
+            "symbol": raw_payload.get("symbol") or asset["symbol"],
+            "assetId": raw_payload.get("assetId") or asset["assetId"],
+            "market": raw_payload.get("market") or asset["market"],
+            "exchange": raw_payload.get("exchange") or asset["exchange"],
+            "currency": raw_payload.get("currency"),
+            "company_name": raw_payload.get("companyName"),
+            "price": raw_payload.get("price"),
+            "change": raw_payload.get("change"),
+            "change_percent": raw_payload.get("changePercent"),
+            "market_cap": raw_payload.get("marketCap"),
+            "sparkline": raw_payload.get("sparkline") or [],
+        }
+        if "readOnlyResearchOnly" in (raw_payload or {}):
+            payload["readOnlyResearchOnly"] = bool(raw_payload.get("readOnlyResearchOnly"))
+        return payload, 200
+
+    return _cached_json_payload(
+        cache_backend=cache_backend,
+        cache_key=cache_key,
+        cache_ttl_seconds=cache_ttl_seconds,
+        producer_fn=producer,
+    )
+
+
 def chart_handler(
     ticker,
     *,
@@ -112,6 +208,8 @@ def chart_handler(
     yf_module,
     logger,
     clean_value_fn,
+    resolve_asset_fn,
+    akshare_service_module,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -123,6 +221,8 @@ def chart_handler(
                 logger=logger,
                 clean_value_fn=clean_value_fn,
                 chart_prediction_points_fn=lambda _ticker: [],
+                resolve_asset_fn=resolve_asset_fn,
+                akshare_service_module=akshare_service_module,
             )
         )
         if status_code == 400:
@@ -134,6 +234,61 @@ def chart_handler(
         return (
             {
                 "symbol": ticker.split(":")[0].upper(),
+                "period": request_obj.args.get("period", "6mo"),
+                "candles": list(raw_payload or []),
+            },
+            200,
+        )
+
+    return _cached_json_payload(
+        cache_backend=cache_backend,
+        cache_key=cache_key,
+        cache_ttl_seconds=cache_ttl_seconds,
+        producer_fn=producer,
+    )
+
+
+def chart_handler_v2(
+    ticker,
+    *,
+    request_obj,
+    cache_backend,
+    cache_key: str,
+    cache_ttl_seconds: int,
+    get_chart_data_handler_fn,
+    yf_module,
+    logger,
+    clean_value_fn,
+    resolve_asset_fn,
+    akshare_service_module,
+):
+    def producer():
+        asset = _public_asset_identity(ticker=ticker, request_obj=request_obj, resolve_asset_fn=resolve_asset_fn)
+        raw_payload, status_code = unwrap_handler_result(
+            get_chart_data_handler_fn(
+                ticker,
+                request_obj=request_obj,
+                yf_module=yf_module,
+                jsonify_fn=lambda payload: payload,
+                logger=logger,
+                clean_value_fn=clean_value_fn,
+                chart_prediction_points_fn=lambda _ticker: [],
+                resolve_asset_fn=resolve_asset_fn,
+                akshare_service_module=akshare_service_module,
+            )
+        )
+        if status_code == 400:
+            raise PublicApiError(400, "invalid_query", "Unsupported chart period.")
+        if status_code == 404:
+            raise PublicApiError(404, "invalid_ticker", f"Ticker '{ticker}' is invalid or unavailable.")
+        if status_code >= 500:
+            raise PublicApiError(503, "upstream_unavailable", "Chart data is temporarily unavailable.")
+        return (
+            {
+                "symbol": asset["symbol"],
+                "assetId": asset["assetId"],
+                "market": asset["market"],
+                "exchange": asset["exchange"],
                 "period": request_obj.args.get("period", "6mo"),
                 "candles": list(raw_payload or []),
             },
@@ -201,6 +356,7 @@ def search_symbols_handler(
     cache_ttl_seconds: int,
     search_symbols_handler_fn,
     get_symbol_suggestions_fn,
+    search_international_symbols_fn,
     logger,
 ):
     def producer():
@@ -211,6 +367,7 @@ def search_symbols_handler(
             search_symbols_handler_fn(
                 request_obj=request_obj,
                 get_symbol_suggestions_fn=get_symbol_suggestions_fn,
+                search_international_symbols_fn=search_international_symbols_fn,
                 jsonify_fn=lambda payload: payload,
                 logger=logger,
             )
@@ -218,6 +375,44 @@ def search_symbols_handler(
         if status_code >= 500:
             raise PublicApiError(503, "upstream_unavailable", "Symbol search is temporarily unavailable.")
         return ({"query": query, "matches": list(raw_payload or [])}, 200)
+
+    return _cached_json_payload(
+        cache_backend=cache_backend,
+        cache_key=cache_key,
+        cache_ttl_seconds=cache_ttl_seconds,
+        producer_fn=producer,
+    )
+
+
+def search_symbols_handler_v2(
+    *,
+    request_obj,
+    cache_backend,
+    cache_key: str,
+    cache_ttl_seconds: int,
+    search_symbols_handler_fn,
+    get_symbol_suggestions_fn,
+    search_international_symbols_fn,
+    logger,
+):
+    def producer():
+        query = str(request_obj.args.get("q", "")).strip()
+        market = str(request_obj.args.get("market", "us")).strip().lower() or "us"
+        if not query:
+            raise PublicApiError(400, "invalid_query", "A non-empty 'q' query is required.")
+        raw_payload, status_code = unwrap_handler_result(
+            search_symbols_handler_fn(
+                request_obj=request_obj,
+                get_symbol_suggestions_fn=get_symbol_suggestions_fn,
+                search_international_symbols_fn=search_international_symbols_fn,
+                jsonify_fn=lambda payload: payload,
+                logger=logger,
+            )
+        )
+        if status_code >= 500:
+            raise PublicApiError(503, "upstream_unavailable", "Symbol search is temporarily unavailable.")
+        matches = [_normalize_public_search_match(item) for item in (raw_payload or [])]
+        return ({"query": query, "market": market, "matches": matches}, 200)
 
     return _cached_json_payload(
         cache_backend=cache_backend,
@@ -292,6 +487,7 @@ def ensemble_prediction_handler(
 def fundamentals_handler(
     ticker,
     *,
+    request_obj,
     cache_backend,
     cache_key: str,
     cache_ttl_seconds: int,
@@ -301,17 +497,67 @@ def fundamentals_handler(
     logger,
     clean_value_fn,
     fundamentals_from_yfinance_fn,
+    resolve_asset_fn,
+    akshare_service_module,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
             get_fundamentals_handler_fn(
                 ticker,
+                request_obj=request_obj,
                 alpha_vantage_api_key=alpha_vantage_api_key,
                 requests_module=requests_module,
                 jsonify_fn=lambda payload: payload,
                 logger=logger,
                 clean_value_fn=clean_value_fn,
                 fundamentals_from_yfinance_fn=fundamentals_from_yfinance_fn,
+                resolve_asset_fn=resolve_asset_fn,
+                akshare_service_module=akshare_service_module,
+            )
+        )
+        if status_code == 404:
+            raise PublicApiError(404, "invalid_ticker", f"Ticker '{ticker}' is invalid or unavailable.")
+        if status_code >= 500:
+            raise PublicApiError(503, "upstream_unavailable", "Fundamental data is temporarily unavailable.")
+        return (dict(raw_payload or {}), 200)
+
+    return _cached_json_payload(
+        cache_backend=cache_backend,
+        cache_key=cache_key,
+        cache_ttl_seconds=cache_ttl_seconds,
+        producer_fn=producer,
+    )
+
+
+def fundamentals_handler_v2(
+    ticker,
+    *,
+    request_obj,
+    cache_backend,
+    cache_key: str,
+    cache_ttl_seconds: int,
+    get_fundamentals_handler_fn,
+    alpha_vantage_api_key,
+    requests_module,
+    logger,
+    clean_value_fn,
+    fundamentals_from_yfinance_fn,
+    resolve_asset_fn,
+    akshare_service_module,
+):
+    def producer():
+        raw_payload, status_code = unwrap_handler_result(
+            get_fundamentals_handler_fn(
+                ticker,
+                request_obj=request_obj,
+                alpha_vantage_api_key=alpha_vantage_api_key,
+                requests_module=requests_module,
+                jsonify_fn=lambda payload: payload,
+                logger=logger,
+                clean_value_fn=clean_value_fn,
+                fundamentals_from_yfinance_fn=fundamentals_from_yfinance_fn,
+                resolve_asset_fn=resolve_asset_fn,
+                akshare_service_module=akshare_service_module,
             )
         )
         if status_code == 404:
@@ -371,6 +617,86 @@ def macro_overview_handler(
                 }
             )
         return ({"indicators": indicators}, 200)
+
+    return _cached_json_payload(
+        cache_backend=cache_backend,
+        cache_key=cache_key,
+        cache_ttl_seconds=cache_ttl_seconds,
+        producer_fn=producer,
+    )
+
+
+def macro_overview_handler_v2(
+    *,
+    request_obj,
+    cache_backend,
+    cache_key: str,
+    cache_ttl_seconds: int,
+    get_macro_overview_handler_fn,
+    openbb_available,
+    obb_module,
+    logger,
+    yf_module,
+    macro_indicators,
+    requests_module,
+    akshare_service_module,
+):
+    def producer():
+        raw_payload, status_code = unwrap_handler_result(
+            get_macro_overview_handler_fn(
+                openbb_available=openbb_available,
+                obb_module=obb_module,
+                jsonify_fn=lambda payload: payload,
+                logger=logger,
+                yf_module=yf_module,
+                macro_indicators=macro_indicators,
+                requests_module=requests_module,
+                request_obj=request_obj,
+                akshare_service_module=akshare_service_module,
+            )
+        )
+        if status_code == 503:
+            raise PublicApiError(503, "upstream_unavailable", "Macro data is temporarily unavailable.")
+        if status_code >= 500:
+            raise PublicApiError(503, "upstream_unavailable", "Macro data is temporarily unavailable.")
+
+        region = "us"
+        source = None
+        source_note = None
+        market_signals = []
+        indicator_source = raw_payload or []
+        if isinstance(raw_payload, dict):
+            region = str(raw_payload.get("region") or "us").strip().lower() or "us"
+            source = raw_payload.get("source")
+            source_note = raw_payload.get("sourceNote")
+            market_signals = list(raw_payload.get("marketSignals") or [])
+            indicator_source = raw_payload.get("indicators") or []
+
+        indicators = []
+        for item in indicator_source:
+            normalized = {
+                "symbol": item.get("symbol"),
+                "name": item.get("name"),
+                "unit": item.get("unit"),
+                "value": item.get("value"),
+                "previous_value": item.get("prev"),
+                "date": item.get("date"),
+                "sparkline": item.get("sparkline") or [],
+            }
+            if item.get("market"):
+                normalized["market"] = item.get("market")
+            if item.get("description"):
+                normalized["description"] = item.get("description")
+            indicators.append(normalized)
+
+        payload = {"region": region, "indicators": indicators}
+        if market_signals:
+            payload["marketSignals"] = market_signals
+        if source:
+            payload["source"] = source
+        if source_note:
+            payload["sourceNote"] = source_note
+        return payload, 200
 
     return _cached_json_payload(
         cache_backend=cache_backend,

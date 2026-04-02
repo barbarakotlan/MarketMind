@@ -29,6 +29,12 @@ const buildApiUrl = (path, params = {}) => {
     return `${API_BASE_URL}${path}${queryString ? `?${queryString}` : ''}`;
 };
 
+const withOptionalMarket = (params = {}, market) => (
+    market && String(market).toLowerCase() !== 'us'
+        ? { ...params, market: String(market).toLowerCase() }
+        : params
+);
+
 /**
  * API Endpoints Configuration
  * All API endpoints are defined here for consistency
@@ -42,9 +48,12 @@ export const API_ENDPOINTS = {
     CHECKOUT_CANCEL_SUBSCRIPTION: `${API_BASE_URL}/checkout/cancel-subscription`,
     CHECKOUT_PLAN_STATUS: `${API_BASE_URL}/checkout/plan-status`,
     // Stock & Market Data
-    STOCK: (ticker) => `${API_BASE_URL}/stock/${ticker}`,
-    CHART: (ticker, period = '6mo') => `${API_BASE_URL}/chart/${ticker}?period=${period}`,
-    SEARCH_SYMBOLS: (query) => `${API_BASE_URL}/search-symbols?q=${encodeURIComponent(query)}`,
+    STOCK: (ticker, market = 'us') =>
+        buildApiUrl(`/stock/${encodeURIComponent(ticker)}`, withOptionalMarket({}, market)),
+    CHART: (ticker, period = '6mo', market = 'us') =>
+        buildApiUrl(`/chart/${encodeURIComponent(ticker)}`, withOptionalMarket({ period }, market)),
+    SEARCH_SYMBOLS: (query, market = 'us') =>
+        buildApiUrl('/search-symbols', withOptionalMarket({ q: query }, market)),
     
     // News
     NEWS: (query) => query 
@@ -85,7 +94,8 @@ export const API_ENDPOINTS = {
     MARKETMIND_AI_CHATS: `${API_BASE_URL}/marketmind-ai/chats`,
     MARKETMIND_AI_CHAT_DETAIL: (chatId) => `${API_BASE_URL}/marketmind-ai/chats/${chatId}`,
     MARKETMIND_AI_CHAT_DELETE: (chatId) => `${API_BASE_URL}/marketmind-ai/chats/${chatId}`,
-    MARKETMIND_AI_CONTEXT: (ticker) => buildApiUrl('/marketmind-ai/context', { ticker }),
+    MARKETMIND_AI_CONTEXT: (ticker, market = 'us') =>
+        buildApiUrl('/marketmind-ai/context', withOptionalMarket({ ticker }, market)),
     MARKETMIND_AI_CHAT: `${API_BASE_URL}/marketmind-ai/chat`,
     MARKETMIND_AI_ARTIFACT_PREFLIGHT: `${API_BASE_URL}/marketmind-ai/artifacts/preflight`,
     MARKETMIND_AI_ARTIFACTS: `${API_BASE_URL}/marketmind-ai/artifacts`,
@@ -131,17 +141,21 @@ export const API_ENDPOINTS = {
     PREDICTION_RESET: `${API_BASE_URL}/prediction-markets/reset`,
     
     // Macro & Calendar
-    MACRO_OVERVIEW: `${API_BASE_URL}/macro/overview`,
+    MACRO_OVERVIEW: (region = 'us') =>
+        buildApiUrl('/macro/overview', region && String(region).toLowerCase() !== 'us' ? { region } : {}),
     ECONOMIC_CALENDAR: `${API_BASE_URL}/calendar/economic`,
     
     // Screener
     SCREENER: (category = 'day_gainers') => `${API_BASE_URL}/screener?category=${category}`,
     
     // Fundamentals
-    FUNDAMENTALS: (ticker) => `${API_BASE_URL}/fundamentals/${ticker}`,
+    FUNDAMENTALS: (ticker, market = 'us') =>
+        buildApiUrl(`/fundamentals/${encodeURIComponent(ticker)}`, withOptionalMarket({}, market)),
     FUNDAMENTALS_FINANCIALS: (ticker) => `${API_BASE_URL}/fundamentals/financials/${ticker}`,
-    FUNDAMENTALS_FILINGS: (ticker) => `${API_BASE_URL}/fundamentals/filings/${ticker}`,
-    FUNDAMENTALS_SEC_INTELLIGENCE: (ticker) => `${API_BASE_URL}/fundamentals/sec-intelligence/${ticker}`,
+    FUNDAMENTALS_FILINGS: (ticker, market = 'us') =>
+        buildApiUrl(`/fundamentals/filings/${encodeURIComponent(ticker)}`, withOptionalMarket({}, market)),
+    FUNDAMENTALS_SEC_INTELLIGENCE: (ticker, market = 'us') =>
+        buildApiUrl(`/fundamentals/sec-intelligence/${encodeURIComponent(ticker)}`, withOptionalMarket({}, market)),
     FUNDAMENTALS_FILING_DETAIL: (ticker, accessionNumber) =>
         `${API_BASE_URL}/fundamentals/filings/${ticker}/${encodeURIComponent(accessionNumber)}`,
 };
