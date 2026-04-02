@@ -112,6 +112,38 @@ def get_context_handler(
         return jsonify_fn(body), exc.status_code
 
 
+def get_retrieval_status_handler(
+    *,
+    ticker,
+    market,
+    deliverables_ready_fn,
+    not_configured_response_fn,
+    ensure_storage_ready_fn,
+    session_scope,
+    database_url,
+    get_retrieval_status_fn,
+    get_current_user_id_fn,
+    error_cls,
+    jsonify_fn,
+):
+    if not deliverables_ready_fn():
+        return not_configured_response_fn()
+
+    ensure_storage_ready_fn()
+    try:
+        with session_scope(database_url) as session:
+            payload = get_retrieval_status_fn(
+                session,
+                get_current_user_id_fn(),
+                ticker,
+                market=market,
+            )
+        return jsonify_fn(payload)
+    except error_cls as exc:
+        body = {"error": str(exc), **exc.payload}
+        return jsonify_fn(body), exc.status_code
+
+
 def post_chat_handler(
     *,
     payload,

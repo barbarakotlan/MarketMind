@@ -78,6 +78,7 @@ class AuthIsolationTests(unittest.TestCase):
             ("get", "/marketmind-ai/chats", None),
             ("get", "/marketmind-ai/chats/some-id", None),
             ("get", "/marketmind-ai/context?ticker=AAPL", None),
+            ("get", "/marketmind-ai/retrieval-status?ticker=AAPL", None),
             ("post", "/marketmind-ai/chat", {"messages": [{"role": "user", "content": "hello world from user"}]}),
             ("post", "/marketmind-ai/artifacts/preflight", {"templateKey": "investment_thesis_memo", "messages": []}),
             ("get", "/marketmind-ai/artifacts", None),

@@ -156,6 +156,71 @@ const ContextCard = ({ label, value, caption }) => (
     </div>
 );
 
+const EvidencePanel = ({ title = 'Retrieved evidence', items = [], status = null }) => {
+    const hasItems = Array.isArray(items) && items.length > 0;
+    const unavailable = status && status.enabled && !status.available;
+    const empty = status && status.available && !hasItems && status.reason === 'no_relevant_documents';
+
+    if (!hasItems && !unavailable && !empty) {
+        return null;
+    }
+
+    return (
+        <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex items-center justify-between gap-3">
+                <div>
+                    <SectionLabel>{title}</SectionLabel>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                        {hasItems
+                            ? 'MarketMindAI used stored research evidence alongside the live ticker context.'
+                            : unavailable
+                            ? 'Research retrieval is temporarily unavailable, so MarketMindAI answered from the live context only.'
+                            : 'No stored research evidence matched this request yet, so MarketMindAI answered from the live context only.'}
+                    </p>
+                </div>
+                {status?.rerankUsed ? (
+                    <span className="inline-flex rounded-full bg-slate-950 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white dark:bg-slate-100 dark:text-slate-950">
+                        reranked
+                    </span>
+                ) : null}
+            </div>
+            {hasItems ? (
+                <div className="mt-4 space-y-3">
+                    {items.map((item, index) => (
+                        <div key={`${item.assetId || item.title || 'evidence'}-${index}`} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                            <div className="flex flex-wrap items-center gap-2">
+                                {item.docType ? (
+                                    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                        {item.docType}
+                                    </span>
+                                ) : null}
+                                {item.ticker ? (
+                                    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                        {item.ticker}
+                                    </span>
+                                ) : null}
+                                {item.source ? <span className="text-xs text-slate-400 dark:text-slate-500">{item.source}</span> : null}
+                            </div>
+                            <p className="mt-3 text-sm font-semibold text-slate-950 dark:text-white">{item.title || 'Untitled evidence'}</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{item.snippet || 'No snippet available.'}</p>
+                            {item.sourceUrl ? (
+                                <a
+                                    href={item.sourceUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="mt-3 inline-flex text-sm font-medium text-sky-700 transition hover:text-sky-600 dark:text-sky-300 dark:hover:text-sky-200"
+                                >
+                                    Open source
+                                </a>
+                            ) : null}
+                        </div>
+                    ))}
+                </div>
+            ) : null}
+        </div>
+    );
+};
+
 const ArtifactPreview = ({ artifact, version }) => {
     if (!artifact || !version) {
         return (
@@ -224,6 +289,8 @@ const MarketMindAIPage = () => {
     const [composerValue, setComposerValue] = useState('');
     const [chatLoading, setChatLoading] = useState(false);
     const [generatingArtifact, setGeneratingArtifact] = useState(false);
+    const [retrievedEvidence, setRetrievedEvidence] = useState([]);
+    const [retrievalStatus, setRetrievalStatus] = useState(null);
     const [preflight, setPreflight] = useState(null);
     const [pageError, setPageError] = useState('');
     const [workspaceNotice, setWorkspaceNotice] = useState(null);
@@ -322,6 +389,8 @@ const MarketMindAIPage = () => {
                 }))
             );
             setComposerValue('');
+            setRetrievedEvidence([]);
+            setRetrievalStatus(null);
             setWorkspaceNotice(null);
             setPreflight(null);
             const nextTicker = payload.chat?.attachedTicker || '';
@@ -385,6 +454,8 @@ const MarketMindAIPage = () => {
                 setComposerValue('');
                 setAttachedTicker('');
                 setContextData(null);
+                setRetrievedEvidence([]);
+                setRetrievalStatus(null);
                 setPreflight(null);
                 setWorkspaceNotice(null);
                 setPageError('');
@@ -425,6 +496,8 @@ const MarketMindAIPage = () => {
         setComposerValue('');
         setAttachedTicker('');
         setContextData(null);
+        setRetrievedEvidence([]);
+        setRetrievalStatus(null);
         setPreflight(null);
         setWorkspaceNotice(null);
         setPageError('');
@@ -501,6 +574,8 @@ const MarketMindAIPage = () => {
         setWorkspaceNotice(null);
         setPageError('');
         setPreflight(null);
+        setRetrievedEvidence([]);
+        setRetrievalStatus(null);
 
         try {
             const payload = await apiRequest(API_ENDPOINTS.MARKETMIND_AI_CHAT, {
@@ -523,6 +598,8 @@ const MarketMindAIPage = () => {
                 setActiveChatId(payload.chat.id);
                 announceHistoryUpdated();
             }
+            setRetrievedEvidence(payload.retrievedEvidence || []);
+            setRetrievalStatus(payload.retrievalStatus || null);
 
             const resolution = payload.tickerResolution || {};
             const comparePair = Array.isArray(payload.comparePair) ? payload.comparePair : [];
@@ -772,6 +849,13 @@ const MarketMindAIPage = () => {
                                 </div>
                             ) : null}
 
+                            <div className="mt-4">
+                                <EvidencePanel
+                                    items={retrievedEvidence}
+                                    status={retrievalStatus}
+                                />
+                            </div>
+
                             <div className="mt-5 rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
                                 <div className="flex flex-col gap-3 md:flex-row md:items-end">
                                     <div className="min-w-0 flex-1">
@@ -858,6 +942,15 @@ const MarketMindAIPage = () => {
                             </div>
 
                             <div className="px-5 py-5">
+                                {selectedVersion?.retrievedEvidence?.length || selectedVersion?.retrievalStatus ? (
+                                    <div className="mb-5">
+                                        <EvidencePanel
+                                            title="Memo evidence"
+                                            items={selectedVersion?.retrievedEvidence || []}
+                                            status={selectedVersion?.retrievalStatus || null}
+                                        />
+                                    </div>
+                                ) : null}
                                 {artifactLoading ? (
                                     <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
                                         Loading artifact...

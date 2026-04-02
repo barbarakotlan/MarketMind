@@ -27,6 +27,7 @@ from openrouter_client import (
     create_structured_completion,
 )
 import exchange_session_service
+import research_retrieval_service
 import sec_filings_service
 from user_state_store import (
     Deliverable,
@@ -390,12 +391,15 @@ def _artifact_summary(row: Deliverable, latest_version: Optional[int] = None) ->
 
 
 def _artifact_version_payload(row: DeliverableMemo) -> Dict[str, Any]:
+    context_snapshot = dict(row.context_snapshot_json or {})
     return {
         "id": str(row.id),
         "version": row.version,
         "modelSlug": row.model_slug,
         "generationStatus": row.generation_status,
         "structuredContent": dict(row.structured_content_json or {}),
+        "retrievedEvidence": list(context_snapshot.get("retrievedEvidence") or []),
+        "retrievalStatus": dict(context_snapshot.get("retrievalStatus") or {}),
         "mimeType": row.mime_type,
         "hasArtifact": bool(row.docx_blob),
         "createdAt": _serialize_timestamp(row.created_at),
@@ -507,6 +511,60 @@ def _compact_context_summary(context: Optional[Dict[str, Any]]) -> Optional[Dict
         ),
         "newsCount": len(context.get("recentNews") or []),
     }
+
+
+def _condense_retrieved_evidence(retrieved_evidence: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    condensed: List[Dict[str, Any]] = []
+    for item in retrieved_evidence or []:
+        condensed.append(
+            {
+                "ticker": item.get("ticker"),
+                "docType": item.get("docType"),
+                "title": item.get("title"),
+                "snippet": item.get("snippet"),
+                "source": item.get("source"),
+                "sourceUrl": item.get("sourceUrl"),
+                "assetId": item.get("assetId"),
+                "score": item.get("score"),
+                "rank": item.get("rank"),
+            }
+        )
+    return condensed
+
+
+def _retrieval_evidence_by_ticker(retrieved_evidence: Optional[List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for item in _condense_retrieved_evidence(retrieved_evidence):
+        ticker = str(item.get("ticker") or item.get("assetId") or "UNKNOWN")
+        grouped.setdefault(ticker, []).append(item)
+    return grouped
+
+
+def _retrieval_query_text(latest_user_message: str, context: Optional[Dict[str, Any]]) -> str:
+    parts = [str(latest_user_message or "").strip()]
+    if context:
+        ticker = context.get("ticker")
+        company_name = (context.get("fundamentalsSummary") or {}).get("companyName") or context.get("assetName")
+        if ticker:
+            parts.append(f"Ticker: {ticker}")
+        if company_name:
+            parts.append(f"Company: {company_name}")
+    return "\n".join(part for part in parts if part)
+
+
+def _retrieval_query_text_for_compare(latest_user_message: str, contexts: List[Dict[str, Any]]) -> str:
+    parts = [str(latest_user_message or "").strip()]
+    compare_labels = []
+    for context in contexts:
+        ticker = context.get("ticker")
+        company_name = (context.get("fundamentalsSummary") or {}).get("companyName") or context.get("assetName")
+        if ticker and company_name:
+            compare_labels.append(f"{ticker} ({company_name})")
+        elif ticker:
+            compare_labels.append(str(ticker))
+    if compare_labels:
+        parts.append("Compare pair: " + " vs ".join(compare_labels))
+    return "\n".join(part for part in parts if part)
 
 
 CONTEXT_DENIAL_PATTERNS = (
@@ -704,8 +762,10 @@ def _build_compare_chat_messages(
     compare_pair: List[str],
     compare_contexts: List[Dict[str, Any]],
     mode: Optional[str],
+    retrieved_evidence: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, str]]:
     assembled = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+    evidence_json = json.dumps(_retrieval_evidence_by_ticker(retrieved_evidence), indent=2)
     assembled.append(
         {
             "role": "system",
@@ -716,6 +776,11 @@ def _build_compare_chat_messages(
                 f"Mode: {str(mode or 'general').strip().lower()}\n"
                 f"Compare pair: {compare_pair[0]} vs {compare_pair[1]}\n"
                 f"Contexts JSON:\n{json.dumps(compare_contexts, indent=2)}"
+                + (
+                    f"\nRetrieved evidence grouped by ticker:\n{evidence_json}"
+                    if retrieved_evidence
+                    else ""
+                )
             ),
         }
     )
@@ -902,6 +967,7 @@ def _build_chat_messages(
     context: Optional[Dict[str, Any]],
     mode: Optional[str],
     ticker_resolution: Optional[Dict[str, Optional[str]]] = None,
+    retrieved_evidence: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, str]]:
     assembled = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
     mode_label = str(mode or "general").strip().lower()
@@ -918,6 +984,7 @@ def _build_chat_messages(
             }
         )
     elif attached_ticker:
+        evidence_json = json.dumps(_condense_retrieved_evidence(retrieved_evidence), indent=2)
         assembled.append(
             {
                 "role": "system",
@@ -926,6 +993,11 @@ def _build_chat_messages(
                     f"Mode: {mode_label}\n"
                     f"Ticker: {attached_ticker}\n"
                     f"Context JSON:\n{json.dumps(context or {}, indent=2)}"
+                    + (
+                        f"\nRetrieved evidence JSON:\n{evidence_json}"
+                        if retrieved_evidence
+                        else ""
+                    )
                 ),
             }
         )
@@ -949,6 +1021,7 @@ def _build_artifact_prompt_payload(
     artifact_title: str,
     messages: List[Dict[str, str]],
     context: Dict[str, Any],
+    retrieved_evidence: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     transcript = [
         {"role": message["role"], "content": message["content"]}
@@ -966,6 +1039,7 @@ def _build_artifact_prompt_payload(
         ],
         "conversationTranscript": transcript,
         "marketMindContext": context,
+        "retrievedEvidence": _condense_retrieved_evidence(retrieved_evidence),
     }
 
 
@@ -1308,6 +1382,21 @@ def build_marketmind_ai_context(
     return base_context
 
 
+def get_marketmind_ai_retrieval_status(
+    session: Session,
+    clerk_user_id: str,
+    ticker: str,
+    *,
+    market: Optional[str] = None,
+) -> Dict[str, Any]:
+    context = build_marketmind_ai_context(session, clerk_user_id, ticker, market=market)
+    return research_retrieval_service.get_status_for_context(
+        session,
+        clerk_user_id,
+        context=context,
+    )
+
+
 def generate_marketmind_ai_reply(
     session: Session,
     clerk_user_id: str,
@@ -1337,7 +1426,19 @@ def generate_marketmind_ai_reply(
             build_marketmind_ai_context(session, clerk_user_id, compare_pair[0]),
             build_marketmind_ai_context(session, clerk_user_id, compare_pair[1]),
         ]
-        ai_messages = _build_compare_chat_messages(normalized_messages, compare_pair, compare_contexts, mode)
+        retrieval_payload = research_retrieval_service.retrieve_for_compare(
+            session,
+            clerk_user_id,
+            query_text=_retrieval_query_text_for_compare(latest_user_message, compare_contexts),
+            contexts=compare_contexts,
+        )
+        ai_messages = _build_compare_chat_messages(
+            normalized_messages,
+            compare_pair,
+            compare_contexts,
+            mode,
+            retrieved_evidence=retrieval_payload.get("retrievedEvidence"),
+        )
         completion = create_chat_completion(messages=ai_messages, model=DEFAULT_OPENROUTER_MODEL)
         completion = _ensure_grounded_compare_completion(
             ai_messages=ai_messages,
@@ -1363,6 +1464,8 @@ def generate_marketmind_ai_reply(
             "contextSummary": None,
             "comparePair": compare_pair,
             "compareContextSummary": [_compact_context_summary(context) for context in compare_contexts],
+            "retrievedEvidence": retrieval_payload.get("retrievedEvidence") or [],
+            "retrievalStatus": retrieval_payload.get("retrievalStatus") or {},
             "suggestedActions": [],
             "artifactIntent": None,
             "tickerResolution": {
@@ -1375,7 +1478,24 @@ def generate_marketmind_ai_reply(
     ticker_resolution = _resolve_latest_ticker(latest_user_message, previous_ticker)
     ticker = _normalize_ticker(ticker_resolution.get("resolvedTicker"))
     context = build_marketmind_ai_context(session, clerk_user_id, ticker) if ticker else None
-    ai_messages = _build_chat_messages(normalized_messages, ticker, context, mode, ticker_resolution=ticker_resolution)
+    retrieval_payload = (
+        research_retrieval_service.retrieve_for_context(
+            session,
+            clerk_user_id,
+            query_text=_retrieval_query_text(latest_user_message, context),
+            context=context,
+        )
+        if ticker and context
+        else {"retrievedEvidence": [], "retrievalStatus": {}}
+    )
+    ai_messages = _build_chat_messages(
+        normalized_messages,
+        ticker,
+        context,
+        mode,
+        ticker_resolution=ticker_resolution,
+        retrieved_evidence=retrieval_payload.get("retrievedEvidence"),
+    )
     completion = create_chat_completion(messages=ai_messages, model=DEFAULT_OPENROUTER_MODEL)
     completion = _ensure_grounded_completion(
         ai_messages=ai_messages,
@@ -1399,6 +1519,8 @@ def generate_marketmind_ai_reply(
         "assistantMessage": assistant_message,
         "chat": chat_summary,
         "contextSummary": _compact_context_summary(context),
+        "retrievedEvidence": retrieval_payload.get("retrievedEvidence") or [],
+        "retrievalStatus": retrieval_payload.get("retrievalStatus") or {},
         "suggestedActions": [] if artifact_intent and artifact_intent.get("autoGenerate") else _infer_suggested_actions(normalized_messages, ticker),
         "artifactIntent": artifact_intent,
         "tickerResolution": ticker_resolution,
@@ -1531,6 +1653,18 @@ def generate_marketmind_ai_artifact(
         )
 
     context = build_marketmind_ai_context(session, clerk_user_id, attached_ticker)
+    latest_user_message = _meaningful_user_messages(normalized_messages)[-1]["content"] if _meaningful_user_messages(normalized_messages) else attached_ticker
+    retrieval_payload = research_retrieval_service.retrieve_for_context(
+        session,
+        clerk_user_id,
+        query_text=_retrieval_query_text(latest_user_message, context),
+        context=context,
+    )
+    context_with_retrieval = {
+        **context,
+        "retrievedEvidence": retrieval_payload.get("retrievedEvidence") or [],
+        "retrievalStatus": retrieval_payload.get("retrievalStatus") or {},
+    }
     now = utcnow()
     artifact_row: Deliverable
 
@@ -1561,6 +1695,7 @@ def generate_marketmind_ai_artifact(
         artifact_title=artifact_row.title,
         messages=normalized_messages,
         context=context,
+        retrieved_evidence=retrieval_payload.get("retrievedEvidence"),
     )
     prompt_messages = _build_artifact_messages(prompt_payload)
 
@@ -1587,7 +1722,7 @@ def generate_marketmind_ai_artifact(
             model_slug=ai_result["model"],
             generation_status="completed",
             prompt_snapshot_json={"messages": prompt_messages, "sourceMessages": normalized_messages},
-            context_snapshot_json=context,
+            context_snapshot_json=context_with_retrieval,
             structured_content_json=structured_content,
             docx_blob=artifact_bytes,
             mime_type=DOCX_MIME_TYPE,
@@ -1597,6 +1732,15 @@ def generate_marketmind_ai_artifact(
         session.add(version)
         artifact_row.updated_at = utcnow()
         session.flush()
+        try:
+            research_retrieval_service.index_memo_version(
+                clerk_user_id=clerk_user_id,
+                ticker=attached_ticker,
+                context_snapshot=context_with_retrieval,
+                memo_row=version,
+            )
+        except Exception:
+            pass
         chat_summary = None
         if chat_id:
             chat_summary = save_marketmind_ai_chat_state(
@@ -1619,7 +1763,7 @@ def generate_marketmind_ai_artifact(
             model_slug=DEFAULT_OPENROUTER_MODEL,
             generation_status="failed",
             prompt_snapshot_json={"messages": prompt_messages, "sourceMessages": normalized_messages},
-            context_snapshot_json=context,
+            context_snapshot_json=context_with_retrieval,
             structured_content_json={},
             docx_blob=None,
             mime_type=None,

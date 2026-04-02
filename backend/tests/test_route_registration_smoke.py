@@ -20,6 +20,7 @@ class RouteRegistrationSmokeTests(unittest.TestCase):
             "/marketmind-ai/chats": {"GET"},
             "/marketmind-ai/chats/<string:chat_id>": {"GET", "DELETE"},
             "/marketmind-ai/context": {"GET"},
+            "/marketmind-ai/retrieval-status": {"GET"},
             "/marketmind-ai/chat": {"POST"},
             "/marketmind-ai/artifacts/preflight": {"POST"},
             "/marketmind-ai/artifacts": {"GET", "POST"},

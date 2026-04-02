@@ -96,6 +96,8 @@ export const API_ENDPOINTS = {
     MARKETMIND_AI_CHAT_DELETE: (chatId) => `${API_BASE_URL}/marketmind-ai/chats/${chatId}`,
     MARKETMIND_AI_CONTEXT: (ticker, market = 'us') =>
         buildApiUrl('/marketmind-ai/context', withOptionalMarket({ ticker }, market)),
+    MARKETMIND_AI_RETRIEVAL_STATUS: (ticker, market = 'us') =>
+        buildApiUrl('/marketmind-ai/retrieval-status', withOptionalMarket({ ticker }, market)),
     MARKETMIND_AI_CHAT: `${API_BASE_URL}/marketmind-ai/chat`,
     MARKETMIND_AI_ARTIFACT_PREFLIGHT: `${API_BASE_URL}/marketmind-ai/artifacts/preflight`,
     MARKETMIND_AI_ARTIFACTS: `${API_BASE_URL}/marketmind-ai/artifacts`,
