@@ -94,6 +94,7 @@ def stock_handler(
     clean_value_fn,
     resolve_asset_fn,
     akshare_service_module,
+    exchange_session_service_module,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -108,6 +109,7 @@ def stock_handler(
                 clean_value_fn=clean_value_fn,
                 resolve_asset_fn=resolve_asset_fn,
                 akshare_service_module=akshare_service_module,
+                exchange_session_service_module=exchange_session_service_module,
             )
         )
         if status_code == 404:
@@ -150,6 +152,7 @@ def stock_handler_v2(
     clean_value_fn,
     resolve_asset_fn,
     akshare_service_module,
+    exchange_session_service_module,
 ):
     def producer():
         asset = _public_asset_identity(ticker=ticker, request_obj=request_obj, resolve_asset_fn=resolve_asset_fn)
@@ -165,6 +168,7 @@ def stock_handler_v2(
                 clean_value_fn=clean_value_fn,
                 resolve_asset_fn=resolve_asset_fn,
                 akshare_service_module=akshare_service_module,
+                exchange_session_service_module=exchange_session_service_module,
             )
         )
         if status_code == 404:
@@ -499,6 +503,7 @@ def fundamentals_handler(
     fundamentals_from_yfinance_fn,
     resolve_asset_fn,
     akshare_service_module,
+    exchange_session_service_module,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -513,13 +518,16 @@ def fundamentals_handler(
                 fundamentals_from_yfinance_fn=fundamentals_from_yfinance_fn,
                 resolve_asset_fn=resolve_asset_fn,
                 akshare_service_module=akshare_service_module,
+                exchange_session_service_module=exchange_session_service_module,
             )
         )
         if status_code == 404:
             raise PublicApiError(404, "invalid_ticker", f"Ticker '{ticker}' is invalid or unavailable.")
         if status_code >= 500:
             raise PublicApiError(503, "upstream_unavailable", "Fundamental data is temporarily unavailable.")
-        return (dict(raw_payload or {}), 200)
+        payload = dict(raw_payload or {})
+        payload.pop("marketSession", None)
+        return (payload, 200)
 
     return _cached_json_payload(
         cache_backend=cache_backend,
@@ -544,6 +552,7 @@ def fundamentals_handler_v2(
     fundamentals_from_yfinance_fn,
     resolve_asset_fn,
     akshare_service_module,
+    exchange_session_service_module,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -558,13 +567,16 @@ def fundamentals_handler_v2(
                 fundamentals_from_yfinance_fn=fundamentals_from_yfinance_fn,
                 resolve_asset_fn=resolve_asset_fn,
                 akshare_service_module=akshare_service_module,
+                exchange_session_service_module=exchange_session_service_module,
             )
         )
         if status_code == 404:
             raise PublicApiError(404, "invalid_ticker", f"Ticker '{ticker}' is invalid or unavailable.")
         if status_code >= 500:
             raise PublicApiError(503, "upstream_unavailable", "Fundamental data is temporarily unavailable.")
-        return (dict(raw_payload or {}), 200)
+        payload = dict(raw_payload or {})
+        payload.pop("marketSession", None)
+        return (payload, 200)
 
     return _cached_json_payload(
         cache_backend=cache_backend,

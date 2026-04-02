@@ -87,4 +87,13 @@ describe('API_ENDPOINTS', () => {
             `${API_BASE_URL}/macro/overview?region=asia`
         );
     });
+
+    test('builds market sessions calendar URLs with market and day count', () => {
+        expect(API_ENDPOINTS.MARKET_SESSIONS_CALENDAR()).toBe(
+            `${API_BASE_URL}/calendar/market-sessions?market=us&days=14`
+        );
+        expect(API_ENDPOINTS.MARKET_SESSIONS_CALENDAR('hk', 7)).toBe(
+            `${API_BASE_URL}/calendar/market-sessions?market=hk&days=7`
+        );
+    });
 });

@@ -1,5 +1,11 @@
 import React from 'react';
 import { TrendingUpIcon, TrendingDownIcon } from '../Icons';
+import {
+    getMarketSessionLabel,
+    getMarketSessionSummary,
+    getMarketSessionToneClasses,
+    getTimezoneLabel,
+} from './marketSessionUtils';
 
 // --- Helper to safely format numbers to 2 decimal places ---
 const formatNum = (num, isPercent = false) => {
@@ -28,6 +34,7 @@ const StockDataCard = ({ data, onAddToWatchlist, canAddToWatchlist = true }) => 
     
     const isPositive = (data.change || 0) >= 0;
     const changeColor = isPositive ? 'text-mm-positive' : 'text-mm-negative';
+    const marketSession = data.marketSession;
 
     const DataRow = ({ label, value }) => (
         <div className="flex justify-between border-b border-mm-border py-3 last:border-b-0">
@@ -49,6 +56,20 @@ const StockDataCard = ({ data, onAddToWatchlist, canAddToWatchlist = true }) => 
                         {data.exchange ? <span>{data.exchange}</span> : null}
                         {data.currency ? <span>• {data.currency}</span> : null}
                     </div>
+                    {marketSession ? (
+                        <div className="mt-3">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-mm-text-secondary">
+                                <span className={`rounded-pill border px-2.5 py-1 font-semibold uppercase tracking-[0.12em] ${getMarketSessionToneClasses(marketSession)}`}>
+                                    {getMarketSessionLabel(marketSession)}
+                                </span>
+                                <span>{marketSession.exchange || data.exchange}</span>
+                                {marketSession.timezone ? <span>• {getTimezoneLabel(marketSession.timezone)}</span> : null}
+                            </div>
+                            <p className="mt-2 text-sm text-mm-text-secondary">
+                                {getMarketSessionSummary(marketSession)}
+                            </p>
+                        </div>
+                    ) : null}
                     <p className="mt-2 text-3xl font-bold text-mm-text-primary">{pricePrefix}{formatNum(data.price)}</p>
                 </div>
                 <div className="text-right">

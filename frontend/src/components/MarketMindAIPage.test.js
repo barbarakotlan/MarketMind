@@ -93,6 +93,13 @@ describe('MarketMindAIPage', () => {
                     ticker: 'NVDA',
                     watchlistMembership: true,
                     activeAlerts: [],
+                    marketSession: {
+                        status: 'open',
+                        exchange: 'NASDAQ',
+                        timezone: 'America/New_York',
+                        closesAt: '2026-04-02T16:00:00-04:00',
+                        reason: 'regular_hours',
+                    },
                     predictionSnapshot: {
                         recentClose: 890,
                         recentPredicted: 905,
@@ -199,6 +206,8 @@ describe('MarketMindAIPage', () => {
         expect((await screen.findAllByText(/Here is a grounded reply/i)).length).toBeGreaterThan(0);
         expect(await screen.findByText(/Valuation/i)).toBeInTheDocument();
         expect((await screen.findAllByText(/Summarize the current setup for NVDA using predictions, news, and fundamentals\./i)).length).toBeGreaterThan(0);
+        expect(await screen.findByText('Market session')).toBeInTheDocument();
+        expect(screen.getByText('Open')).toBeInTheDocument();
 
         await waitFor(() => {
             expect(apiRequest).toHaveBeenCalledWith(

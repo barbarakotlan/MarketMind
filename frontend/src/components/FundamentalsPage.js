@@ -14,6 +14,12 @@ import {
     Activity,
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import {
+    getMarketSessionLabel,
+    getMarketSessionSummary,
+    getMarketSessionToneClasses,
+    getTimezoneLabel,
+} from './ui/marketSessionUtils';
 
 const US_TABS = [
     { key: 'overview', label: 'Overview' },
@@ -261,6 +267,7 @@ const FundamentalsPage = () => {
     const activeAsset = resolvedAsset || (fundamentals ? normalizeAssetInput(fundamentals.assetId || fundamentals.symbol, fundamentals.market || selectedMarket) : null);
     const internationalResearchMode = activeAsset && !isUsAsset(activeAsset);
     const tabs = internationalResearchMode ? INTERNATIONAL_TABS : US_TABS;
+    const marketSession = fundamentals?.marketSession || null;
 
     const handleSearch = async (e) => {
         e.preventDefault();
@@ -519,6 +526,20 @@ const FundamentalsPage = () => {
                                             <span>•</span>
                                             <span>{fundamentals.currency}</span>
                                         </div>
+                                        {marketSession ? (
+                                            <div className="mt-4 rounded-card border border-mm-border bg-mm-surface-subtle px-4 py-3">
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-mm-text-secondary">
+                                                    <span className={`rounded-pill border px-2.5 py-1 font-semibold uppercase tracking-[0.12em] ${getMarketSessionToneClasses(marketSession)}`}>
+                                                        {getMarketSessionLabel(marketSession)}
+                                                    </span>
+                                                    <span>{marketSession.exchange || fundamentals.exchange}</span>
+                                                    {marketSession.timezone ? <span>• {getTimezoneLabel(marketSession.timezone)}</span> : null}
+                                                </div>
+                                                <p className="mt-2 text-sm text-mm-text-secondary">
+                                                    {getMarketSessionSummary(marketSession)}
+                                                </p>
+                                            </div>
+                                        ) : null}
                                     </div>
                                     <div className="text-left lg:text-right">
                                         <p className="ui-section-label mb-2">Sector</p>

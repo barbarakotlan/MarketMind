@@ -250,6 +250,8 @@ class MarketMindAiApiTests(unittest.TestCase):
             self.assertEqual(context_payload["market"], "HK")
             self.assertEqual(context_payload["fundamentalsSummary"]["companyName"], "Tencent Holdings")
             self.assertEqual(context_payload["recentNews"][0]["title"], "Tencent announces annual results")
+            self.assertEqual(context_payload["marketSession"]["calendarCode"], "XHKG")
+            self.assertEqual(context_payload["marketSession"]["market"], "HK")
             self.assertNotIn("secFilingsSummary", context_payload)
 
             preflight_response = self.client.post(
@@ -283,6 +285,8 @@ class MarketMindAiApiTests(unittest.TestCase):
         context_payload = context_response.get_json()
         self.assertTrue(context_payload["watchlistMembership"])
         self.assertEqual(context_payload["fundamentalsSummary"]["companyName"], "Apple Inc.")
+        self.assertEqual(context_payload["marketSession"]["calendarCode"], "XNYS")
+        self.assertEqual(context_payload["marketSession"]["market"], "US")
         self.assertEqual(context_payload["secFilingsSummary"]["type"], "10-K")
         self.assertEqual(context_payload["secFilingsSummary"]["sections"][0]["key"], "riskFactors")
         self.assertEqual(context_payload["filingChangeSummary"]["comparisonForm"], "10-K")

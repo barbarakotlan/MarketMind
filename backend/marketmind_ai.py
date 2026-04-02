@@ -26,6 +26,7 @@ from openrouter_client import (
     create_chat_completion,
     create_structured_completion,
 )
+import exchange_session_service
 import sec_filings_service
 from user_state_store import (
     Deliverable,
@@ -1278,10 +1279,19 @@ def build_marketmind_ai_context(
         base_context["recentNews"] = international_context.get("recentNews") or []
         base_context["fundamentalsSummary"] = international_context.get("fundamentalsSummary") or {}
         base_context["companyResearchSummary"] = international_context.get("companyResearch") or {}
+        base_context["marketSession"] = exchange_session_service.get_market_session(
+            asset["market"],
+            exchange=international_context.get("exchange") or asset["exchange"],
+        )
     else:
         base_context["predictionSnapshot"] = _prediction_snapshot(normalized_ticker)
         base_context["recentNews"] = _recent_news(normalized_ticker)
         base_context["fundamentalsSummary"] = _fundamentals_summary(normalized_ticker)
+        if asset:
+            base_context["marketSession"] = exchange_session_service.get_market_session(
+                asset["market"],
+                exchange=asset["exchange"],
+            )
         try:
             sec_intelligence = sec_filings_service.get_company_sec_intelligence(normalized_ticker)
         except Exception:
