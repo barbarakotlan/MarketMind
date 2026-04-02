@@ -48,6 +48,31 @@ const buildStock = (symbol, companyName) => ({
     financials: {},
 });
 
+const buildInternationalStock = (symbol, companyName, market = 'HK') => ({
+    symbol,
+    assetId: `${market}:${symbol}`,
+    market,
+    exchange: market === 'HK' ? 'HKEX' : 'SSE',
+    currency: market === 'HK' ? 'HKD' : 'CNY',
+    companyName,
+    price: 320,
+    change: 4.8,
+    changePercent: 1.52,
+    marketCap: 'N/A',
+    fundamentals: {
+        overview: `${companyName} international overview`,
+        market,
+        industry: 'Internet Services',
+        week52High: 350,
+        week52Low: 240,
+        day50MovingAverage: 310,
+        day200MovingAverage: 290,
+    },
+    financials: {},
+    relatedNews: buildNews(`${companyName} announcement`),
+    readOnlyResearchOnly: true,
+});
+
 const buildNews = (title) => ([
     {
         title,
@@ -203,7 +228,7 @@ describe('SearchPage', () => {
 
         render(<SearchPage />);
 
-        fireEvent.change(screen.getByPlaceholderText('e.g., AAPL or Apple'), { target: { value: 'nv' } });
+        fireEvent.change(screen.getByPlaceholderText('e.g., AAPL, HK:00700, CN:600519'), { target: { value: 'nv' } });
         fireEvent.mouseDown(await screen.findByText('NVDA'));
 
         expect(await screen.findByTestId('stock-data')).toHaveTextContent('NVIDIA (NVDA)');
@@ -290,7 +315,7 @@ describe('SearchPage', () => {
 
         render(<SearchPage />);
 
-        fireEvent.change(screen.getByPlaceholderText('e.g., AAPL or Apple'), { target: { value: 'NVDA' } });
+        fireEvent.change(screen.getByPlaceholderText('e.g., AAPL, HK:00700, CN:600519'), { target: { value: 'NVDA' } });
         fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
         expect(await screen.findByTestId('stock-data')).toHaveTextContent('NVIDIA (NVDA)');
@@ -301,5 +326,35 @@ describe('SearchPage', () => {
         expect(await screen.findByText(/NVDA vs AMD/i)).toBeInTheDocument();
         expect(await screen.findByText(/Advanced Micro Devices/i)).toBeInTheDocument();
         expect(screen.getByTestId('stock-chart')).toHaveTextContent('AMD');
+    });
+
+    test('supports HK international search without triggering US-only prediction or comparison flows', async () => {
+        apiRequest.mockImplementation((url) => {
+            switch (url) {
+                case API_ENDPOINTS.SCREENER():
+                    return Promise.resolve({ gainers: [], losers: [], active: [] });
+                case API_ENDPOINTS.SEARCH_SYMBOLS('70', 'all'):
+                    return Promise.resolve([{ symbol: '00700', market: 'HK', assetId: 'HK:00700', name: 'Tencent Holdings', exchange: 'HKEX' }]);
+                case API_ENDPOINTS.STOCK('00700', 'HK'):
+                    return Promise.resolve(buildInternationalStock('00700', 'Tencent Holdings', 'HK'));
+                case API_ENDPOINTS.CHART('00700', '14d', 'HK'):
+                    return Promise.resolve({ label: 'Tencent chart' });
+                default:
+                    throw new Error(`Unhandled API request: ${url}`);
+            }
+        });
+
+        render(<SearchPage />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'All' }));
+        fireEvent.change(screen.getByPlaceholderText('e.g., AAPL, HK:00700, CN:600519'), { target: { value: '70' } });
+        fireEvent.mouseDown(await screen.findByText('Tencent Holdings'));
+
+        expect(await screen.findByTestId('stock-data')).toHaveTextContent('Tencent Holdings (00700)');
+        expect(screen.getByTestId('stock-chart')).toHaveTextContent('Tencent chart');
+        expect(await screen.findByText(/International research mode is read-only/i)).toBeInTheDocument();
+        expect(await screen.findByText('Tencent Holdings announcement')).toBeInTheDocument();
+        expect(screen.queryByTestId('prediction-preview')).not.toBeInTheDocument();
+        expect(apiRequest).not.toHaveBeenCalledWith(expect.stringContaining('/predict/ensemble/00700'));
     });
 });

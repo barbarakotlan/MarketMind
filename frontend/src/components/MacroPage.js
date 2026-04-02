@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Minus, Globe, RefreshCw, Calendar, Clock, Mic } from 'lucide-react';
 import { Sparklines, SparklinesLine, SparklinesReferenceLine } from 'react-sparklines';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
@@ -8,13 +8,39 @@ const INDICATOR_META = {
     CPI: { desc: 'Broad consumer price level. Rising = inflation pressure.', invert: false },
     IP: { desc: 'Factory & utility output index. Rising = economic expansion.', invert: false },
     TNX: { desc: '10-year U.S. government bond yield. Benchmark for borrowing costs.', invert: false },
+    CN_CPI: { desc: 'Mainland China consumer inflation on a year-over-year basis.', invert: false },
+    CN_GDP: { desc: 'Mainland China annual GDP growth rate.', invert: false },
+    CN_PMI: { desc: 'Official manufacturing PMI. Readings above 50 imply expansion.', invert: false },
+    HK_CPI: { desc: 'Hong Kong annual inflation rate.', invert: false },
+    HK_URATE: { desc: 'Hong Kong labor-market slack. Lower is healthier.', invert: true },
 };
+
+const REGION_OPTIONS = [
+    { value: 'us', label: 'United States' },
+    { value: 'asia', label: 'Asia' },
+];
 
 const fmt = (val, unit) => {
     if (val === null || val === undefined) return '—';
     if (unit === '%') return `${val.toFixed(2)}%`;
     if (unit === 'Index') return val.toFixed(2);
     return val.toFixed(3);
+};
+
+const fmtSignalValue = (signal) => {
+    const value = signal?.value;
+    if (value === null || value === undefined) return '—';
+    if (signal?.category === 'FX') return value.toFixed(4);
+    return value.toLocaleString('en-US', {
+        minimumFractionDigits: value < 10 ? 2 : 0,
+        maximumFractionDigits: 2,
+    });
+};
+
+const fmtSignalChange = (signal) => {
+    const changePercent = signal?.changePercent;
+    if (changePercent === null || changePercent === undefined) return '—';
+    return `${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
 };
 
 const formatEventDate = (dateString) => {
@@ -49,17 +75,18 @@ const TrendIcon = ({ value, prev, invert }) => {
 
 const IndicatorCard = ({ ind }) => {
     const meta = INDICATOR_META[ind.symbol] || {};
+    const invert = ind.invert ?? meta.invert;
     const sparkValues = (ind.sparkline || []).map((d) => d.value);
     const trend = ind.value !== null && ind.prev !== null ? ind.value - ind.prev : 0;
     const trendColor = (() => {
         if (Math.abs(trend) < 0.001) return 'text-mm-text-secondary';
         const up = trend > 0;
-        return meta.invert ? (up ? 'text-mm-negative' : 'text-mm-positive') : (up ? 'text-mm-positive' : 'text-mm-negative');
+        return invert ? (up ? 'text-mm-negative' : 'text-mm-positive') : (up ? 'text-mm-positive' : 'text-mm-negative');
     })();
     const sparkColor = (() => {
         if (sparkValues.length < 2) return '#64748b';
         const up = sparkValues[sparkValues.length - 1] > sparkValues[sparkValues.length - 2];
-        return meta.invert ? (up ? '#ef4444' : '#16a34a') : (up ? '#16a34a' : '#ef4444');
+        return invert ? (up ? '#ef4444' : '#16a34a') : (up ? '#16a34a' : '#ef4444');
     })();
 
     return (
@@ -69,7 +96,7 @@ const IndicatorCard = ({ ind }) => {
                     <p className="ui-section-label mb-1">{ind.symbol}</p>
                     <p className="text-base font-semibold text-mm-text-primary">{ind.name}</p>
                 </div>
-                <TrendIcon value={ind.value} prev={ind.prev} invert={meta.invert} />
+                <TrendIcon value={ind.value} prev={ind.prev} invert={invert} />
             </div>
 
             <div className="flex items-end justify-between gap-4">
@@ -94,11 +121,53 @@ const IndicatorCard = ({ ind }) => {
                 )}
             </div>
 
-            {meta.desc && (
+            {(ind.description || meta.desc) && (
                 <p className="mt-3 border-t border-mm-border pt-3 text-xs leading-relaxed text-mm-text-secondary">
-                    {meta.desc}
+                    {ind.description || meta.desc}
                 </p>
             )}
+        </div>
+    );
+};
+
+const MarketSignalsPanel = ({ signals }) => {
+    if (!signals.length) return null;
+
+    return (
+        <div className="ui-panel p-5">
+            <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                    <h2 className="text-sm font-semibold text-mm-text-primary">Asia Market Signals</h2>
+                    <p className="mt-1 text-xs text-mm-text-secondary">
+                        Selected FX and commodity pulse points alongside the macro indicators.
+                    </p>
+                </div>
+                <p className="text-xs text-mm-text-tertiary">Data via Akshare</p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {signals.map((signal) => {
+                    const positive = (signal.changePercent || 0) >= 0;
+                    return (
+                        <div key={signal.symbol} className="rounded-control border border-mm-border bg-mm-surface-subtle p-4">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-mm-accent-primary">
+                                        {signal.category}
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-mm-text-primary">{signal.name}</p>
+                                </div>
+                                <span className={`text-xs font-semibold ${positive ? 'text-mm-positive' : 'text-mm-negative'}`}>
+                                    {fmtSignalChange(signal)}
+                                </span>
+                            </div>
+                            <p className="mt-4 text-2xl font-semibold text-mm-text-primary">{fmtSignalValue(signal)}</p>
+                            <p className="mt-2 text-xs text-mm-text-tertiary">
+                                {signal.date || 'Latest session'} · {signal.symbol}
+                            </p>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 };
@@ -231,34 +300,51 @@ const UpcomingEventsPanel = ({ events, error }) => {
 };
 
 const MacroPage = () => {
+    const [region, setRegion] = useState('us');
     const [indicators, setIndicators] = useState([]);
+    const [marketSignals, setMarketSignals] = useState([]);
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [eventsError, setEventsError] = useState('');
     const [expanded, setExpanded] = useState(null);
+    const [regionSummary, setRegionSummary] = useState(null);
 
-    const load = () => {
+    const load = useCallback(() => {
         setLoading(true);
         setError('');
         setEventsError('');
-        apiRequest(API_ENDPOINTS.MACRO_OVERVIEW)
+        apiRequest(API_ENDPOINTS.MACRO_OVERVIEW(region))
             .then((macroPayload) => {
                 if (macroPayload?.error) {
                     throw new Error(macroPayload.error);
                 }
 
-                const nextIndicators = Array.isArray(macroPayload) ? macroPayload : [];
+                const nextIndicators = Array.isArray(macroPayload)
+                    ? macroPayload
+                    : Array.isArray(macroPayload?.indicators)
+                        ? macroPayload.indicators
+                        : [];
                 setIndicators(nextIndicators);
+                setMarketSignals(Array.isArray(macroPayload?.marketSignals) ? macroPayload.marketSignals : []);
+                setRegionSummary(Array.isArray(macroPayload) ? null : macroPayload);
                 setExpanded((current) => nextIndicators.some((ind) => ind.symbol === current) ? current : null);
             })
             .catch((e) => {
                 setIndicators([]);
+                setMarketSignals([]);
+                setRegionSummary(null);
                 setError(e.message || 'Failed to fetch macro data.');
             })
             .finally(() => {
                 setLoading(false);
             });
+
+        if (region !== 'us') {
+            setEvents([]);
+            setEventsError('');
+            return;
+        }
 
         apiRequest(API_ENDPOINTS.ECONOMIC_CALENDAR)
             .then((calendarPayload) => {
@@ -273,11 +359,11 @@ const MacroPage = () => {
                 setEvents([]);
                 setEventsError('Economic calendar is temporarily unavailable.');
             });
-    };
+    }, [region]);
 
     useEffect(() => {
         load();
-    }, []);
+    }, [load]);
 
     return (
         <div className="ui-page animate-fade-in space-y-8">
@@ -287,7 +373,25 @@ const MacroPage = () => {
                         <Globe className="h-6 w-6 text-mm-accent-primary" />
                         Macro Dashboard
                     </h1>
-                    <p className="ui-page-subtitle">Key U.S. economic indicators updated on a monthly cadence.</p>
+                    <p className="ui-page-subtitle">
+                        {region === 'asia'
+                            ? 'China and Hong Kong macro indicators with selected FX and commodity signals.'
+                            : 'Key U.S. economic indicators updated on a monthly cadence.'}
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                        {REGION_OPTIONS.map((option) => (
+                            <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => setRegion(option.value)}
+                                className={region === option.value
+                                    ? 'rounded-control bg-mm-accent-primary px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-white shadow-card'
+                                    : 'rounded-control border border-mm-border bg-mm-surface px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-mm-text-secondary transition hover:bg-mm-surface-subtle hover:text-mm-text-primary'}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
                 <button onClick={load} disabled={loading} className="ui-button-secondary gap-2">
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -308,7 +412,25 @@ const MacroPage = () => {
 
             {!loading && !error && (
                 <>
-                    <UpcomingEventsPanel events={events} error={eventsError} />
+                    {region === 'us' ? (
+                        <UpcomingEventsPanel events={events} error={eventsError} />
+                    ) : (
+                        <div className="ui-panel p-5">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <h2 className="text-sm font-semibold text-mm-text-primary">
+                                        {regionSummary?.title || 'Asia Macro Dashboard'}
+                                    </h2>
+                                    <p className="mt-1 text-xs text-mm-text-secondary">
+                                        {regionSummary?.description || 'Read-only Asia macro research lane powered by Akshare.'}
+                                    </p>
+                                </div>
+                                <p className="text-xs text-mm-text-tertiary">{regionSummary?.sourceNote || 'Data via Akshare'}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {region === 'asia' && <MarketSignalsPanel signals={marketSignals} />}
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         {indicators.map((ind) => (
@@ -333,7 +455,9 @@ const MacroPage = () => {
 
                     {!expanded && (
                         <p className="text-center text-xs text-mm-text-tertiary">
-                            Click any card to see 12-month history · Data via FRED and Yahoo Finance
+                            {region === 'asia'
+                                ? 'Click any card to see recent history · Read-only Asia macro lane via Akshare'
+                                : 'Click any card to see 12-month history · Data via FRED and Yahoo Finance'}
                         </p>
                     )}
                 </>

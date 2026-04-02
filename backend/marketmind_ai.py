@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+import akshare_service
+from asset_identity import parse_asset_reference
 from crypto_fetcher import CRYPTO_INFO, get_crypto_exchange_rate
 from deliverables import (
     DEFAULT_TEMPLATE_KEY,
@@ -115,7 +117,7 @@ def _coerce_uuid(value: str, *, field_name: str) -> uuid.UUID:
         raise MarketMindAIError(f"Invalid {field_name}", status_code=400) from exc
 
 
-def _normalize_ticker(ticker: Optional[str]) -> Optional[str]:
+def _normalize_ticker(ticker: Optional[str], *, market: Optional[str] = None) -> Optional[str]:
     raw_value = str(ticker or "").strip()
     if not raw_value:
         return None
@@ -125,7 +127,11 @@ def _normalize_ticker(ticker: Optional[str]) -> Optional[str]:
     normalized = raw_value.upper()
     if normalized in CRYPTO_ALIAS_MAP:
         return CRYPTO_ALIAS_MAP[normalized]
-    return normalized or None
+    try:
+        asset = parse_asset_reference(raw_value, market)
+        return asset["symbol"] if asset["market"] == "US" else asset["assetId"]
+    except Exception:
+        return normalized or None
 
 
 def _collect_unique_candidates(matches) -> List[str]:
@@ -153,6 +159,20 @@ def _extract_explicit_ticker_candidates(text: str) -> List[str]:
         return []
 
     lowered = raw_text.lower()
+
+    international_prefixed = _collect_unique_candidates(
+        match.group(0)
+        for match in re.finditer(r"\b(?:HK|CN):\d{4,6}\b", raw_text, flags=re.IGNORECASE)
+    )
+    if international_prefixed:
+        return international_prefixed
+
+    international_suffixed = _collect_unique_candidates(
+        match.group(0)
+        for match in re.finditer(r"\b\d{4,6}(?:\.(?:HK|SS|SH|SZ))\b", raw_text, flags=re.IGNORECASE)
+    )
+    if international_suffixed:
+        return international_suffixed
 
     direct_crypto_pairs = _collect_unique_candidates(
         match.group(0)
@@ -453,6 +473,8 @@ def _compact_context_summary(context: Optional[Dict[str, Any]]) -> Optional[Dict
     crypto_quote = context.get("cryptoQuote") or {}
     return {
         "ticker": context.get("ticker"),
+        "assetId": context.get("assetId"),
+        "market": context.get("market") or "US",
         "assetType": context.get("assetType") or "equity",
         "watchlistMembership": bool(context.get("watchlistMembership")),
         "activeAlerts": len(context.get("activeAlerts") or []),
@@ -1125,6 +1147,17 @@ def _default_artifact_title(ticker: str) -> str:
     return f"{ticker} Investment Thesis Memo"
 
 
+def _artifact_market_supported(ticker: Optional[str]) -> bool:
+    normalized_ticker = _normalize_ticker(ticker)
+    if not normalized_ticker or _is_crypto_ticker(normalized_ticker):
+        return bool(normalized_ticker)
+    try:
+        asset = parse_asset_reference(normalized_ticker)
+    except Exception:
+        return True
+    return asset.get("market") == "US"
+
+
 def _ensure_ai_configured() -> None:
     if not os.getenv("OPENROUTER_API_KEY", "").strip():
         raise MarketMindAIError("MarketMindAI is not configured yet.", status_code=503)
@@ -1182,10 +1215,23 @@ def _build_crypto_context_payload(normalized_ticker: str) -> Dict[str, Any]:
     }
 
 
-def build_marketmind_ai_context(session: Session, clerk_user_id: str, ticker: str) -> Dict[str, Any]:
-    normalized_ticker = _normalize_ticker(ticker)
+def build_marketmind_ai_context(
+    session: Session,
+    clerk_user_id: str,
+    ticker: str,
+    *,
+    market: Optional[str] = None,
+) -> Dict[str, Any]:
+    normalized_ticker = _normalize_ticker(ticker, market=market)
     if not normalized_ticker:
         raise MarketMindAIError("Ticker is required", status_code=400)
+
+    asset = None
+    if not _is_crypto_ticker(normalized_ticker):
+        try:
+            asset = parse_asset_reference(normalized_ticker, market)
+        except Exception as exc:
+            raise MarketMindAIError("Invalid market-qualified ticker.", status_code=400) from exc
 
     watchlist = load_watchlist(session, clerk_user_id)
     notifications = load_notifications(session, clerk_user_id)
@@ -1204,18 +1250,38 @@ def build_marketmind_ai_context(session: Session, clerk_user_id: str, ticker: st
     current_position = dict((portfolio.get("positions") or {}).get(normalized_ticker) or {})
     base_context = {
         "ticker": normalized_ticker,
+        "assetId": asset["assetId"] if asset else normalized_ticker,
+        "market": asset["market"] if asset else "US",
+        "exchange": asset["exchange"] if asset else None,
         "assetType": "crypto" if _is_crypto_ticker(normalized_ticker) else "equity",
         "watchlistMembership": normalized_ticker in watchlist,
         "activeAlerts": active_alerts,
-        "predictionSnapshot": _prediction_snapshot(normalized_ticker),
-        "recentNews": _recent_news(normalized_ticker),
-        "fundamentalsSummary": _fundamentals_summary(normalized_ticker),
+        "predictionSnapshot": None,
+        "recentNews": [],
+        "fundamentalsSummary": {},
         "paperTradeHistory": paper_trade_history,
         "currentPaperPosition": current_position,
     }
     if _is_crypto_ticker(normalized_ticker):
+        base_context["predictionSnapshot"] = _prediction_snapshot(normalized_ticker)
+        base_context["recentNews"] = _recent_news(normalized_ticker)
+        base_context["fundamentalsSummary"] = _fundamentals_summary(normalized_ticker)
         base_context.update(_build_crypto_context_payload(normalized_ticker))
+    elif asset and asset["market"] in {"HK", "CN"}:
+        try:
+            international_context = akshare_service.get_equity_ai_context(asset["assetId"])
+        except akshare_service.AkshareUnavailableError as exc:
+            raise MarketMindAIError(str(exc), status_code=503) from exc
+        except akshare_service.AkshareAssetNotFoundError as exc:
+            raise MarketMindAIError(str(exc), status_code=404) from exc
+        base_context["assetName"] = international_context.get("assetName")
+        base_context["recentNews"] = international_context.get("recentNews") or []
+        base_context["fundamentalsSummary"] = international_context.get("fundamentalsSummary") or {}
+        base_context["companyResearchSummary"] = international_context.get("companyResearch") or {}
     else:
+        base_context["predictionSnapshot"] = _prediction_snapshot(normalized_ticker)
+        base_context["recentNews"] = _recent_news(normalized_ticker)
+        base_context["fundamentalsSummary"] = _fundamentals_summary(normalized_ticker)
         try:
             sec_intelligence = sec_filings_service.get_company_sec_intelligence(normalized_ticker)
         except Exception:
@@ -1367,6 +1433,14 @@ def create_artifact_preflight(
             {
                 "field": "context",
                 "message": "MarketMind needs enough ticker context to ground the memo.",
+            }
+        )
+
+    if ticker and not _artifact_market_supported(ticker):
+        required_items.append(
+            {
+                "field": "attachedTicker",
+                "message": "International Akshare tickers are available for read-only AI research in phase 1, but memo artifacts remain US-only for now.",
             }
         )
 

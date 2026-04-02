@@ -15,11 +15,50 @@ import {
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
-const TABS = [
+const US_TABS = [
     { key: 'overview', label: 'Overview' },
     { key: 'financials', label: 'Financials' },
     { key: 'filings', label: 'SEC Filings' },
 ];
+
+const INTERNATIONAL_TABS = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'research', label: 'Company Research' },
+];
+
+const MARKET_OPTIONS = [
+    { value: 'us', label: 'US' },
+    { value: 'hk', label: 'HK' },
+    { value: 'cn', label: 'CN' },
+];
+
+const normalizeMarket = (market = 'us') => {
+    const normalized = String(market || 'us').trim().toLowerCase();
+    return MARKET_OPTIONS.some((option) => option.value === normalized) ? normalized : 'us';
+};
+
+const normalizeAssetInput = (input, fallbackMarket = 'us') => {
+    const rawValue = String(input || '').trim();
+    if (!rawValue) return null;
+
+    const prefixed = rawValue.match(/^([A-Za-z]{2}):(.+)$/);
+    const market = normalizeMarket(prefixed?.[1] || fallbackMarket);
+    const rawSymbol = prefixed?.[2] || rawValue;
+    const symbol = market === 'us'
+        ? rawSymbol.trim().toUpperCase()
+        : rawSymbol.replace(/\D/g, '').padStart(market === 'hk' ? 5 : 6, '0');
+
+    if (!symbol) return null;
+
+    return {
+        symbol,
+        market: market.toUpperCase(),
+        assetId: market === 'us' ? `US:${symbol}` : `${market.toUpperCase()}:${symbol}`,
+        displayLabel: market === 'us' ? symbol : `${market.toUpperCase()}:${symbol}`,
+    };
+};
+
+const isUsAsset = (asset) => !asset || asset.market === 'US';
 
 const fmtBig = (val, prefix = '') => {
     if (val === null || val === undefined || val === 'N/A' || val === 'None') return '—';
@@ -30,6 +69,18 @@ const fmtBig = (val, prefix = '') => {
     if (abs >= 1e9) return `${prefix}${(num / 1e9).toFixed(2)}B`;
     if (abs >= 1e6) return `${prefix}${(num / 1e6).toFixed(2)}M`;
     return `${prefix}${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const currencyPrefix = (currency) => {
+    switch (String(currency || '').toUpperCase()) {
+    case 'HKD':
+        return 'HK$';
+    case 'CNY':
+        return 'CN¥';
+    case 'USD':
+    default:
+        return '$';
+    }
 };
 
 const INCOME_ROWS = [
@@ -127,8 +178,75 @@ const TabButton = ({ active, children, onClick }) => (
     </button>
 );
 
+const ResearchProfileList = ({ items }) => {
+    if (!Array.isArray(items) || items.length === 0) return null;
+    return (
+        <div className="ui-panel p-6">
+            <h3 className={sectionTitleClass}>Company Research</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {items.map((item) => (
+                    <div key={`${item.label}-${item.value}`} className="ui-panel-subtle p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mm-text-tertiary">{item.label}</p>
+                        <p className="mt-2 text-sm leading-6 text-mm-text-primary break-words">{item.value}</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const AnnouncementsPanel = ({ items }) => {
+    if (!Array.isArray(items) || items.length === 0) {
+        return (
+            <div className="ui-panel-subtle py-16 text-mm-text-secondary text-center">
+                <FileText className="w-12 h-12 mx-auto mb-3 opacity-40" />
+                <p>No company announcements were returned for this asset.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="ui-panel p-6">
+            <div className="flex items-center gap-2 mb-4">
+                <FileText className="w-5 h-5 text-mm-accent-primary" />
+                <h3 className="text-lg font-semibold text-mm-text-primary">Company Announcements</h3>
+            </div>
+            <div className="space-y-3">
+                {items.map((item, index) => (
+                    <a
+                        key={`${item.link || item.title}-${index}`}
+                        href={item.link || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block rounded-card border border-mm-border bg-mm-surface px-4 py-4 transition hover:bg-mm-surface-subtle"
+                    >
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-mm-text-tertiary">
+                            <span className="rounded-pill border border-mm-border px-2 py-0.5 font-semibold uppercase tracking-[0.12em]">
+                                {item.type || 'Announcement'}
+                            </span>
+                            {item.date ? <span>{item.date}</span> : null}
+                            {item.publisher ? <span>• {item.publisher}</span> : null}
+                        </div>
+                        <p className="mt-3 text-sm font-semibold text-mm-text-primary">{item.title || item.description || 'Company announcement'}</p>
+                        {item.description && item.description !== item.title ? (
+                            <p className="mt-2 text-sm leading-6 text-mm-text-secondary">{item.description}</p>
+                        ) : null}
+                        {item.link ? (
+                            <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-mm-accent-primary">
+                                Open source link <ExternalLink className="w-3 h-3" />
+                            </span>
+                        ) : null}
+                    </a>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const FundamentalsPage = () => {
     const [ticker, setTicker] = useState('');
+    const [selectedMarket, setSelectedMarket] = useState('us');
+    const [resolvedAsset, setResolvedAsset] = useState(null);
     const [fundamentals, setFundamentals] = useState(null);
     const [financials, setFinancials] = useState(null);
     const [filings, setFilings] = useState(null);
@@ -140,12 +258,25 @@ const FundamentalsPage = () => {
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState('overview');
 
+    const activeAsset = resolvedAsset || (fundamentals ? normalizeAssetInput(fundamentals.assetId || fundamentals.symbol, fundamentals.market || selectedMarket) : null);
+    const internationalResearchMode = activeAsset && !isUsAsset(activeAsset);
+    const tabs = internationalResearchMode ? INTERNATIONAL_TABS : US_TABS;
+
     const handleSearch = async (e) => {
         e.preventDefault();
         if (!ticker.trim()) return;
 
+        const asset = normalizeAssetInput(ticker, selectedMarket);
+        if (!asset) {
+            setError('Enter a valid ticker like AAPL, HK:00700, or CN:600519.');
+            return;
+        }
+
         setLoading(true);
         setError('');
+        setTicker(asset.displayLabel);
+        setSelectedMarket(asset.market.toLowerCase());
+        setResolvedAsset(asset);
         setFundamentals(null);
         setFinancials(null);
         setFilings(null);
@@ -155,36 +286,38 @@ const FundamentalsPage = () => {
         setFilingDetailState({});
         setActiveTab('overview');
 
-        const sym = ticker.toUpperCase().trim();
-        const [overviewRes, financialsRes, filingsRes, secIntelligenceRes] = await Promise.allSettled([
-            apiRequest(API_ENDPOINTS.FUNDAMENTALS(sym)),
-            apiRequest(API_ENDPOINTS.FUNDAMENTALS_FINANCIALS(sym)),
-            apiRequest(API_ENDPOINTS.FUNDAMENTALS_FILINGS(sym)),
-            apiRequest(API_ENDPOINTS.FUNDAMENTALS_SEC_INTELLIGENCE(sym)),
-        ]);
+        try {
+            const overview = await apiRequest(API_ENDPOINTS.FUNDAMENTALS(asset.symbol, asset.market));
+            setFundamentals(overview);
+            setResolvedAsset(normalizeAssetInput(overview?.assetId || overview?.symbol || asset.symbol, overview?.market || asset.market) || asset);
 
-        setLoading(false);
+            if (asset.market !== 'US') {
+                return;
+            }
 
-        const ov = overviewRes.status === 'fulfilled' ? overviewRes.value : null;
-        if (!ov || ov.error) {
-            setError(ov?.error || 'Failed to fetch fundamentals');
-            return;
-        }
+            const [financialsRes, filingsRes, secIntelligenceRes] = await Promise.allSettled([
+                apiRequest(API_ENDPOINTS.FUNDAMENTALS_FINANCIALS(asset.symbol)),
+                apiRequest(API_ENDPOINTS.FUNDAMENTALS_FILINGS(asset.symbol, asset.market)),
+                apiRequest(API_ENDPOINTS.FUNDAMENTALS_SEC_INTELLIGENCE(asset.symbol, asset.market)),
+            ]);
 
-        setFundamentals(ov);
-
-        if (financialsRes.status === 'fulfilled' && !financialsRes.value?.error) {
-            setFinancials(financialsRes.value);
-        }
-        if (filingsRes.status === 'fulfilled' && !filingsRes.value?.error) {
-            setFilings(filingsRes.value);
-        }
-        if (secIntelligenceRes.status === 'fulfilled' && !secIntelligenceRes.value?.error) {
-            setSecIntelligence(secIntelligenceRes.value);
-        } else if (secIntelligenceRes.status === 'fulfilled' && secIntelligenceRes.value?.error) {
-            setSecIntelligenceError(secIntelligenceRes.value.error);
-        } else if (secIntelligenceRes.status === 'rejected') {
-            setSecIntelligenceError(secIntelligenceRes.reason?.message || 'Failed to fetch SEC intelligence');
+            if (financialsRes.status === 'fulfilled' && !financialsRes.value?.error) {
+                setFinancials(financialsRes.value);
+            }
+            if (filingsRes.status === 'fulfilled' && !filingsRes.value?.error) {
+                setFilings(filingsRes.value);
+            }
+            if (secIntelligenceRes.status === 'fulfilled' && !secIntelligenceRes.value?.error) {
+                setSecIntelligence(secIntelligenceRes.value);
+            } else if (secIntelligenceRes.status === 'fulfilled' && secIntelligenceRes.value?.error) {
+                setSecIntelligenceError(secIntelligenceRes.value.error);
+            } else if (secIntelligenceRes.status === 'rejected') {
+                setSecIntelligenceError(secIntelligenceRes.reason?.message || 'Failed to fetch SEC intelligence');
+            }
+        } catch (searchError) {
+            setError(searchError?.message || 'Failed to fetch fundamentals');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -219,7 +352,7 @@ const FundamentalsPage = () => {
     };
 
     const filingDetailEndpoint = (accessionNumber) => {
-        const symbol = fundamentals?.symbol || ticker.toUpperCase().trim();
+        const symbol = fundamentals?.symbol || activeAsset?.symbol || ticker.toUpperCase().trim();
         return API_ENDPOINTS.FUNDAMENTALS_FILING_DETAIL(symbol, accessionNumber);
     };
 
@@ -315,7 +448,7 @@ const FundamentalsPage = () => {
                             type="text"
                             value={ticker}
                             onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                            placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
+                            placeholder="Enter ticker (e.g., AAPL, HK:00700, CN:600519)"
                             className="ui-input pl-10"
                         />
                     </div>
@@ -327,6 +460,18 @@ const FundamentalsPage = () => {
                         {loading ? 'Searching...' : 'Search'}
                     </button>
                 </form>
+                <div className="mt-4 flex flex-wrap gap-2">
+                    {MARKET_OPTIONS.map((option) => (
+                        <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setSelectedMarket(option.value)}
+                            className={selectedMarket === option.value ? 'ui-chip bg-mm-accent-primary text-white border-mm-accent-primary' : 'ui-chip'}
+                        >
+                            {option.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {loading && (
@@ -345,7 +490,7 @@ const FundamentalsPage = () => {
             {fundamentals && !loading && (
                 <div className="space-y-6">
                     <div className="flex flex-wrap gap-2">
-                        {TABS.map((tab) => (
+                        {tabs.map((tab) => (
                             <TabButton
                                 key={tab.key}
                                 active={activeTab === tab.key}
@@ -366,7 +511,9 @@ const FundamentalsPage = () => {
                                             {fundamentals.name}
                                         </h2>
                                         <div className="flex flex-wrap items-center gap-3 text-sm text-mm-text-secondary">
-                                            <span className="font-semibold text-mm-text-primary">{fundamentals.symbol}</span>
+                                            <span className="font-semibold text-mm-text-primary">
+                                                {internationalResearchMode ? activeAsset?.assetId || fundamentals.symbol : fundamentals.symbol}
+                                            </span>
                                             <span>•</span>
                                             <span>{fundamentals.exchange}</span>
                                             <span>•</span>
@@ -386,86 +533,126 @@ const FundamentalsPage = () => {
                                 )}
                             </div>
 
-                            <div className="ui-panel p-6">
-                                <h3 className={`${sectionTitleClass} flex items-center`}>
-                                    <BarChart3 className="w-6 h-6 mr-2 text-mm-accent-primary" />
-                                    Key Metrics
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <MetricCard title="Market Cap" value={formatNumber(fundamentals.market_cap, '$')} icon={DollarSign} tone="accent" />
-                                    <MetricCard title="P/E Ratio" value={formatNumber(fundamentals.pe_ratio)} icon={Target} tone="accent" />
-                                    <MetricCard title="EPS" value={formatNumber(fundamentals.eps, '$')} icon={TrendingUp} tone="accent" />
-                                    <MetricCard title="Beta" value={formatNumber(fundamentals.beta)} icon={BarChart3} tone="warning" />
-                                </div>
-                            </div>
-
-                            <div className="ui-panel p-6">
-                                <h3 className={sectionTitleClass}>Valuation Metrics</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <MetricCard title="Forward P/E" value={formatNumber(fundamentals.forward_pe)} />
-                                    <MetricCard title="Trailing P/E" value={formatNumber(fundamentals.trailing_pe)} />
-                                    <MetricCard title="PEG Ratio" value={formatNumber(fundamentals.peg_ratio)} />
-                                    <MetricCard title="Price/Book" value={formatNumber(fundamentals.price_to_book_ratio)} />
-                                    <MetricCard title="Price/Sales (TTM)" value={formatNumber(fundamentals.price_to_sales_ratio_ttm)} />
-                                    <MetricCard title="EV/Revenue" value={formatNumber(fundamentals.ev_to_revenue)} />
-                                </div>
-                            </div>
-
-                            <div className="ui-panel p-6">
-                                <h3 className={sectionTitleClass}>Profitability</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <MetricCard title="Profit Margin" value={formatPercent(fundamentals.profit_margin)} tone="positive" />
-                                    <MetricCard title="Operating Margin" value={formatPercent(fundamentals.operating_margin_ttm)} tone="positive" />
-                                    <MetricCard title="ROA (TTM)" value={formatPercent(fundamentals.return_on_assets_ttm)} tone="positive" />
-                                    <MetricCard title="ROE (TTM)" value={formatPercent(fundamentals.return_on_equity_ttm)} tone="positive" />
-                                </div>
-                            </div>
-
-                            <div className="ui-panel p-6">
-                                <h3 className={sectionTitleClass}>Financial Performance</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <MetricCard title="Revenue (TTM)" value={formatNumber(fundamentals.revenue_ttm, '$')} />
-                                    <MetricCard title="Gross Profit (TTM)" value={formatNumber(fundamentals.gross_profit_ttm, '$')} />
-                                    <MetricCard title="Diluted EPS (TTM)" value={formatNumber(fundamentals.diluted_eps_ttm, '$')} />
-                                    <MetricCard title="Revenue/Share (TTM)" value={formatNumber(fundamentals.revenue_per_share_ttm, '$')} />
-                                    <MetricCard title="EV/EBITDA" value={formatNumber(fundamentals.ev_to_ebitda)} />
-                                    <MetricCard title="Analyst Target" value={formatNumber(fundamentals.analyst_target_price, '$')} />
-                                </div>
-                            </div>
-
-                            <div className="ui-panel p-6">
-                                <h3 className={sectionTitleClass}>Price & Technicals</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <MetricCard title="52-Week High" value={formatNumber(fundamentals.week_52_high, '$')} />
-                                    <MetricCard title="52-Week Low" value={formatNumber(fundamentals.week_52_low, '$')} />
-                                    <MetricCard title="50-Day MA" value={formatNumber(fundamentals.day_50_moving_average, '$')} />
-                                    <MetricCard title="200-Day MA" value={formatNumber(fundamentals.day_200_moving_average, '$')} />
-                                </div>
-                            </div>
-
-                            {fundamentals.dividend_per_share !== 'N/A' && fundamentals.dividend_per_share !== '0' && (
-                                <div className="ui-panel p-6">
-                                    <h3 className={`${sectionTitleClass} flex items-center`}>
-                                        <Calendar className="w-6 h-6 mr-2 text-mm-positive" />
-                                        Dividend Information
-                                    </h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <MetricCard title="Dividend Per Share" value={formatNumber(fundamentals.dividend_per_share, '$')} tone="positive" />
-                                        <MetricCard title="Dividend Yield" value={formatPercent(fundamentals.dividend_yield)} tone="positive" />
-                                        <MetricCard title="Dividend Date" value={fundamentals.dividend_date || 'N/A'} tone="positive" />
-                                        <MetricCard title="Ex-Dividend Date" value={fundamentals.ex_dividend_date || 'N/A'} tone="positive" />
+                            {internationalResearchMode ? (
+                                <>
+                                    <div className="ui-panel-subtle p-5 text-sm text-mm-text-secondary">
+                                        Akshare international mode is read-only in phase 1. You can inspect company context, technical levels, and announcement history here, while SEC, watchlist, prediction, and paper-trading flows remain US-only.
                                     </div>
-                                </div>
-                            )}
 
-                            <div className="ui-panel p-6">
-                                <h3 className={sectionTitleClass}>Additional Information</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <MetricCard title="Shares Outstanding" value={formatNumber(fundamentals.shares_outstanding)} />
-                                    <MetricCard title="Book Value" value={formatNumber(fundamentals.book_value, '$')} />
-                                    <MetricCard title="Country" value={fundamentals.country || 'N/A'} />
-                                </div>
-                            </div>
+                                    <div className="ui-panel p-6">
+                                        <h3 className={`${sectionTitleClass} flex items-center`}>
+                                            <BarChart3 className="w-6 h-6 mr-2 text-mm-accent-primary" />
+                                            International Snapshot
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <MetricCard title="Market Cap" value={formatNumber(fundamentals.market_cap, currencyPrefix(fundamentals.currency))} icon={DollarSign} tone="accent" />
+                                            <MetricCard title="P/E Ratio" value={formatNumber(fundamentals.pe_ratio)} icon={Target} tone="accent" />
+                                            <MetricCard title="Price/Book" value={formatNumber(fundamentals.price_to_book_ratio)} icon={BarChart3} tone="warning" />
+                                            <MetricCard title="Shares Outstanding" value={formatNumber(fundamentals.shares_outstanding)} icon={Users} tone="tertiary" />
+                                        </div>
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Price & Technicals</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <MetricCard title="52-Week High" value={formatNumber(fundamentals.week_52_high, currencyPrefix(fundamentals.currency))} />
+                                            <MetricCard title="52-Week Low" value={formatNumber(fundamentals.week_52_low, currencyPrefix(fundamentals.currency))} />
+                                            <MetricCard title="50-Day MA" value={formatNumber(fundamentals.day_50_moving_average, currencyPrefix(fundamentals.currency))} />
+                                            <MetricCard title="200-Day MA" value={formatNumber(fundamentals.day_200_moving_average, currencyPrefix(fundamentals.currency))} />
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="ui-panel p-6">
+                                        <h3 className={`${sectionTitleClass} flex items-center`}>
+                                            <BarChart3 className="w-6 h-6 mr-2 text-mm-accent-primary" />
+                                            Key Metrics
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <MetricCard title="Market Cap" value={formatNumber(fundamentals.market_cap, '$')} icon={DollarSign} tone="accent" />
+                                            <MetricCard title="P/E Ratio" value={formatNumber(fundamentals.pe_ratio)} icon={Target} tone="accent" />
+                                            <MetricCard title="EPS" value={formatNumber(fundamentals.eps, '$')} icon={TrendingUp} tone="accent" />
+                                            <MetricCard title="Beta" value={formatNumber(fundamentals.beta)} icon={BarChart3} tone="warning" />
+                                        </div>
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Valuation Metrics</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            <MetricCard title="Forward P/E" value={formatNumber(fundamentals.forward_pe)} />
+                                            <MetricCard title="Trailing P/E" value={formatNumber(fundamentals.trailing_pe)} />
+                                            <MetricCard title="PEG Ratio" value={formatNumber(fundamentals.peg_ratio)} />
+                                            <MetricCard title="Price/Book" value={formatNumber(fundamentals.price_to_book_ratio)} />
+                                            <MetricCard title="Price/Sales (TTM)" value={formatNumber(fundamentals.price_to_sales_ratio_ttm)} />
+                                            <MetricCard title="EV/Revenue" value={formatNumber(fundamentals.ev_to_revenue)} />
+                                        </div>
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Profitability</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <MetricCard title="Profit Margin" value={formatPercent(fundamentals.profit_margin)} tone="positive" />
+                                            <MetricCard title="Operating Margin" value={formatPercent(fundamentals.operating_margin_ttm)} tone="positive" />
+                                            <MetricCard title="ROA (TTM)" value={formatPercent(fundamentals.return_on_assets_ttm)} tone="positive" />
+                                            <MetricCard title="ROE (TTM)" value={formatPercent(fundamentals.return_on_equity_ttm)} tone="positive" />
+                                        </div>
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Financial Performance</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            <MetricCard title="Revenue (TTM)" value={formatNumber(fundamentals.revenue_ttm, '$')} />
+                                            <MetricCard title="Gross Profit (TTM)" value={formatNumber(fundamentals.gross_profit_ttm, '$')} />
+                                            <MetricCard title="Diluted EPS (TTM)" value={formatNumber(fundamentals.diluted_eps_ttm, '$')} />
+                                            <MetricCard title="Revenue/Share (TTM)" value={formatNumber(fundamentals.revenue_per_share_ttm, '$')} />
+                                            <MetricCard title="EV/EBITDA" value={formatNumber(fundamentals.ev_to_ebitda)} />
+                                            <MetricCard title="Analyst Target" value={formatNumber(fundamentals.analyst_target_price, '$')} />
+                                        </div>
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Price & Technicals</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <MetricCard title="52-Week High" value={formatNumber(fundamentals.week_52_high, '$')} />
+                                            <MetricCard title="52-Week Low" value={formatNumber(fundamentals.week_52_low, '$')} />
+                                            <MetricCard title="50-Day MA" value={formatNumber(fundamentals.day_50_moving_average, '$')} />
+                                            <MetricCard title="200-Day MA" value={formatNumber(fundamentals.day_200_moving_average, '$')} />
+                                        </div>
+                                    </div>
+
+                                    {fundamentals.dividend_per_share !== 'N/A' && fundamentals.dividend_per_share !== '0' && (
+                                        <div className="ui-panel p-6">
+                                            <h3 className={`${sectionTitleClass} flex items-center`}>
+                                                <Calendar className="w-6 h-6 mr-2 text-mm-positive" />
+                                                Dividend Information
+                                            </h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                <MetricCard title="Dividend Per Share" value={formatNumber(fundamentals.dividend_per_share, '$')} tone="positive" />
+                                                <MetricCard title="Dividend Yield" value={formatPercent(fundamentals.dividend_yield)} tone="positive" />
+                                                <MetricCard title="Dividend Date" value={fundamentals.dividend_date || 'N/A'} tone="positive" />
+                                                <MetricCard title="Ex-Dividend Date" value={fundamentals.ex_dividend_date || 'N/A'} tone="positive" />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Additional Information</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            <MetricCard title="Shares Outstanding" value={formatNumber(fundamentals.shares_outstanding)} />
+                                            <MetricCard title="Book Value" value={formatNumber(fundamentals.book_value, '$')} />
+                                            <MetricCard title="Country" value={fundamentals.country || 'N/A'} />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'research' && (
+                        <div className="space-y-6">
+                            <ResearchProfileList items={fundamentals.researchProfile} />
+                            <AnnouncementsPanel items={fundamentals.announcements} />
                         </div>
                     )}
 

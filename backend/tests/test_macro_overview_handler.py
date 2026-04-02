@@ -49,6 +49,11 @@ class BrokenTickerModule:
             raise RuntimeError("yfinance unavailable in test")
 
 
+class FakeRequest:
+    def __init__(self, args=None):
+        self.args = args or {}
+
+
 class MacroOverviewHandlerTests(unittest.TestCase):
     def setUp(self):
         reference_data_handlers._OPENBB_MACRO_SUPPORT_CACHE.clear()
@@ -162,6 +167,41 @@ class MacroOverviewHandlerTests(unittest.TestCase):
 
         self.assertEqual(status_code, 503)
         self.assertEqual(payload["error"], "Macro data is temporarily unavailable.")
+
+    def test_macro_overview_can_route_to_asia_macro_payload(self):
+        logger = StubLogger()
+
+        class FakeAkshareService:
+            class AkshareUnavailableError(Exception):
+                pass
+
+            class AkshareAssetNotFoundError(Exception):
+                pass
+
+            @staticmethod
+            def get_asia_macro_overview():
+                return {
+                    "region": "asia",
+                    "title": "Asia Macro Dashboard",
+                    "indicators": [{"symbol": "CN_CPI", "value": 0.7}],
+                    "marketSignals": [{"symbol": "USDCNH", "value": 7.21}],
+                }
+
+        payload = reference_data_handlers.get_macro_overview_handler(
+            openbb_available=False,
+            obb_module=None,
+            jsonify_fn=lambda data: data,
+            logger=logger,
+            yf_module=BrokenTickerModule,
+            macro_indicators=[],
+            requests_module=FakeRequests({}),
+            request_obj=FakeRequest({"region": "asia"}),
+            akshare_service_module=FakeAkshareService,
+        )
+
+        self.assertEqual(payload["region"], "asia")
+        self.assertEqual(payload["indicators"][0]["symbol"], "CN_CPI")
+        self.assertEqual(payload["marketSignals"][0]["symbol"], "USDCNH")
 
 
 if __name__ == "__main__":

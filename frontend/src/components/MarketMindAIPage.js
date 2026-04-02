@@ -234,6 +234,7 @@ const MarketMindAIPage = () => {
     const starterPrompts = bootstrap?.starterPrompts || [];
     const artifactPanelOpen = Boolean(selectedArtifactDetail || artifactLoading);
     const showTickerContext = Boolean(attachedTicker);
+    const internationalTickerContext = contextData?.assetType === 'equity' && contextData?.market && contextData.market !== 'US';
 
     const clearArtifactSelection = () => {
         setSelectedArtifactId(null);
@@ -662,14 +663,18 @@ const MarketMindAIPage = () => {
                                     ) : contextData ? (
                                         <>
                                             <ContextCard
-                                                label="Prediction"
+                                                label={internationalTickerContext ? 'Research mode' : 'Prediction'}
                                                 value={
-                                                    contextData.predictionSnapshot
+                                                    internationalTickerContext
+                                                        ? `${contextData.market} read-only`
+                                                        : contextData.predictionSnapshot
                                                         ? `$${contextData.predictionSnapshot.recentPredicted}`
                                                         : 'Unavailable'
                                                 }
                                                 caption={
-                                                    contextData.predictionSnapshot
+                                                    internationalTickerContext
+                                                        ? 'Akshare-backed international context is available for research, while predictions and memo artifacts remain US-only in phase 1.'
+                                                        : contextData.predictionSnapshot
                                                         ? `${contextData.predictionSnapshot.confidence}% confidence vs $${contextData.predictionSnapshot.recentClose} close`
                                                         : 'No prediction snapshot available right now.'
                                                 }
@@ -708,7 +713,7 @@ const MarketMindAIPage = () => {
                                     </div>
                                     <h3 className="mt-6 text-2xl font-semibold text-slate-950 dark:text-white">Start with a question</h3>
                                     <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
-                                        Ask a market question naturally. When your message points to a real ticker, MarketMindAI will ground the session in MarketMind data automatically.
+                                        Ask a market question naturally. When your message points to a real ticker like AAPL or HK:00700, MarketMindAI will ground the session in MarketMind data automatically.
                                     </p>
                                     <div className="mt-8 grid w-full max-w-3xl gap-3 md:grid-cols-2">
                                         {starterPrompts.map((prompt) => (
