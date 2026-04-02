@@ -32,6 +32,7 @@ Jinja2==3.1.6
 joblib==1.5.2
 lxml==6.0.2
 MarkupSafe==3.0.3
+mlforecast==1.0.31
 msgpack==1.0.3
 multidict==6.7.0
 multitasking==0.0.12
@@ -62,7 +63,9 @@ soupsieve==2.8
 sseclient-py==1.8.0
 statsmodels==0.14.5
 schedule==1.2.2
+shap==0.49.1
 SQLAlchemy==2.0.44
+statsforecast==2.0.3
 stripe==15.0.0
 alembic==1.14.1
 threadpoolctl==3.6.0

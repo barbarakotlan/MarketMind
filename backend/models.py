@@ -11,6 +11,7 @@ from statsmodels.tsa.ar_model import AutoReg
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
+import prediction_service
 
 # Try to import XGBoost, fallback if not available
 try:
@@ -22,16 +23,7 @@ except ImportError:
 
 # Creating a dataset based on ticker and period
 def create_dataset(ticker, period):
-    try:
-        data = yf.download(ticker, period=period, auto_adjust=False)
-    except yf.shared.YFPricesMissingError as e:
-        print(f"[Warning] Could not download data for {ticker}: {e}")
-        return pd.DataFrame()
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = [col[0] for col in data.columns]
-    df = data[['Close']].copy()
-    df.index = pd.to_datetime(df.index)
-    return df
+    return prediction_service.create_dataset(ticker, period=period)
 
 
 def create_features(df, lookback=14):
@@ -95,181 +87,23 @@ def prepare_model_data(df, lookback=14):
     return X_train_feat, y_train_vals, X_test_feat, y_test_vals
 
 def linear_regression_predict(df, days_ahead=7):
-    """
-    Linear Regression (AutoReg) prediction - existing method
-    """
-    try:
-        df = df.copy()
-        df["Predicted_LR"] = np.nan
-
-        # Get the last available date
-        last_date = df.index[-1]
-
-        for day in range(days_ahead):
-            values = df["Predicted_LR"].fillna(df["Close"]).dropna().values
-
-            # Use AutoReg model
-            model = AutoReg(values, lags=min(5, len(values)-1))
-            model_fit = model.fit()
-
-            next_pred = model_fit.predict(start=len(values), end=len(values))[0]
-            next_date = last_date + pd.Timedelta(days=day+1)
-
-            df.loc[next_date] = [np.nan, next_pred]
-            last_date = next_date
-
-        predictions = df[df["Predicted_LR"].notna()].tail(days_ahead)
-        return predictions["Predicted_LR"].values
-    except Exception as e:
-        print(f"Linear Regression error: {e}")
-        return None
+    return prediction_service.linear_regression_predict(df, days_ahead=days_ahead)
 
 
 def random_forest_predict(df, days_ahead=7, lookback=14):
-    """
-    Random Forest prediction
-    """
-    try:
-        # Prepare data
-        X, y, df_features = prepare_ml_data(df, lookback)
-
-        if len(X) < 30:  # Need minimum data
-            return None
-
-        # Train Random Forest
-        rf_model = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=10,
-            random_state=42,
-            n_jobs=-1
-        )
-        rf_model.fit(X, y)
-
-        # Predict next days
-        predictions = []
-        last_known = df['Close'].iloc[-lookback:].values
-        current_features = df_features.iloc[-1][1:].values  # Exclude Close
-
-        for _ in range(days_ahead):
-            # Reshape for prediction
-            current_X = current_features.reshape(1, -1)
-            next_pred = rf_model.predict(current_X)[0]
-            predictions.append(next_pred)
-
-            # Update features for next prediction (simple rolling)
-            last_known = np.append(last_known[1:], next_pred)
-            # Update lagged features (simplified)
-            current_features[0] = next_pred  # lag_1
-            if len(current_features) > 1:
-                current_features[1] = current_features[0]  # lag_2
-
-        return np.array(predictions)
-    except Exception as e:
-        print(f"Random Forest error: {e}")
-        return None
+    return prediction_service.random_forest_predict(df, days_ahead=days_ahead, lookback=lookback)
 
 
 def xgboost_predict(df, days_ahead=7, lookback=14):
-    """
-    XGBoost prediction
-    """
-    if not XGBOOST_AVAILABLE:
-        return None
-
-    try:
-        # Prepare data
-        X, y, df_features = prepare_ml_data(df, lookback)
-
-        if len(X) < 30:  # Need minimum data
-            return None
-
-        # Train XGBoost
-        xgb_model = xgb.XGBRegressor(
-            n_estimators=100,
-            max_depth=5,
-            learning_rate=0.1,
-            random_state=42,
-            n_jobs=-1
-        )
-        xgb_model.fit(X, y)
-
-        # Predict next days
-        predictions = []
-        last_known = df['Close'].iloc[-lookback:].values
-        current_features = df_features.iloc[-1][1:].values  # Exclude Close
-
-        for _ in range(days_ahead):
-            # Reshape for prediction
-            current_X = current_features.reshape(1, -1)
-            next_pred = xgb_model.predict(current_X)[0]
-            predictions.append(next_pred)
-
-            # Update features for next prediction
-            last_known = np.append(last_known[1:], next_pred)
-            current_features[0] = next_pred  # lag_1
-            if len(current_features) > 1:
-                current_features[1] = current_features[0]  # lag_2
-
-        return np.array(predictions)
-    except Exception as e:
-        print(f"XGBoost error: {e}")
-        return None
+    return prediction_service.xgboost_predict(df, days_ahead=days_ahead, lookback=lookback)
 
 
 def ensemble_predict(df, days_ahead=7):
-    """
-    Ensemble prediction - average of all available models
-    """
-    predictions = {}
-
-    # Get predictions from each model
-    lr_pred = linear_regression_predict(df, days_ahead)
-    rf_pred = random_forest_predict(df, days_ahead)
-    xgb_pred = xgboost_predict(df, days_ahead)
-
-    # LSTM Train and Predict
-    lstm_trained, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=30, days_ahead=days_ahead, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
-    lstm_pred = lstm_predict(df, lstm_trained, scaler_X, scaler_y, device, lookback=14, seq_len=30)
-
-    # Transformer Train and Predict
-    transformer_trained, scaler_X, scaler_y, device = transformer_train(df, lookback=14, seq_len=30, days_ahead=days_ahead, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
-    transformer_pred = transformer_predict(df, transformer_trained, scaler_X, scaler_y, device, lookback=14, seq_len=30)
-
-    # Store individual predictions
-    if lr_pred is not None:
-        predictions['linear_regression'] = lr_pred
-    if rf_pred is not None:
-        predictions['random_forest'] = rf_pred
-    if xgb_pred is not None:
-        predictions['xgboost'] = xgb_pred
-    if lstm_pred is not None:
-        predictions['lstm'] = lstm_pred
-    if transformer_pred is not None:
-        predictions['transformer'] = transformer_pred
-
-    # Calculate ensemble (weighted average)
-    if len(predictions) == 0:
-        return None, {}
-
-    # Simple average for now (can be weighted later based on historical performance)
-    ensemble = np.mean(list(predictions.values()), axis=0)
-
-    return ensemble, predictions
+    return prediction_service.ensemble_predict(df, days_ahead=days_ahead)
 
 
 def calculate_metrics(actual, predicted):
-    """
-    Calculate accuracy metrics
-    """
-    mae = mean_absolute_error(actual, predicted)
-    rmse = np.sqrt(mean_squared_error(actual, predicted))
-    mape = np.mean(np.abs((actual - predicted) / actual)) * 100
-
-    return {
-        'mae': round(float(mae), 2),
-        'rmse': round(float(rmse), 2),
-        'mape': round(float(mape), 2)
-    }
+    return prediction_service.calculate_metrics(actual, predicted)
 
 # LSTM Class
 class LSTM(nn.Module):

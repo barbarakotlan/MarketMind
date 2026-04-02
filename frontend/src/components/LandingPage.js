@@ -168,7 +168,7 @@ function MarqueeTicker() {
 const FEATURES = [
     {
         icon: Brain, title: 'AI-Powered Predictions',
-        desc: 'Ensemble ML model combining Random Forest, XGBoost, and Linear Regression for 7-day price forecasts with model-level breakdown.',
+        desc: 'Unified forecasting stack combining AutoARIMA, Random Forest, XGBoost, and Linear Regression for 7 trading-session forecasts with model-level breakdown.',
         accent: 'from-blue-500 to-indigo-600', glow: 'hover:shadow-blue-500/15',
     },
     {
@@ -199,7 +199,7 @@ const FEATURES = [
 ];
 
 const STATS = [
-    { value: '3',    label: 'ML Models',     sub: 'Random Forest · XGBoost · Linear' },
+    { value: '4',    label: 'Prod. Models',  sub: 'AutoARIMA · RF · XGBoost · Linear' },
     { value: '40+',  label: 'Perf. Metrics', sub: 'Sharpe · Sortino · Max Drawdown' },
     { value: '6',    label: 'Asset Classes', sub: 'Stocks · Forex · Crypto · More' },
     { value: '$100k',label: 'Paper Capital', sub: 'Risk-free trading sandbox' },
@@ -229,8 +229,10 @@ const STEPS = [
         icon: Brain,
         title: 'Analyze the AI Forecast',
         terminal: [
-            { text: 'marketmind predict AAPL --days 7', prefix: '$', color: 'text-gray-300' },
-            { text: 'loading ensemble models...', color: 'text-gray-500', dim: true, think: 150 },
+            { text: 'marketmind predict AAPL --sessions 7', prefix: '$', color: 'text-gray-300' },
+            { text: 'loading forecasting stack...', color: 'text-gray-500', dim: true, think: 150 },
+            { text: '▶ AutoARIMA ...............', color: 'text-purple-400', think: 180 },
+            { text: '  accuracy: 84.6% ✓', color: 'text-gray-400' },
             { text: '▶ Random Forest ...........', color: 'text-purple-400', think: 300 },
             { text: '  accuracy: 87.3% ✓', color: 'text-gray-400' },
             { text: '▶ XGBoost .................', color: 'text-purple-400', think: 250 },
@@ -238,13 +240,13 @@ const STEPS = [
             { text: '▶ Linear Regression .......', color: 'text-purple-400', think: 200 },
             { text: '  accuracy: 82.7% ✓', color: 'text-gray-400' },
             { text: '', color: 'text-gray-400' },
-            { text: '╔═ 7-DAY FORECAST ═════════╗', color: 'text-emerald-500' },
+            { text: '╔═ 7-SESSION FORECAST ═════╗', color: 'text-emerald-500' },
             { text: '║  Direction: BULLISH ▲    ║', color: 'text-emerald-400' },
             { text: '║  Confidence: 84.2%       ║', color: 'text-emerald-400' },
             { text: '║  Target: $190.12 (+4.2%) ║', color: 'text-emerald-400' },
             { text: '╚══════════════════════════╝', color: 'text-emerald-500' },
         ],
-        body: 'See a 7-day directional prediction with per-model breakdown, confidence intervals, and full backtesting results.'
+        body: 'See a 7 trading-session directional prediction with per-model breakdown, confidence scoring, and full backtesting results.'
     },
     {
         num: '3',

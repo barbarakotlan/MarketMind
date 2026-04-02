@@ -2,6 +2,22 @@ import React, { useState } from 'react';
 import ActualVsPredictedChart from './charts/ActualVsPredictedChart';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
+const MODEL_LABELS = {
+    ensemble: 'Ensemble',
+    auto_arima: 'AutoARIMA',
+    naive: 'Naive',
+    seasonal_naive_5: 'Seasonal Naive (5)',
+    linear_regression: 'Linear Regression',
+    random_forest: 'Random Forest',
+    xgboost: 'XGBoost',
+    lstm: 'LSTM',
+    transformer: 'Transformer',
+};
+
+const formatModelName = (modelName) => (
+    MODEL_LABELS[modelName] || modelName.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+);
+
 const metricToneClass = (value, positiveIsGood = true) => {
     if (value === null || value === undefined || Number.isNaN(Number(value))) {
         return 'text-mm-text-secondary';
@@ -41,6 +57,7 @@ const ModelPerformancePage = () => {
                     fast_mode: false,
                     include_selective: true,
                     retrain_frequency: 5,
+                    include_explanations: true,
                 }
                 : {
                     test_days: testDays,
@@ -48,6 +65,7 @@ const ModelPerformancePage = () => {
                     include_selective: false,
                     retrain_frequency: 10,
                     max_train_rows: 450,
+                    include_explanations: false,
                 };
 
             const data = await apiRequest(API_ENDPOINTS.EVALUATE(ticker.toUpperCase(), params));
@@ -59,6 +77,9 @@ const ModelPerformancePage = () => {
             setLoading(false);
         }
     };
+
+    const selectedExplainability = evaluationData?.models?.[selectedModel]?.explainability;
+    const selectedModelSupportsShap = ['linear_regression', 'random_forest', 'xgboost'].includes(selectedModel);
 
     return (
         <div className="ui-page animate-fade-in space-y-8">
@@ -146,7 +167,7 @@ const ModelPerformancePage = () => {
             {evaluationData && !loading && (
                 <div className="space-y-8 animate-fade-in">
                     <div className="ui-panel-elevated p-6">
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
                             <div className="text-center">
                                 <p className="text-sm text-mm-text-secondary mb-1">Ticker</p>
                                 <p className="text-2xl font-semibold text-mm-text-primary">{evaluationData.ticker}</p>
@@ -161,13 +182,19 @@ const ModelPerformancePage = () => {
                             <div className="text-center">
                                 <p className="text-sm text-mm-text-secondary mb-1">Best Model</p>
                                 <p className="text-lg font-semibold text-mm-positive">
-                                    {evaluationData.best_model.replace('_', ' ').toUpperCase()}
+                                    {formatModelName(evaluationData.best_model)}
                                 </p>
                             </div>
                             <div className="text-center">
                                 <p className="text-sm text-mm-text-secondary mb-1">Models Tested</p>
                                 <p className="text-lg font-semibold text-mm-accent-primary">
                                     {Object.keys(evaluationData.models).length}
+                                </p>
+                            </div>
+                            <div className="text-center">
+                                <p className="text-sm text-mm-text-secondary mb-1">Feature Spec</p>
+                                <p className="text-lg font-semibold text-mm-text-primary">
+                                    {evaluationData.featureSpecVersion || 'legacy'}
                                 </p>
                             </div>
                         </div>
@@ -182,7 +209,7 @@ const ModelPerformancePage = () => {
                                     onClick={() => setSelectedModel(modelName)}
                                     className={selectedModel === modelName ? 'ui-button-primary px-5 py-3' : 'ui-button-secondary px-5 py-3'}
                                 >
-                                    {modelName.replace('_', ' ').toUpperCase()}
+                                    {formatModelName(modelName)}
                                     {modelName === evaluationData.best_model && <span className="ml-2">🏆</span>}
                                 </button>
                             ))}
@@ -217,7 +244,7 @@ const ModelPerformancePage = () => {
                                                 className={isBest ? 'border-b border-mm-border bg-mm-surface-subtle' : 'border-b border-mm-border'}
                                             >
                                                 <td className="px-4 py-3 font-semibold text-mm-text-primary">
-                                                    {modelName.replace('_', ' ').toUpperCase()}
+                                                    {formatModelName(modelName)}
                                                     {isBest && <span className="ml-2">🏆</span>}
                                                 </td>
                                                 <td className="px-4 py-3 text-center text-mm-text-secondary">${data.metrics.mae}</td>
@@ -275,12 +302,63 @@ const ModelPerformancePage = () => {
                         </div>
                     )}
 
+                    <div className="ui-panel p-6">
+                        <h3 className="mb-2 text-xl font-semibold text-mm-text-primary">Explainability</h3>
+                        <p className="mb-6 text-sm text-mm-text-secondary">
+                            SHAP is available for Linear Regression, Random Forest, and XGBoost in deep evaluation mode.
+                        </p>
+
+                        {selectedExplainability ? (
+                            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                                <div className="ui-panel-subtle p-4">
+                                    <h4 className="mb-3 font-semibold text-mm-text-primary">Global Top Features</h4>
+                                    <div className="space-y-3">
+                                        {(selectedExplainability.global_top_features || []).map((item) => (
+                                            <div key={item.feature} className="flex items-center justify-between gap-4">
+                                                <div>
+                                                    <p className="font-medium text-mm-text-primary">{item.feature}</p>
+                                                    <p className="text-xs text-mm-text-tertiary">Average absolute impact</p>
+                                                </div>
+                                                <p className="font-semibold text-mm-accent-primary">{item.meanAbsImpact}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="ui-panel-subtle p-4">
+                                    <h4 className="mb-3 font-semibold text-mm-text-primary">Latest Prediction Contributors</h4>
+                                    <div className="space-y-3">
+                                        {(selectedExplainability.latest_prediction_contributors || []).map((item) => (
+                                            <div key={item.feature} className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
+                                                <div>
+                                                    <p className="font-medium text-mm-text-primary">{item.feature}</p>
+                                                    <p className="text-xs text-mm-text-tertiary">Value: {item.value ?? 'n/a'}</p>
+                                                </div>
+                                                <span className="text-xs text-mm-text-tertiary">Impact</span>
+                                                <p className={metricToneClass(item.impact)}>
+                                                    {item.impact > 0 ? '+' : ''}
+                                                    {item.impact}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="ui-panel-subtle p-4 text-sm text-mm-text-secondary">
+                                {selectedModelSupportsShap
+                                    ? 'Run deep evaluation to generate SHAP explainability for this model.'
+                                    : 'SHAP explanations are unavailable for this model. Use Linear Regression, Random Forest, or XGBoost in deep mode.'}
+                            </div>
+                        )}
+                    </div>
+
                     <div className="ui-banner ui-banner-warning">
                         <h3 className="mb-2 font-semibold">About This Evaluation</h3>
                         <ul className="space-y-1 text-sm">
                             <li>• Rolling window backtesting with model retraining every 5 days</li>
-                            <li>• 42 engineered features including lagged prices, moving averages, volatility, momentum, and volume</li>
-                            <li>• Models: Random Forest, XGBoost, Linear Regression, and Ensemble</li>
+                            <li>• Versioned forecasting feature spec with lag, rolling trend, volatility, momentum, volume, and session features</li>
+                            <li>• Ensemble now blends AutoARIMA, Linear Regression, Random Forest, and XGBoost</li>
                             <li>• Metrics: MAE, MAPE, R², and directional accuracy</li>
                             <li>• Past performance does not guarantee future results</li>
                         </ul>

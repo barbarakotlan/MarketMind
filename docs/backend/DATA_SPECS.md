@@ -1,4 +1,4 @@
-# ML Model Evaluation - Data Specifications
+# Prediction Stack v2 - Data Specifications
 
 ## 📊 Overview
 This document defines the exact data requirements for professional backtesting and evaluation of our ML prediction models.
@@ -45,64 +45,63 @@ This document defines the exact data requirements for professional backtesting a
 
 ---
 
-## 2. Feature Engineering (42 Fixed Features)
+## 2. Feature Engineering (Versioned Feature Spec)
 
-### Critical Rule: ALWAYS 42 Features
-Every data window must have exactly 42 features, regardless of data length.
+### Feature Spec Version
+`prediction-stack-v2`
 
-### Feature Breakdown
+The upgraded stack no longer relies on an "always 42 features" rule. Instead it uses a versioned forecasting feature specification orchestrated through `MLForecast`, with the exact realized feature columns depending on the active lag/rolling transforms.
 
-#### A. Lagged Prices (30 features)
+### Feature Families
+
+#### A. Lag Features
 ```python
-lag_1  = Close price 1 day ago
-lag_2  = Close price 2 days ago
-...
-lag_30 = Close price 30 days ago
+lag_1
+lag_2
+lag_3
+lag_5
+lag_10
+lag_20
 ```
-**Purpose:** Capture historical price patterns
+**Purpose:** Capture short and medium-term price memory.
 
-#### B. Moving Averages (4 features)
+#### B. Rolling Trend Features
 ```python
-MA_5  = 5-day simple moving average
-MA_10 = 10-day simple moving average
-MA_20 = 20-day simple moving average
-MA_30 = 30-day simple moving average
+rolling_mean_lag1_window_size3
+rolling_mean_lag1_window_size5
+rolling_mean_lag1_window_size10
+rolling_mean_lag5_window_size3
 ```
-**Purpose:** Identify trends and support/resistance levels
+**Purpose:** Capture local trend and smoothing behavior without hand-maintaining a fixed feature count.
 
-#### C. Volatility (3 features)
+#### C. Rolling Volatility Features
 ```python
-std_5  = 5-day price standard deviation
-std_10 = 10-day price standard deviation
-std_20 = 20-day price standard deviation
+rolling_std_lag1_window_size3
+rolling_std_lag1_window_size5
+rolling_std_lag1_window_size10
 ```
-**Purpose:** Measure price stability and risk
+**Purpose:** Capture changing risk and dispersion regimes.
 
-#### D. Price Momentum (3 features)
+#### D. Momentum / Return Features
+Momentum is represented implicitly through lag structure and rolling transforms rather than a hard-coded return-only block.
+
+#### E. Volume-Derived Features
 ```python
-return_1day  = (Close today - Close 1 day ago) / Close 1 day ago
-return_5day  = (Close today - Close 5 days ago) / Close 5 days ago
-return_20day = (Close today - Close 20 days ago) / Close 20 days ago
+volume_ratio_5
+volume_ratio_20
 ```
-**Purpose:** Capture short, medium, and long-term momentum
+**Purpose:** Detect unusual trading activity relative to recent participation.
 
-#### E. Volume Features (2 features)
+#### F. Session / Calendar Features
 ```python
-volume_ratio_5  = Today's volume / 5-day average volume
-volume_ratio_20 = Today's volume / 20-day average volume
+session_weekday
+session_month
+session_quarter
 ```
-**Purpose:** Detect unusual trading activity
+**Purpose:** Provide limited calendar structure while forecast horizons are mapped back to actual trading sessions.
 
-### Total Features: 42
-
-### Handling Early Data (Day 1-30)
-```python
-# If not enough history, use forward-fill strategy:
-- For lags: Use earliest available price
-- For MAs: Use available data (partial MA)
-- For returns: Use 0 if no history
-- For volume: Use 1.0 as neutral ratio
-```
+### Handling Early Data
+The feature pipeline uses partial rolling windows where appropriate and fills neutral defaults for unavailable volume ratios. Training still requires sufficient overall history before a model is considered eligible.
 
 ---
 
@@ -134,11 +133,10 @@ Iteration 12: Train on [1-305],  predict day 310
 
 ### Parameters
 ```python
-LOOKBACK_DAYS = 30        # For feature engineering
-MIN_TRAIN_DAYS = 250      # Minimum training data
+MIN_TRAIN_DAYS = 120      # Minimum history for production ensemble eligibility
 TEST_DAYS = 60            # Testing period
-RETRAIN_FREQUENCY = 5     # Retrain every 5 days
-PREDICTION_HORIZON = 1    # Predict 1 day ahead
+RETRAIN_FREQUENCY = 5     # Retrain every 5 trading sessions
+PREDICTION_HORIZON = 1    # Predict 1 trading session ahead in rolling evaluation
 STEP_SIZE = 1             # Evaluate every day
 ```
 
@@ -146,38 +144,56 @@ STEP_SIZE = 1             # Evaluate every day
 
 ## 4. Model Training Requirements
 
-### Random Forest
+### Statistical Benchmarks (`StatsForecast`)
+```python
+naive
+seasonal_naive_5
+auto_arima
+```
+
+### Production ML Models (`MLForecast`)
+
+#### Random Forest
 ```python
 {
-    'n_estimators': 100,
-    'max_depth': 10,
-    'min_samples_split': 5,
+    'n_estimators': 200,
+    'max_depth': 12,
+    'min_samples_split': 4,
     'min_samples_leaf': 2,
     'random_state': 42,
     'n_jobs': -1
 }
 ```
 
-### XGBoost
+#### XGBoost
 ```python
 {
-    'n_estimators': 100,
-    'max_depth': 5,
-    'learning_rate': 0.1,
-    'subsample': 0.8,
-    'colsample_bytree': 0.8,
+    'n_estimators': 200,
+    'max_depth': 6,
+    'learning_rate': 0.05,
+    'subsample': 0.85,
+    'colsample_bytree': 0.85,
     'random_state': 42,
-    'n_jobs': -1
+    'n_jobs': 1
 }
 ```
 
-### Linear Regression (AutoReg)
+#### Linear Regression
 ```python
 {
-    'lags': 5,
-    'trend': 'n'
+    'model': 'sklearn.linear_model.LinearRegression',
+    'orchestrator': 'MLForecast'
 }
 ```
+
+### Production Ensemble
+The live production ensemble is a weighted average of:
+- `auto_arima`
+- `linear_regression`
+- `random_forest`
+- `xgboost`
+
+Weights are derived from recent rolling validation error using inverse-error normalization, with equal-weight fallback when validation is unavailable.
 
 ---
 
@@ -216,28 +232,20 @@ False Negatives      = Predicted down, went up
 
 ### Input DataFrame
 ```python
-Shape: (504, 43)  # 504 days × (42 features + 1 target)
+Shape: (N, feature_count + 1 target)
 
 Index: DatetimeIndex(['2023-11-01', '2023-11-02', ...])
 
 Columns:
-- Close          # TARGET
-- lag_1          # Feature 1
-- lag_2          # Feature 2
-...
-- lag_30         # Feature 30
-- MA_5           # Feature 31
-- MA_10          # Feature 32
-- MA_20          # Feature 33
-- MA_30          # Feature 34
-- std_5          # Feature 35
-- std_10         # Feature 36
-- std_20         # Feature 37
-- return_1day    # Feature 38
-- return_5day    # Feature 39
-- return_20day   # Feature 40
-- volume_ratio_5 # Feature 41
-- volume_ratio_20# Feature 42
+- y                            # TARGET
+- lag_1, lag_2, lag_3, ...
+- rolling_mean_lag1_window_size3, ...
+- rolling_std_lag1_window_size3, ...
+- volume_ratio_5
+- volume_ratio_20
+- session_weekday
+- session_month
+- session_quarter
 ```
 
 ### Output JSON
@@ -299,13 +307,14 @@ Columns:
 ### Phase 1: Data Preparation
 - [ ] Download 2 years of historical data via yfinance
 - [ ] Validate data quality (no missing values)
-- [ ] Create 42 fixed features
+- [ ] Create versioned forecasting features through MLForecast
 - [ ] Handle early data (first 30 days)
 - [ ] Normalize/standardize features
 - [ ] Split into train/test windows
 
 ### Phase 2: Model Training
 - [ ] Implement rolling window logic
+- [ ] Train statistical benchmark models on first window
 - [ ] Train Random Forest on first window
 - [ ] Train XGBoost on first window
 - [ ] Train Linear Regression on first window
@@ -321,6 +330,7 @@ Columns:
 ### Phase 4: API Integration
 - [ ] Create `/evaluate/<ticker>` endpoint
 - [ ] Return comprehensive JSON response
+- [ ] Include optional SHAP explainability payloads
 - [ ] Add error handling
 - [ ] Add logging
 
@@ -336,17 +346,20 @@ Columns:
 
 ### Python Code
 ```python
-from professional_evaluation import evaluate_ticker
+from professional_evaluation import rolling_window_backtest
 
 # Evaluate AAPL over 60 days
-result = evaluate_ticker(
+result = rolling_window_backtest(
     ticker='AAPL',
     test_days=60,
-    retrain_frequency=5
+    retrain_frequency=5,
+    fast_mode=False,
+    include_explanations=True,
 )
 
-print(f"MAE: ${result['metrics']['mae']}")
-print(f"MAPE: {result['metrics']['mape']}%")
+print(f"Feature spec: {result['featureSpecVersion']}")
+print(f"MAE: ${result['models']['ensemble']['metrics']['mae']}")
+print(f"MAPE: {result['models']['ensemble']['metrics']['mape']}%")
 print(f"Return: {result['returns']['total_return']}%")
 ```
 

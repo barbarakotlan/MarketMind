@@ -142,6 +142,28 @@ def get_market_sessions_calendar(
     }
 
 
+def get_next_session_dates(
+    market: Optional[str],
+    *,
+    after_date,
+    count: int,
+) -> list[pd.Timestamp]:
+    config = _get_market_config(market)
+    calendar = _get_calendar(config["calendarCode"])
+    session_count = max(1, int(count or 1))
+    current_date = pd.Timestamp(after_date).date()
+
+    try:
+        current_session = calendar.date_to_session(current_date, direction="previous")
+    except Exception as exc:
+        raise ExchangeSessionError(f"Unable to resolve session for {current_date.isoformat()}") from exc
+
+    schedule = calendar.schedule
+    session_index = schedule.index.get_loc(current_session)
+    next_schedule = schedule.iloc[session_index + 1 : session_index + 1 + session_count]
+    return [pd.Timestamp(label).tz_localize(None) for label in next_schedule.index]
+
+
 def _build_today_session_payload(
     *,
     calendar,

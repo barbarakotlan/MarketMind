@@ -94,15 +94,16 @@ GET /chart/<ticker>
 
 ## 🔮 Predictions
 
-### Predict Stock Price (Linear Regression)
+### Predict Stock Price (Single Model)
 
 ```http
-GET /predict/<ticker>
+GET /predict/<model>/<ticker>
 ```
 
-**Description:** Generate 7-day price prediction using Linear Regression model
+**Description:** Generate a 7 trading-session price prediction for a single model. Supported classical routes are `LinReg`, `RandomForest`, and `XGBoost`. Legacy explicit routes `LSTM` and `Transformer` remain available.
 
 **Parameters:**
+- `model` (string, path, required): Model label used by the UI route
 - `ticker` (string, path, required): Stock ticker symbol
 
 **Response:** `200 OK`
@@ -134,7 +135,7 @@ GET /predict/<ticker>
 GET /predict/ensemble/<ticker>
 ```
 
-**Description:** Generate enhanced 7-day prediction using ensemble of Random Forest, XGBoost, and Linear Regression
+**Description:** Generate a 7 trading-session ensemble forecast using AutoARIMA, Linear Regression, Random Forest, and XGBoost.
 
 **Parameters:**
 - `ticker` (string, path, required): Stock ticker symbol
@@ -144,21 +145,24 @@ GET /predict/ensemble/<ticker>
 {
   "symbol": "AAPL",
   "companyName": "Apple Inc.",
-  "currentPrice": 175.43,
+  "recentDate": "2024-11-14",
+  "recentClose": 175.43,
+  "recentPredicted": 176.49,
   "predictions": [
     {
       "date": "2024-11-15",
-      "linear": 176.12,
-      "randomForest": 176.45,
-      "xgboost": 176.89,
-      "ensemble": 176.49
+      "predictedClose": 176.49
     }
   ],
-  "metrics": {
-    "mae": 2.34,
-    "rmse": 3.12,
-    "r2": 0.89
-  }
+  "modelBreakdown": {
+    "auto_arima": [176.10, 176.25],
+    "linear_regression": [176.12, 176.30],
+    "random_forest": [176.45, 176.82],
+    "xgboost": [176.89, 177.04]
+  },
+  "modelsUsed": ["auto_arima", "linear_regression", "random_forest", "xgboost"],
+  "ensembleMethod": "weighted_average",
+  "confidence": 87.6
 }
 ```
 
@@ -172,40 +176,63 @@ GET /predict/ensemble/<ticker>
 GET /evaluate/<ticker>?test_days=60&retrain_frequency=5
 ```
 
-**Description:** Professional rolling window backtesting with model retraining
+**Description:** Professional rolling-window backtesting with trading-session-aware horizons, a versioned feature spec, optional selective analysis flags, and optional SHAP explainability.
 
 **Parameters:**
 - `ticker` (string, path, required): Stock ticker symbol
 - `test_days` (integer, query, optional, default: 60): Number of days to backtest
 - `retrain_frequency` (integer, query, optional, default: 5): Days between model retraining
+- `fast_mode` (boolean, query, optional): Use faster evaluation settings with explanations disabled by default
+- `include_selective` (boolean, query, optional): Preserve selective-evaluation compatibility
+- `include_selector_variants` (boolean, query, optional): Include selector variant evaluation paths when supported
+- `max_train_rows` (integer, query, optional): Cap the rolling training window for faster runs
+- `include_explanations` (boolean, query, optional): Force SHAP explainability on or off
 
 **Response:** `200 OK`
 ```json
 {
   "ticker": "AAPL",
-  "test_days": 60,
-  "retrain_frequency": 5,
-  "metrics": {
-    "mae": 2.45,
-    "rmse": 3.21,
-    "mape": 1.42,
-    "r2": 0.87,
-    "directional_accuracy": 62.5
+  "featureSpecVersion": "prediction-stack-v2",
+  "test_period": {
+    "start_date": "2024-09-15",
+    "end_date": "2024-12-11",
+    "days": 60
   },
-  "trading_performance": {
+  "models": {
+    "ensemble": {
+      "metrics": {
+        "mae": 2.45,
+        "rmse": 3.21,
+        "mape": 1.42,
+        "r_squared": 0.87,
+        "directional_accuracy": 62.5
+      }
+    },
+    "random_forest": {
+      "metrics": {
+        "mae": 2.61,
+        "rmse": 3.37,
+        "mape": 1.56,
+        "r_squared": 0.84,
+        "directional_accuracy": 60.0
+      },
+      "explainability": {
+        "global_top_features": [
+          {"feature": "lag1", "meanAbsImpact": 1.42}
+        ],
+        "latest_prediction_contributors": [
+          {"feature": "lag1", "value": 175.43, "impact": 0.81}
+        ]
+      }
+    }
+  },
+  "returns": {
     "sharpe_ratio": 1.45,
     "max_drawdown": -8.3,
     "total_return": 12.4,
     "buy_hold_return": 10.2
   },
-  "predictions": [
-    {
-      "date": "2024-09-15",
-      "actual": 175.43,
-      "predicted": 176.12,
-      "error": 0.69
-    }
-  ]
+  "best_model": "ensemble"
 }
 ```
 
