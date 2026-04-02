@@ -36,6 +36,7 @@ class MarketMindAiApiTests(unittest.TestCase):
             "PREDICTION_PORTFOLIO_FILE": backend_api.PREDICTION_PORTFOLIO_FILE,
             "ALLOW_LEGACY_USER_DATA_SEED": backend_api.ALLOW_LEGACY_USER_DATA_SEED,
             "verify_clerk_token": backend_api.verify_clerk_token,
+            "limiter_enabled": backend_api.limiter.enabled,
         }
 
         reset_runtime_state()
@@ -49,6 +50,7 @@ class MarketMindAiApiTests(unittest.TestCase):
         backend_api.PREDICTION_PORTFOLIO_FILE = os.path.join(self.tmp_root, "prediction_portfolio.json")
         backend_api.ALLOW_LEGACY_USER_DATA_SEED = False
         backend_api.verify_clerk_token = lambda token: {"sub": token}
+        backend_api.limiter.enabled = False
 
         os.makedirs(backend_api.USER_DATA_DIR, exist_ok=True)
         backend_api._JWKS_CACHE.clear()
@@ -155,6 +157,7 @@ class MarketMindAiApiTests(unittest.TestCase):
         backend_api.PREDICTION_PORTFOLIO_FILE = self.original_state["PREDICTION_PORTFOLIO_FILE"]
         backend_api.ALLOW_LEGACY_USER_DATA_SEED = self.original_state["ALLOW_LEGACY_USER_DATA_SEED"]
         backend_api.verify_clerk_token = self.original_state["verify_clerk_token"]
+        backend_api.limiter.enabled = self.original_state["limiter_enabled"]
         os.environ.pop("OPENROUTER_API_KEY", None)
         os.environ.pop("OPENROUTER_SITE_URL", None)
         os.environ.pop("OPENROUTER_APP_NAME", None)
