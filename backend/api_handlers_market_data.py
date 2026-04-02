@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sentiment_service
+
 
 def get_watchlist_handler(*, get_current_user_id_fn, load_watchlist_fn, jsonify_fn):
     return jsonify_fn(load_watchlist_fn(get_current_user_id_fn()))
@@ -267,9 +269,11 @@ def get_query_news_handler(*, request_obj, news_api_key, requests_module, jsonif
                 "link": item.get("url"),
                 "publishTime": item.get("publishedAt", "N/A"),
                 "thumbnail_url": item.get("urlToImage"),
+                "summary": item.get("description"),
             }
             for item in data.get("articles", [])
         ]
+        formatted_news = sentiment_service.annotate_news_items(formatted_news)
         return jsonify_fn(formatted_news)
     except Exception as exc:
         return jsonify_fn({"error": f"An error occurred while fetching news: {str(exc)}"}), 500

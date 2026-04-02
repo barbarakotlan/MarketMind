@@ -376,12 +376,14 @@ class PublicApiV2Tests(unittest.TestCase):
                     "sector": "Communication Services",
                     "industry": "Internet Content & Information",
                     "researchProfile": [{"label": "Company", "value": "Tencent Holdings Ltd."}],
+                    "announcementsSentimentSummary": {"status": "scored", "label": "positive"},
                     "announcements": [
                         {
                             "title": "Tencent announces annual results",
                             "publisher": "CNInfo",
                             "date": "2026-03-20",
                             "link": "https://example.com/tencent-results",
+                            "sentiment": {"status": "scored", "label": "positive"},
                         }
                     ],
                 }
@@ -542,6 +544,8 @@ class PublicApiV2Tests(unittest.TestCase):
         self.assertEqual(fundamentals_payload["assetId"], "HK:00700")
         self.assertIn("researchProfile", fundamentals_payload)
         self.assertIn("announcements", fundamentals_payload)
+        self.assertNotIn("announcementsSentimentSummary", fundamentals_payload)
+        self.assertNotIn("sentiment", fundamentals_payload["announcements"][0])
 
     def test_public_v2_market_aware_macro_contract(self):
         response = self.client.get(

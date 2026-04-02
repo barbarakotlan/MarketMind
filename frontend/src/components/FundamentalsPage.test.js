@@ -73,12 +73,20 @@ const filingDetailPayload = {
             title: 'Business',
             text: 'Apple designs devices and services for consumers and businesses.',
             truncated: false,
+            sentiment: {
+                status: 'scored',
+                label: 'neutral',
+            },
         },
         {
             key: 'riskFactors',
             title: 'Risk Factors',
             text: 'Supply chain disruption and regulation remain material risks.',
             truncated: true,
+            sentiment: {
+                status: 'scored',
+                label: 'negative',
+            },
         },
     ],
 };
@@ -100,6 +108,14 @@ const secIntelligencePayload = {
                 title: 'Risk Factors',
                 status: 'material',
                 currentExcerpt: 'Supply chain concentration remains elevated.',
+                currentSentiment: {
+                    status: 'scored',
+                    label: 'negative',
+                },
+                previousSentiment: {
+                    status: 'scored',
+                    label: 'neutral',
+                },
             },
         ],
     },
@@ -167,6 +183,10 @@ const hkFundamentalsPayload = {
             date: '2026-03-20',
             link: 'https://example.com/tencent-results',
             type: 'Announcement',
+            sentiment: {
+                status: 'scored',
+                label: 'positive',
+            },
         },
     ],
 };
@@ -206,6 +226,7 @@ describe('FundamentalsPage', () => {
         expect((await screen.findAllByText('Business')).length).toBeGreaterThan(0);
         expect(screen.getByText('Apple designs devices and services for consumers and businesses.')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Risk Factors' })).toBeInTheDocument();
+        expect(screen.getByText('Current: Negative')).toBeInTheDocument();
         expect(API_ENDPOINTS.FUNDAMENTALS).toHaveBeenCalledWith('AAPL', 'US');
         expect(API_ENDPOINTS.FUNDAMENTALS_FINANCIALS).toHaveBeenCalledWith('AAPL');
         expect(API_ENDPOINTS.FUNDAMENTALS_FILINGS).toHaveBeenCalledWith('AAPL', 'US');
@@ -262,6 +283,7 @@ describe('FundamentalsPage', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Company Research' }));
 
         expect(await screen.findByText('Tencent announces annual results')).toBeInTheDocument();
+        expect(screen.getByText('Positive')).toBeInTheDocument();
         expect(screen.getByText('Tencent Holdings Limited')).toBeInTheDocument();
         expect(API_ENDPOINTS.FUNDAMENTALS).toHaveBeenCalledWith('00700', 'HK');
         expect(API_ENDPOINTS.FUNDAMENTALS_FINANCIALS).not.toHaveBeenCalled();

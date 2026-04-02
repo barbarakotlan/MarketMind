@@ -8,6 +8,8 @@ import time
 from threading import RLock
 from typing import Any, Dict, List, Optional
 
+import sentiment_service
+
 
 LIST_CACHE_TTL_SECONDS = 15 * 60
 DETAIL_CACHE_TTL_SECONDS = 60 * 60
@@ -516,7 +518,9 @@ def get_filing_detail(
         except Exception:
             filing_obj = None
 
-    sections = _extract_sections(row["type"], filing_obj, char_limit=normalized_limit)
+    sections = sentiment_service.annotate_sec_sections(
+        _extract_sections(row["type"], filing_obj, char_limit=normalized_limit)
+    )
     payload = {
         "ticker": normalized_ticker,
         "accessionNumber": row["accessionNumber"] or normalized_accession,
@@ -527,6 +531,12 @@ def get_filing_detail(
         "hasKeySections": bool(sections),
         "sections": sections,
     }
+    filing_sentiment_summary = sentiment_service.summarize_collection(
+        sections,
+        source_types=["sec_section"],
+    )
+    if filing_sentiment_summary:
+        payload["filingSentimentSummary"] = filing_sentiment_summary
     return _cache_set(_DETAIL_CACHE, cache_key, payload, DETAIL_CACHE_TTL_SECONDS)
 
 
@@ -554,13 +564,16 @@ def get_latest_sec_context(
         except SecFilingsError:
             continue
         if detail.get("sections"):
-            return {
+            payload = {
                 "accessionNumber": detail.get("accessionNumber"),
                 "type": detail.get("type"),
                 "date": detail.get("date"),
                 "url": detail.get("url"),
                 "sections": detail.get("sections"),
             }
+            if detail.get("filingSentimentSummary"):
+                payload["filingSentimentSummary"] = detail.get("filingSentimentSummary")
+            return payload
     return None
 
 
@@ -772,6 +785,7 @@ def get_filing_change_summary(
             }
         )
 
+    section_changes = sentiment_service.annotate_filing_section_changes(section_changes)
     payload = {
         "comparisonForm": comparison_form,
         "currentFiling": {
@@ -788,6 +802,15 @@ def get_filing_change_summary(
         },
         "sectionChanges": section_changes,
     }
+    filing_sentiment_summary = sentiment_service.summarize_sentiments(
+        [
+            item.get("currentSentiment")
+            for item in section_changes
+        ],
+        source_types=["filing_change"],
+    )
+    if filing_sentiment_summary:
+        payload["filingSentimentSummary"] = filing_sentiment_summary
     return _cache_set(_CHANGE_CACHE, cache_key, payload, CHANGE_CACHE_TTL_SECONDS)
 
 
@@ -823,4 +846,8 @@ def get_company_sec_intelligence(
         "filingChangeSummary": filing_change_summary,
         "insiderActivity": insider_activity,
         "beneficialOwnership": beneficial_ownership,
+        "filingSentimentSummary": (
+            (filing_change_summary or {}).get("filingSentimentSummary")
+            or (latest_filing or {}).get("filingSentimentSummary")
+        ),
     }

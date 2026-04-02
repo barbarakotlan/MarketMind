@@ -17,6 +17,10 @@ import {
     getMarketSessionLabel,
     getMarketSessionSummary,
 } from './ui/marketSessionUtils';
+import {
+    getSentimentSummaryCaption,
+    getSentimentSummaryValue,
+} from './ui/sentimentUtils';
 
 const TEMPLATE_KEY = 'investment_thesis_memo';
 
@@ -58,6 +62,11 @@ const formatActionError = (error, fallback) => {
 const SectionLabel = ({ children }) => (
     <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">{children}</p>
 );
+
+const getSentimentToneWord = (summary) => {
+    const value = getSentimentSummaryValue(summary);
+    return value ? value.replace(/^Overall\s+/i, '') : null;
+};
 
 const StarterPromptButton = ({ prompt, onClick }) => (
     <button
@@ -775,6 +784,24 @@ const MarketMindAIPage = () => {
                                                 value={`${contextData.recentNews?.length || 0} headlines`}
                                                 caption={contextData.recentNews?.[0]?.title || 'No recent headlines available.'}
                                             />
+                                            {contextData.sentimentSummary?.overall ? (
+                                                <ContextCard
+                                                    label="Sentiment"
+                                                    value={getSentimentSummaryValue(contextData.sentimentSummary.overall)}
+                                                    caption={[
+                                                        getSentimentSummaryCaption(contextData.sentimentSummary.overall),
+                                                        getSentimentToneWord(contextData.sentimentSummary.news)
+                                                            ? `News ${getSentimentToneWord(contextData.sentimentSummary.news)}`
+                                                            : null,
+                                                        getSentimentToneWord(contextData.sentimentSummary.filings)
+                                                            ? `Filings ${getSentimentToneWord(contextData.sentimentSummary.filings)}`
+                                                            : null,
+                                                        getSentimentToneWord(contextData.sentimentSummary.announcements)
+                                                            ? `Announcements ${getSentimentToneWord(contextData.sentimentSummary.announcements)}`
+                                                            : null,
+                                                    ].filter(Boolean).join(' · ')}
+                                                />
+                                            ) : null}
                                             {contextData.marketSession ? (
                                                 <ContextCard
                                                     label="Market session"
