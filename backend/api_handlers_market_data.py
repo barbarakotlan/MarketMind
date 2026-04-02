@@ -365,6 +365,7 @@ def predict_stock_handler(
     ticker,
     *,
     create_dataset_fn,
+    future_prediction_dates_fn,
     linear_regression_predict_fn,
     random_forest_predict_fn,
     xgboost_predict_fn,
@@ -384,8 +385,8 @@ def predict_stock_handler(
         info = stock.info
 
         if model == "LinReg":
-            period = "15d"
-            min_rows = 7
+            period = "6mo"
+            min_rows = 40
         elif model in ("RandomForest", "XGBoost"):
             period = "6mo"
             min_rows = 40
@@ -425,7 +426,9 @@ def predict_stock_handler(
 
         recent_close = float(df["Close"].iloc[-1])
         recent_date = df.index[-1]
-        future_dates = [recent_date + pd_module.Timedelta(days=i + 1) for i in range(len(preds))]
+        future_dates = future_prediction_dates_fn(df, len(preds))
+        if not future_dates:
+            future_dates = [recent_date + pd_module.Timedelta(days=i + 1) for i in range(len(preds))]
 
         response = {
             "symbol": info.get("symbol", sanitized_ticker.upper()),
@@ -450,6 +453,7 @@ def predict_ensemble_handler(
     request_obj,
     selective_modes,
     selector_source_requestable,
+    future_prediction_dates_fn,
     yf_module,
     live_ensemble_signal_components_fn,
     infer_selective_decision_fn,
@@ -481,7 +485,9 @@ def predict_ensemble_handler(
         disagreement = signal_parts["disagreement"]
 
         recent_date = df.index[-1]
-        future_dates = [recent_date + pd_module.Timedelta(days=i + 1) for i in range(len(ensemble_preds))]
+        future_dates = future_prediction_dates_fn(df, len(ensemble_preds))
+        if not future_dates:
+            future_dates = [recent_date + pd_module.Timedelta(days=i + 1) for i in range(len(ensemble_preds))]
 
         selector = infer_selective_decision_fn(
             ticker=sanitized_ticker,
@@ -568,6 +574,10 @@ def evaluate_models_handler(
         default_retrain = 10 if fast_mode else 5
         retrain_frequency = int(request_obj.args.get("retrain_frequency", default_retrain))
         max_train_rows = request_obj.args.get("max_train_rows", default=450 if fast_mode else None, type=int)
+        include_explanations_raw = request_obj.args.get("include_explanations")
+        include_explanations = None
+        if include_explanations_raw is not None:
+            include_explanations = str(include_explanations_raw).strip().lower() in {"1", "true", "yes", "on"}
 
         result = rolling_window_backtest_fn(
             sanitized_ticker,
@@ -577,6 +587,7 @@ def evaluate_models_handler(
             include_selector_variants=include_selector_variants,
             fast_mode=fast_mode,
             max_train_rows=max_train_rows,
+            include_explanations=include_explanations,
         )
         if result is None:
             return jsonify_fn({"error": "Insufficient data for evaluation"}), 404

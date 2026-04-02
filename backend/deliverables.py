@@ -9,8 +9,8 @@ import yfinance as yf
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from models import ensemble_predict, create_dataset
 from openrouter_client import DEFAULT_OPENROUTER_MODEL, create_structured_completion
+from prediction_service import get_prediction_snapshot
 from user_state_store import (
     Deliverable,
     DeliverableAssumption,
@@ -380,30 +380,7 @@ def list_deliverable_memos(session: Session, clerk_user_id: str, deliverable_id:
 
 def _prediction_snapshot(ticker: str) -> Optional[Dict[str, Any]]:
     try:
-        df = create_dataset(ticker, period="1y")
-        if df.empty or len(df) < 30:
-            return None
-        ensemble_preds, model_breakdown = ensemble_predict(df, days_ahead=6)
-        if ensemble_preds is None or len(ensemble_preds) == 0:
-            return None
-        recent_close = float(df["Close"].iloc[-1])
-        model_first_predictions = [float(preds[0]) for preds in model_breakdown.values() if preds is not None and len(preds)]
-        confidence = 85.0
-        if len(model_first_predictions) > 1:
-            mean_prediction = sum(model_first_predictions) / len(model_first_predictions)
-            dispersion = sum(abs(pred - mean_prediction) for pred in model_first_predictions) / len(model_first_predictions)
-            if recent_close:
-                confidence = max(55.0, min(95.0, 95.0 - ((dispersion / recent_close) * 100)))
-        return {
-            "recentClose": round(recent_close, 2),
-            "recentPredicted": round(float(ensemble_preds[0]), 2),
-            "confidence": round(confidence, 1),
-            "modelsUsed": list(model_breakdown.keys()),
-            "predictions": [
-                {"day": index + 1, "predictedClose": round(float(pred), 2)}
-                for index, pred in enumerate(ensemble_preds[:3])
-            ],
-        }
+        return get_prediction_snapshot(ticker)
     except Exception:
         return None
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import prediction_service
+
 
 def to_bool(value):
     if isinstance(value, bool):
@@ -25,7 +27,6 @@ def live_ensemble_signal_components(
         return None
 
     ensemble_preds, individual_preds = ensemble_predict_fn(df, days_ahead=7)
-    print(f"ensemble_preds length: {len(ensemble_preds)}")
     if ensemble_preds is None or len(ensemble_preds) == 0:
         return None
 
@@ -63,8 +64,10 @@ def chart_prediction_points(
     if ensemble_preds is None or len(ensemble_preds) == 0:
         return []
 
-    recent_date = signal_parts["df"].index[-1]
-    future_dates = [recent_date + pd_module.Timedelta(days=i + 1) for i in range(len(ensemble_preds))]
+    future_dates = prediction_service.get_future_prediction_dates(signal_parts["df"], len(ensemble_preds))
+    if not future_dates:
+        recent_date = signal_parts["df"].index[-1]
+        future_dates = [recent_date + pd_module.Timedelta(days=i + 1) for i in range(len(ensemble_preds))]
     return [
         {
             "date": date.strftime("%Y-%m-%d 00:00:00"),

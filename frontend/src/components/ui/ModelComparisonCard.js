@@ -6,6 +6,9 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
     const modelLabels = {
         'linear_regression': 'Linear Regression',
         'random_forest': 'Random Forest',
+        'auto_arima': 'AutoARIMA',
+        'naive': 'Naive',
+        'seasonal_naive_5': 'Seasonal Naive (5)',
         'xgboost': 'XGBoost',
         'lstm': 'LSTM',
         'transformer': 'Transformer'
@@ -30,7 +33,7 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
                         Model Comparison
                     </h3>
                     <p className="text-sm text-mm-text-secondary mt-1">
-                        Ensemble of {modelsUsed.length} ML models
+                        Ensemble of {modelsUsed.length} statistical and ML models
                     </p>
                 </div>
                 <div className="text-right">
@@ -48,10 +51,10 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
                             <div className="flex items-center">
                                 <div>
                                     <h4 className="text-sm font-semibold text-mm-text-primary">
-                                        {modelLabels[model]}
+                                        {modelLabels[model] || model.replace(/_/g, ' ')}
                                     </h4>
                                     <p className="text-xs text-mm-text-tertiary">
-                                        {modelBreakdown[model].length} day forecast
+                                        {modelBreakdown[model].length} trading-session forecast
                                     </p>
                                 </div>
                             </div>
@@ -73,7 +76,7 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
                                 </p>
                             </div>
                             <div className="text-center">
-                                <p className="text-mm-text-tertiary">Day 6</p>
+                                <p className="text-mm-text-tertiary">Day {modelBreakdown[model].length}</p>
                                 <p className="font-medium text-mm-text-primary">
                                     ${modelBreakdown[model][modelBreakdown[model].length - 1]}
                                 </p>
@@ -89,7 +92,7 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                     </svg>
                     <span>
-                        Ensemble combines predictions from multiple models for higher accuracy
+                        Ensemble combines benchmark and ML models using recent validation performance
                     </span>
                 </div>
             </div>

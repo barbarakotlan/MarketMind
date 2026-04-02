@@ -1,5 +1,5 @@
 # To run this file, you need to install all dependencies:
-# pip install Flask Flask-CORS yfinance pandas scikit-learn numpy requests python-dotenv statsmodels finnhub-python vaderSentiment xgboost schedule
+# pip install Flask Flask-CORS yfinance pandas scikit-learn numpy requests python-dotenv statsmodels finnhub-python vaderSentiment xgboost schedule statsforecast mlforecast shap
 
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -94,6 +94,7 @@ from prediction_market_analysis import (
 import akshare_service
 import exchange_session_service
 import sec_filings_service
+import prediction_service
 from asset_identity import parse_asset_reference
 from logger_config import setup_logger, log_api_error
 from deliverables import (
@@ -1436,6 +1437,7 @@ def predict_stock(model, ticker):
         model,
         ticker,
         create_dataset_fn=create_dataset,
+        future_prediction_dates_fn=prediction_service.get_future_prediction_dates,
         linear_regression_predict_fn=linear_regression_predict,
         random_forest_predict_fn=random_forest_predict,
         xgboost_predict_fn=xgboost_predict,
@@ -1490,6 +1492,7 @@ def predict_ensemble(ticker):
         request_obj=request,
         selective_modes=SELECTIVE_MODES,
         selector_source_requestable=SELECTOR_SOURCE_REQUESTABLE,
+        future_prediction_dates_fn=prediction_service.get_future_prediction_dates,
         yf_module=yf,
         live_ensemble_signal_components_fn=_live_ensemble_signal_components,
         infer_selective_decision_fn=infer_selective_decision,

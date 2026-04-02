@@ -34,6 +34,7 @@ class ChartPredictionAppendTests(unittest.TestCase):
             "ticker_cls": backend_api.yf.Ticker,
             "create_dataset": backend_api.create_dataset,
             "ensemble_predict": backend_api.ensemble_predict,
+            "future_prediction_dates": backend_api.prediction_service.get_future_prediction_dates,
         }
         backend_api.app.testing = True
         self.client = backend_api.app.test_client()
@@ -49,11 +50,22 @@ class ChartPredictionAppendTests(unittest.TestCase):
                 {"linear_regression": np.array([121.0, 122.0, 123.0, 124.0, 125.0, 126.0])},
             )
         )
+        backend_api.prediction_service.get_future_prediction_dates = (
+            lambda df, horizon: list(pd.to_datetime([
+                "2025-05-01",
+                "2025-05-02",
+                "2025-05-05",
+                "2025-05-06",
+                "2025-05-07",
+                "2025-05-08",
+            ]))[:horizon]
+        )
 
     def tearDown(self):
         backend_api.yf.Ticker = self.original["ticker_cls"]
         backend_api.create_dataset = self.original["create_dataset"]
         backend_api.ensemble_predict = self.original["ensemble_predict"]
+        backend_api.prediction_service.get_future_prediction_dates = self.original["future_prediction_dates"]
 
     def test_chart_endpoint_appends_prediction_rows(self):
         resp = self.client.get("/chart/AAPL?period=1mo")
@@ -61,7 +73,7 @@ class ChartPredictionAppendTests(unittest.TestCase):
 
         payload = resp.get_json()
         self.assertEqual(len(payload), 9)
-        self.assertEqual(payload[-1]["date"], "2025-05-06 00:00:00")
+        self.assertEqual(payload[-1]["date"], "2025-05-08 00:00:00")
         self.assertEqual(payload[-1]["close"], 126.0)
         self.assertIsNone(payload[-1]["open"])
         self.assertIsNone(payload[-1]["volume"])

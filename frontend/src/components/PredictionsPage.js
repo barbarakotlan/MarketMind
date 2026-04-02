@@ -84,7 +84,7 @@ const PredictionsPage = ({ initialTicker }) => {
             <div className="ui-page-header text-center">
                 <h1 className="ui-page-title mb-2">Stock Price Predictions</h1>
                 <p className="ui-page-subtitle">
-                    Get 7-day price predictions powered by machine learning
+                    Get 7 trading-session price predictions powered by a unified forecasting stack
                 </p>
             </div>
 
@@ -239,7 +239,7 @@ const PredictionsPage = ({ initialTicker }) => {
                         Enter a stock ticker to see predictions
                     </h3>
                     <p className="text-mm-text-secondary">
-                        Get AI-powered 7-day price forecasts for any stock
+                        Get 7 trading-session price forecasts for any U.S. stock
                     </p>
                 </div>
             )}
