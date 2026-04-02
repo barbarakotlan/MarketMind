@@ -37,6 +37,18 @@ const formatNum = (num, digits = 2) => {
     return isNaN(parsed) ? '0.00' : parsed.toFixed(digits);
 };
 
+const formatPercent = (num, digits = 2) => {
+    if (num === null || num === undefined || isNaN(num)) return '0.00%';
+    return `${formatNum(Number(num) * 100, digits)}%`;
+};
+
+const optimizationMethods = [
+    { key: 'black_litterman', label: 'Black-Litterman' },
+    { key: 'max_sharpe', label: 'Max Sharpe' },
+    { key: 'min_vol', label: 'Min Vol' },
+    { key: 'hrp', label: 'HRP' },
+];
+
 // --- ROBUST PORTFOLIO GRAPH COMPONENT ---
 const portfolioTimeFrames = [
     { label: '1D', value: '1d' },
@@ -390,14 +402,15 @@ export default function App() {
 
     const [isOptionModalOpen, setIsOptionModalOpen] = useState(false);
     const [selectedOption, setSelectedOption] = useState(null);
+    const [optimizationMethod, setOptimizationMethod] = useState('black_litterman');
+    const [optimizationData, setOptimizationData] = useState(null);
+    const [optimizationLoading, setOptimizationLoading] = useState(false);
+    const [optimizationError, setOptimizationError] = useState('');
 
     const fetchPortfolio = async (isManualRefresh = false) => {
         if (isManualRefresh) setRefreshing(true);
         try {
             const data = await apiRequest(API_ENDPOINTS.PORTFOLIO);
-
-            // Log to console so you can see the raw data coming from the backend
-            console.log("Latest Portfolio Data:", data);
 
             setPortfolio(data);
             setStockPositions(data.positions || []);
@@ -419,6 +432,38 @@ export default function App() {
         }, 60000);
         return () => clearInterval(interval);
     }, []);
+
+    const fetchOptimization = useCallback(async (method = optimizationMethod) => {
+        setOptimizationLoading(true);
+        setOptimizationError('');
+        try {
+            const payload = await apiRequest(API_ENDPOINTS.PORTFOLIO_OPTIMIZE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    method,
+                    use_predictions: true,
+                }),
+            });
+            setOptimizationData(payload);
+        } catch (err) {
+            setOptimizationData(null);
+            setOptimizationError(err.message || 'Unable to generate portfolio recommendations right now.');
+        } finally {
+            setOptimizationLoading(false);
+        }
+    }, [optimizationMethod]);
+
+    useEffect(() => {
+        if (!portfolio) return;
+        if (stockPositions.length < 2) {
+            setOptimizationData(null);
+            setOptimizationError('');
+            setOptimizationLoading(false);
+            return;
+        }
+        fetchOptimization(optimizationMethod);
+    }, [portfolio, stockPositions.length, optimizationMethod, fetchOptimization]);
 
     const handleBuy = async (e) => {
         e.preventDefault();
@@ -701,6 +746,156 @@ export default function App() {
                          <span className="text-[11px] font-semibold uppercase tracking-[0.12em]">{refreshing ? 'Fetching Data' : 'Active'}</span>
                     </div>
                 </div>
+            </div>
+
+            <div className="ui-panel space-y-6 p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                        <p className="ui-section-label mb-2">Portfolio Intelligence</p>
+                        <h2 className="text-xl font-semibold text-mm-text-primary">Rebalance Suggestions</h2>
+                        <p className="mt-2 max-w-2xl text-sm text-mm-text-secondary">
+                            Read-only optimization for your current U.S. equity holdings. Options remain excluded, and any unused capital stays in cash.
+                        </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {optimizationMethods.map((item) => (
+                            <button
+                                key={item.key}
+                                type="button"
+                                onClick={() => setOptimizationMethod(item.key)}
+                                className={optimizationMethod === item.key ? 'ui-button-primary px-4 py-2 text-xs' : 'ui-button-secondary px-4 py-2 text-xs'}
+                            >
+                                {item.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {stockPositions.length < 2 ? (
+                    <div className="ui-panel-subtle border-dashed p-6 text-sm text-mm-text-secondary">
+                        Add at least two U.S. stock holdings to generate a portfolio rebalance plan.
+                        {optionsPositions.length > 0 && (
+                            <span className="block mt-2">
+                                Current option positions stay excluded from optimization in this first release.
+                            </span>
+                        )}
+                    </div>
+                ) : optimizationLoading ? (
+                    <div className="ui-panel-subtle flex items-center gap-3 p-6 text-mm-text-secondary">
+                        <Loader2 className="h-5 w-5 animate-spin text-mm-accent-primary" />
+                        Building portfolio recommendations...
+                    </div>
+                ) : optimizationError ? (
+                    <div className="ui-banner ui-banner-error">
+                        <strong className="text-mm-text-primary">Portfolio optimization unavailable.</strong> {optimizationError}
+                    </div>
+                ) : optimizationData ? (
+                    <>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                            <div className="ui-panel-subtle p-4">
+                                <p className="ui-section-label mb-1">Investable Value</p>
+                                <p className="text-xl font-semibold text-mm-text-primary">{formatCurrency(optimizationData.investableValue)}</p>
+                            </div>
+                            <div className="ui-panel-subtle p-4">
+                                <p className="ui-section-label mb-1">Expected Return</p>
+                                <p className="text-xl font-semibold text-mm-text-primary">{formatPercent(optimizationData.portfolioMetrics?.expectedAnnualReturn)}</p>
+                            </div>
+                            <div className="ui-panel-subtle p-4">
+                                <p className="ui-section-label mb-1">Volatility</p>
+                                <p className="text-xl font-semibold text-mm-text-primary">{formatPercent(optimizationData.portfolioMetrics?.annualVolatility)}</p>
+                            </div>
+                            <div className="ui-panel-subtle p-4">
+                                <p className="ui-section-label mb-1">Sharpe</p>
+                                <p className="text-xl font-semibold text-mm-accent-primary">{formatNum(optimizationData.portfolioMetrics?.sharpeRatio, 2)}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
+                            <div className="overflow-x-auto rounded-card border border-mm-border">
+                                <table className="min-w-full text-sm">
+                                    <thead className="bg-mm-surface-subtle border-b border-mm-border">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-mm-text-secondary">Ticker</th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-mm-text-secondary">Current</th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-mm-text-secondary">Target</th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-mm-text-secondary">Delta</th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-mm-text-secondary">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-mm-border">
+                                        {(optimizationData.recommendedAllocations || []).map((row) => {
+                                            const action = (optimizationData.rebalanceActions || []).find((item) => item.ticker === row.ticker)?.action || 'hold';
+                                            const isPositive = row.deltaValue >= 0;
+                                            return (
+                                                <tr key={row.ticker}>
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-semibold text-mm-text-primary">{row.ticker}</div>
+                                                        <div className="text-xs text-mm-text-secondary">{row.companyName}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-mm-text-secondary">
+                                                        {formatPercent(row.currentWeight)} · {formatCurrency(row.currentValue)}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-mm-text-primary">
+                                                        {formatPercent(row.targetWeight)} · {formatCurrency(row.targetValue)}
+                                                    </td>
+                                                    <td className={`px-4 py-3 font-semibold ${isPositive ? 'text-mm-positive' : 'text-mm-negative'}`}>
+                                                        {isPositive ? '+' : ''}{formatCurrency(row.deltaValue)} · {isPositive ? '+' : ''}{formatNum(row.estimatedSharesDelta, 2)} sh
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={`ui-status-chip ${action === 'buy' ? 'ui-status-chip--positive' : action === 'trim' ? 'ui-status-chip--warning' : ''}`}>
+                                                            {action}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                        <tr>
+                                            <td className="px-4 py-3 font-semibold text-mm-text-primary">Cash</td>
+                                            <td className="px-4 py-3 text-mm-text-secondary">
+                                                {formatPercent(optimizationData.cashPosition?.currentWeight)} · {formatCurrency(optimizationData.cashPosition?.currentValue)}
+                                            </td>
+                                            <td className="px-4 py-3 text-mm-text-primary">
+                                                {formatPercent(optimizationData.cashPosition?.targetWeight)} · {formatCurrency(optimizationData.cashPosition?.targetValue)}
+                                            </td>
+                                            <td className={`px-4 py-3 font-semibold ${(optimizationData.cashPosition?.deltaValue || 0) >= 0 ? 'text-mm-positive' : 'text-mm-negative'}`}>
+                                                {formatCurrency(optimizationData.cashPosition?.deltaValue)}
+                                            </td>
+                                            <td className="px-4 py-3 text-mm-text-secondary">reserve</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="space-y-4">
+                                {(optimizationData.excludedHoldings || []).length > 0 && (
+                                    <div className="ui-panel-subtle p-4">
+                                        <p className="ui-section-label mb-2">Excluded Holdings</p>
+                                        {(optimizationData.excludedHoldings || []).map((item) => (
+                                            <div key={item.symbol} className="mb-3 text-sm last:mb-0">
+                                                <div className="font-semibold text-mm-text-primary">{item.symbol}</div>
+                                                <div className="text-mm-text-secondary">{item.reason}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {(optimizationData.warnings || []).length > 0 && (
+                                    <div className="ui-panel-subtle p-4">
+                                        <p className="ui-section-label mb-2">Warnings</p>
+                                        <ul className="space-y-2 text-sm text-mm-text-secondary">
+                                            {(optimizationData.warnings || []).map((warning) => (
+                                                <li key={warning} className="flex gap-2">
+                                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-mm-warning" />
+                                                    <span>{warning}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                ) : null}
             </div>
 
             <PortfolioGrowthChart totalValue={portfolio?.total_value} />

@@ -284,6 +284,7 @@ class MarketMindAiApiTests(unittest.TestCase):
         self.assertEqual(context_response.status_code, 200)
         context_payload = context_response.get_json()
         self.assertTrue(context_payload["watchlistMembership"])
+        self.assertTrue(context_payload["portfolioOptimizationAvailable"])
         self.assertEqual(context_payload["fundamentalsSummary"]["companyName"], "Apple Inc.")
         self.assertEqual(context_payload["marketSession"]["calendarCode"], "XNYS")
         self.assertEqual(context_payload["marketSession"]["market"], "US")

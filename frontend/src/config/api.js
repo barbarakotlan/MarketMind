@@ -77,6 +77,7 @@ export const API_ENDPOINTS = {
     
     // Paper Trading
     PORTFOLIO: `${API_BASE_URL}/paper/portfolio`,
+    PORTFOLIO_OPTIMIZE: `${API_BASE_URL}/paper/portfolio/optimize`,
     PORTFOLIO_HISTORY: (period) => `${API_BASE_URL}/paper/history?period=${period}`,
     PORTFOLIO_TRANSACTIONS: `${API_BASE_URL}/paper/transactions`,
     PORTFOLIO_RESET: `${API_BASE_URL}/paper/reset`,

@@ -100,6 +100,7 @@ class AuthIsolationTests(unittest.TestCase):
             ("post", "/watchlist/AAPL", None),
             ("delete", "/watchlist/AAPL", None),
             ("get", "/paper/portfolio", None),
+            ("post", "/paper/portfolio/optimize", {}),
             ("get", "/paper/history", None),
             ("get", "/paper/transactions", None),
             ("post", "/paper/reset", None),

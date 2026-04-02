@@ -80,15 +80,28 @@ def deterministic_data_shim():
             self.news = []
             self.quarterly_financials = pd.DataFrame()
 
-        def history(self, period: str = "1mo", interval: str = "1d"):
-            dates = pd.date_range("2026-03-01", periods=5, freq="D")
+        def history(self, period: str = "1mo", interval: str = "1d", **kwargs):
+            periods = 30
+            if isinstance(period, str) and period.endswith("d"):
+                try:
+                    periods = max(1, int(period[:-1]))
+                except ValueError:
+                    periods = 30
+            elif isinstance(period, str) and period.endswith("mo"):
+                try:
+                    periods = max(5, int(period[:-2]) * 21)
+                except ValueError:
+                    periods = 30
+            periods = min(periods, 500)
+            dates = pd.date_range("2025-01-01", periods=periods, freq="D")
+            close_series = np.linspace(98.5, 98.5 + periods - 1, periods)
             return pd.DataFrame(
                 {
-                    "Open": [98.0, 99.0, 100.0, 101.0, 102.0],
-                    "High": [99.0, 100.0, 101.0, 102.0, 103.0],
-                    "Low": [97.5, 98.5, 99.5, 100.5, 101.5],
-                    "Close": [98.5, 99.5, 100.5, 101.5, 102.5],
-                    "Volume": [1000, 1200, 1400, 1600, 1800],
+                    "Open": close_series - 0.5,
+                    "High": close_series + 0.5,
+                    "Low": close_series - 1.0,
+                    "Close": close_series,
+                    "Volume": np.linspace(1000, 1000 + (periods - 1) * 10, periods),
                 },
                 index=dates,
             )
@@ -310,11 +323,24 @@ def _run_journey(client, *, results: List[Dict[str, Any]]) -> None:
         headers=_auth_headers(),
         json={"ticker": "AAPL", "shares": 0.01},
     )
-    bought, _ = _expect_success(
+    bought_primary, _ = _expect_success(
         results,
         phase="week_3_paper_trading",
         name="paper_buy",
         response=buy_stock,
+        provider_dependent=True,
+    )
+
+    buy_second_stock = client.post(
+        "/paper/buy",
+        headers=_auth_headers(),
+        json={"ticker": "MSFT", "shares": 0.01},
+    )
+    bought_secondary, _ = _expect_success(
+        results,
+        phase="week_3_paper_trading",
+        name="paper_buy_second_position",
+        response=buy_second_stock,
         provider_dependent=True,
     )
 
@@ -326,14 +352,42 @@ def _run_journey(client, *, results: List[Dict[str, Any]]) -> None:
         response=portfolio_resp,
         provider_dependent=True,
     )
-    if bought and portfolio_ok and isinstance(portfolio_payload, dict):
-        has_position = any(position.get("ticker") == "AAPL" for position in portfolio_payload.get("positions", []))
+    if bought_primary and bought_secondary and portfolio_ok and isinstance(portfolio_payload, dict):
+        held_tickers = {position.get("ticker") for position in portfolio_payload.get("positions", [])}
         _record_result(
             results,
             phase="week_3_paper_trading",
             name="paper_position_verify",
-            status="passed" if has_position else "failed",
-            classification="pass" if has_position else "product_bug",
+            status="passed" if {"AAPL", "MSFT"}.issubset(held_tickers) else "failed",
+            classification="pass" if {"AAPL", "MSFT"}.issubset(held_tickers) else "product_bug",
+            details={"heldTickers": sorted(ticker for ticker in held_tickers if ticker)},
+        )
+
+    optimize_resp = client.post(
+        "/paper/portfolio/optimize",
+        headers=_auth_headers(),
+        json={"method": "hrp", "use_predictions": False},
+    )
+    optimize_ok, optimize_payload = _expect_success(
+        results,
+        phase="week_3_paper_trading",
+        name="paper_portfolio_optimize",
+        response=optimize_resp,
+        provider_dependent=True,
+    )
+    if optimize_ok and isinstance(optimize_payload, dict):
+        recommended = optimize_payload.get("recommendedAllocations") or []
+        has_targets = len(recommended) >= 2 and optimize_payload.get("method") == "hrp"
+        _record_result(
+            results,
+            phase="week_3_paper_trading",
+            name="paper_portfolio_optimize_verify",
+            status="passed" if has_targets else "failed",
+            classification="pass" if has_targets else "product_bug",
+            details={
+                "recommendedCount": len(recommended),
+                "method": optimize_payload.get("method"),
+            },
         )
 
     sell_stock = client.post(
@@ -346,6 +400,19 @@ def _run_journey(client, *, results: List[Dict[str, Any]]) -> None:
         phase="week_3_paper_trading",
         name="paper_sell",
         response=sell_stock,
+        provider_dependent=True,
+    )
+
+    sell_second_stock = client.post(
+        "/paper/sell",
+        headers=_auth_headers(),
+        json={"ticker": "MSFT", "shares": 0.01},
+    )
+    _expect_success(
+        results,
+        phase="week_3_paper_trading",
+        name="paper_sell_second_position",
+        response=sell_second_stock,
         provider_dependent=True,
     )
 

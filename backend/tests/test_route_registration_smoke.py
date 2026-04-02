@@ -39,6 +39,7 @@ class RouteRegistrationSmokeTests(unittest.TestCase):
             "/predict/ensemble/<string:ticker>": {"GET"},
             "/evaluate/<string:ticker>": {"GET"},
             "/paper/portfolio": {"GET"},
+            "/paper/portfolio/optimize": {"POST"},
             "/paper/buy": {"POST"},
             "/paper/options/buy": {"POST"},
             "/notifications": {"GET", "POST"},
