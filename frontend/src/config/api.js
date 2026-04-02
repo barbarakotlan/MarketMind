@@ -8,32 +8,9 @@
  *   - .env.production (for production builds)
  */
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1']);
-
 const resolveApiBaseUrl = () => {
     const configuredBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-
-    if (typeof window === 'undefined') {
-        return configuredBase;
-    }
-
-    try {
-        const parsed = new URL(configuredBase, window.location.origin);
-        const currentHost = window.location.hostname;
-
-        if (
-            LOOPBACK_HOSTS.has(parsed.hostname) &&
-            LOOPBACK_HOSTS.has(currentHost) &&
-            parsed.hostname !== currentHost
-        ) {
-            parsed.hostname = currentHost;
-            return parsed.toString().replace(/\/$/, '');
-        }
-
-        return parsed.toString().replace(/\/$/, '');
-    } catch (error) {
-        return configuredBase;
-    }
+    return configuredBase.replace(/\/$/, '');
 };
 
 // API Base URL from environment variable or default to localhost
@@ -160,6 +137,9 @@ export const API_ENDPOINTS = {
     FUNDAMENTALS: (ticker) => `${API_BASE_URL}/fundamentals/${ticker}`,
     FUNDAMENTALS_FINANCIALS: (ticker) => `${API_BASE_URL}/fundamentals/financials/${ticker}`,
     FUNDAMENTALS_FILINGS: (ticker) => `${API_BASE_URL}/fundamentals/filings/${ticker}`,
+    FUNDAMENTALS_SEC_INTELLIGENCE: (ticker) => `${API_BASE_URL}/fundamentals/sec-intelligence/${ticker}`,
+    FUNDAMENTALS_FILING_DETAIL: (ticker, accessionNumber) =>
+        `${API_BASE_URL}/fundamentals/filings/${ticker}/${encodeURIComponent(accessionNumber)}`,
 };
 
 /**

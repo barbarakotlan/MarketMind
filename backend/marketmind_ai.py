@@ -24,6 +24,7 @@ from openrouter_client import (
     create_chat_completion,
     create_structured_completion,
 )
+import sec_filings_service
 from user_state_store import (
     Deliverable,
     DeliverableMemo,
@@ -428,6 +429,10 @@ def _context_has_grounding(context: Dict[str, Any]) -> bool:
         context.get("predictionSnapshot")
         or context.get("recentNews")
         or context.get("fundamentalsSummary", {}).get("companyName")
+        or context.get("secFilingsSummary", {}).get("type")
+        or context.get("filingChangeSummary", {}).get("comparisonForm")
+        or context.get("insiderActivitySummary")
+        or context.get("beneficialOwnershipSummary")
         or context.get("cryptoQuote")
         or context.get("watchlistMembership")
         or context.get("activeAlerts")
@@ -441,6 +446,10 @@ def _compact_context_summary(context: Optional[Dict[str, Any]]) -> Optional[Dict
         return None
     prediction = context.get("predictionSnapshot") or {}
     fundamentals = context.get("fundamentalsSummary") or {}
+    sec_filing = context.get("secFilingsSummary") or {}
+    filing_change = context.get("filingChangeSummary") or {}
+    insider_activity = context.get("insiderActivitySummary") or []
+    beneficial_ownership = context.get("beneficialOwnershipSummary") or []
     crypto_quote = context.get("cryptoQuote") or {}
     return {
         "ticker": context.get("ticker"),
@@ -456,6 +465,18 @@ def _compact_context_summary(context: Optional[Dict[str, Any]]) -> Optional[Dict
         ),
         "companyName": fundamentals.get("companyName"),
         "sector": fundamentals.get("sector"),
+        "latestSecFiling": (
+            f"{sec_filing.get('type')} filed {sec_filing.get('date')}"
+            if sec_filing.get("type") and sec_filing.get("date")
+            else None
+        ),
+        "filingChangeHeadline": (
+            f"{filing_change.get('comparisonForm')} changes in {len(filing_change.get('sectionChanges') or [])} section(s)"
+            if filing_change.get("comparisonForm")
+            else None
+        ),
+        "insiderActivityCount": len(insider_activity),
+        "beneficialOwnershipCount": len(beneficial_ownership),
         "quoteHeadline": (
             f"{crypto_quote.get('fromCrypto', {}).get('code')} spot {crypto_quote.get('exchangeRate')}"
             if crypto_quote.get("exchangeRate") is not None
@@ -546,6 +567,10 @@ def _build_grounded_fallback_reply(
     fundamentals = context.get("fundamentalsSummary") or {}
     prediction = context.get("predictionSnapshot") or {}
     news_items = context.get("recentNews") or []
+    sec_filing = context.get("secFilingsSummary") or {}
+    filing_change = context.get("filingChangeSummary") or {}
+    insider_activity = context.get("insiderActivitySummary") or []
+    beneficial_ownership = context.get("beneficialOwnershipSummary") or []
     quote = context.get("cryptoQuote") or {}
     current_position = context.get("currentPaperPosition") or {}
 
@@ -588,6 +613,44 @@ def _build_grounded_fallback_reply(
         )
     else:
         bullets.append("Recent news: no fresh headlines are attached to this chat right now.")
+
+    if sec_filing.get("type") and sec_filing.get("date"):
+        section_titles = [section.get("title") for section in (sec_filing.get("sections") or []) if section.get("title")]
+        section_suffix = f" covering {', '.join(section_titles)}" if section_titles else ""
+        bullets.append(
+            f"SEC filing context: latest attached filing is **{sec_filing.get('type')}** from **{sec_filing.get('date')}**{section_suffix}."
+        )
+
+    if filing_change.get("comparisonForm"):
+        changed_sections = filing_change.get("sectionChanges") or []
+        if changed_sections:
+            section_titles = ", ".join(
+                section.get("title") for section in changed_sections[:3] if section.get("title")
+            )
+            bullets.append(
+                f"SEC change watch: the latest **{filing_change.get('comparisonForm')}** differs from the prior filing across **{len(changed_sections)}** section(s)"
+                + (f", including {section_titles}." if section_titles else ".")
+            )
+
+    if insider_activity:
+        latest_insider = insider_activity[0]
+        insider_name = latest_insider.get("insiderName") or "Recent insider"
+        activity = latest_insider.get("activity") or latest_insider.get("type") or "filing"
+        bullets.append(
+            f"Insider activity: **{insider_name}** filed a recent **{latest_insider.get('type') or 'Form 4'}** tagged as **{activity}**."
+        )
+
+    if beneficial_ownership:
+        latest_owner = beneficial_ownership[0]
+        owner_names = ", ".join(latest_owner.get("owners") or [])
+        percent = latest_owner.get("ownershipPercent")
+        percent_clause = f" at roughly **{percent:.1f}%** ownership" if percent is not None else ""
+        bullets.append(
+            f"Major holder context: recent **{latest_owner.get('type') or '13D/13G'}** disclosure"
+            + (f" from **{owner_names}**" if owner_names else "")
+            + percent_clause
+            + "."
+        )
 
     if context.get("watchlistMembership") or context.get("activeAlerts"):
         bullets.append(
@@ -1152,6 +1215,20 @@ def build_marketmind_ai_context(session: Session, clerk_user_id: str, ticker: st
     }
     if _is_crypto_ticker(normalized_ticker):
         base_context.update(_build_crypto_context_payload(normalized_ticker))
+    else:
+        try:
+            sec_intelligence = sec_filings_service.get_company_sec_intelligence(normalized_ticker)
+        except Exception:
+            sec_intelligence = {}
+        sec_filing_summary = sec_intelligence.get("latestAnnualOrQuarterly")
+        if sec_filing_summary:
+            base_context["secFilingsSummary"] = sec_filing_summary
+        if sec_intelligence.get("filingChangeSummary"):
+            base_context["filingChangeSummary"] = sec_intelligence["filingChangeSummary"]
+        if sec_intelligence.get("insiderActivity"):
+            base_context["insiderActivitySummary"] = sec_intelligence["insiderActivity"]
+        if sec_intelligence.get("beneficialOwnership"):
+            base_context["beneficialOwnershipSummary"] = sec_intelligence["beneficialOwnership"]
     return base_context
 
 

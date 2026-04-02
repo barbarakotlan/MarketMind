@@ -61,6 +61,7 @@ from prediction_market_analysis import (
     PredictionMarketAnalysisError,
     analyze_prediction_market as pm_analyze_market,
 )
+import sec_filings_service
 from logger_config import setup_logger, log_api_error
 from deliverables import (
     DOCX_MIME_TYPE,
@@ -1959,6 +1960,28 @@ def get_sec_filings(ticker):
         ticker,
         openbb_available=OPENBB_AVAILABLE,
         obb_module=obb if OPENBB_AVAILABLE else None,
+        sec_filings_service_module=sec_filings_service,
+        jsonify_fn=jsonify,
+        logger=logger,
+    )
+
+
+@app.route('/fundamentals/sec-intelligence/<string:ticker>')
+def get_sec_intelligence(ticker):
+    return reference_data_handlers.get_sec_intelligence_handler(
+        ticker,
+        sec_filings_service_module=sec_filings_service,
+        jsonify_fn=jsonify,
+        logger=logger,
+    )
+
+
+@app.route('/fundamentals/filings/<string:ticker>/<string:accession_number>')
+def get_sec_filing_detail(ticker, accession_number):
+    return reference_data_handlers.get_sec_filing_detail_handler(
+        ticker,
+        accession_number,
+        sec_filings_service_module=sec_filings_service,
         jsonify_fn=jsonify,
         logger=logger,
     )

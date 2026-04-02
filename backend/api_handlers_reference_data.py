@@ -313,13 +313,24 @@ def get_sec_filings_handler(
     *,
     openbb_available,
     obb_module,
+    sec_filings_service_module,
     jsonify_fn,
     logger,
 ):
-    if not openbb_available:
-        return jsonify_fn({"error": "OpenBB not installed on this server."}), 503
     sym = ticker.upper().split(":")[0]
     relevant = {"10-K", "10-Q", "8-K", "10-K/A", "10-Q/A", "DEF 14A", "S-1", "20-F", "6-K"}
+
+    try:
+        filings = sec_filings_service_module.list_company_filings(sym, limit=30)
+        return jsonify_fn(filings)
+    except sec_filings_service_module.SecFilingsUnavailableError as exc:
+        logger.info(f"SEC filings EdgarTools unavailable for {sym}: {exc}")
+    except Exception as exc:
+        logger.warning(f"SEC filings EdgarTools lookup failed for {sym}: {exc}")
+
+    if not openbb_available:
+        return jsonify_fn({"error": "SEC filings are temporarily unavailable."}), 503
+
     try:
         df = obb_module.equity.fundamental.filings(sym, provider="sec", limit=50).to_dataframe()
         results = []
@@ -339,6 +350,51 @@ def get_sec_filings_handler(
     except Exception as exc:
         logger.error(f"SEC filings error for {sym}: {exc}")
         return jsonify_fn({"error": str(exc)}), 500
+
+
+def get_sec_filing_detail_handler(
+    ticker,
+    accession_number,
+    *,
+    sec_filings_service_module,
+    jsonify_fn,
+    logger,
+):
+    sym = ticker.upper().split(":")[0]
+    try:
+        return jsonify_fn(
+            sec_filings_service_module.get_filing_detail(
+                sym,
+                accession_number,
+                section_char_limit=8000,
+            )
+        )
+    except sec_filings_service_module.SecFilingsUnavailableError as exc:
+        return jsonify_fn({"error": str(exc)}), 503
+    except sec_filings_service_module.SecFilingNotFoundError as exc:
+        return jsonify_fn({"error": str(exc)}), 404
+    except Exception as exc:
+        logger.error(f"SEC filing detail error for {sym}/{accession_number}: {exc}")
+        return jsonify_fn({"error": "Failed to fetch SEC filing detail."}), 500
+
+
+def get_sec_intelligence_handler(
+    ticker,
+    *,
+    sec_filings_service_module,
+    jsonify_fn,
+    logger,
+):
+    sym = ticker.upper().split(":")[0]
+    try:
+        return jsonify_fn(sec_filings_service_module.get_company_sec_intelligence(sym))
+    except sec_filings_service_module.SecFilingsUnavailableError as exc:
+        return jsonify_fn({"error": str(exc)}), 503
+    except sec_filings_service_module.SecFilingNotFoundError as exc:
+        return jsonify_fn({"error": str(exc)}), 404
+    except Exception as exc:
+        logger.error(f"SEC intelligence error for {sym}: {exc}")
+        return jsonify_fn({"error": "Failed to load SEC intelligence."}), 500
 
 
 def get_screener_handler(

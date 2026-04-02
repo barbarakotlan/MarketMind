@@ -48,4 +48,16 @@ describe('API_ENDPOINTS', () => {
             `${API_BASE_URL}/fundamentals/filings/AAPL`
         );
     });
+
+    test('builds the SEC intelligence endpoint for fundamentals research', () => {
+        expect(API_ENDPOINTS.FUNDAMENTALS_SEC_INTELLIGENCE('AAPL')).toBe(
+            `${API_BASE_URL}/fundamentals/sec-intelligence/AAPL`
+        );
+    });
+
+    test('builds filing detail URLs for on-demand SEC section reads', () => {
+        expect(API_ENDPOINTS.FUNDAMENTALS_FILING_DETAIL('AAPL', '0000320193-26-000123')).toBe(
+            `${API_BASE_URL}/fundamentals/filings/AAPL/0000320193-26-000123`
+        );
+    });
 });
