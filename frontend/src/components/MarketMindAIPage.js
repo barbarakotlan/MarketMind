@@ -13,6 +13,10 @@ import {
     X,
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import {
+    getMarketSessionLabel,
+    getMarketSessionSummary,
+} from './ui/marketSessionUtils';
 
 const TEMPLATE_KEY = 'investment_thesis_memo';
 
@@ -694,6 +698,13 @@ const MarketMindAIPage = () => {
                                                 value={`${contextData.recentNews?.length || 0} headlines`}
                                                 caption={contextData.recentNews?.[0]?.title || 'No recent headlines available.'}
                                             />
+                                            {contextData.marketSession ? (
+                                                <ContextCard
+                                                    label="Market session"
+                                                    value={getMarketSessionLabel(contextData.marketSession)}
+                                                    caption={getMarketSessionSummary(contextData.marketSession)}
+                                                />
+                                            ) : null}
                                         </>
                                     ) : (
                                         <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">

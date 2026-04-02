@@ -25,6 +25,13 @@ const fundamentalsPayload = {
     pe_ratio: 30.5,
     eps: 6.2,
     beta: 1.2,
+    marketSession: {
+        status: 'open',
+        exchange: 'NASDAQ',
+        timezone: 'America/New_York',
+        closesAt: '2026-04-02T16:00:00-04:00',
+        reason: 'regular_hours',
+    },
 };
 
 const financialsPayload = {
@@ -139,6 +146,14 @@ const hkFundamentalsPayload = {
     day_50_moving_average: 365,
     day_200_moving_average: 332,
     shares_outstanding: null,
+    marketSession: {
+        status: 'break',
+        exchange: 'HKEX',
+        timezone: 'Asia/Hong_Kong',
+        closesAt: '2026-04-02T16:00:00+08:00',
+        nextOpen: '2026-04-02T13:00:00+08:00',
+        reason: 'lunch_break',
+    },
     researchProfile: [
         { label: 'Company', value: 'Tencent Holdings Limited' },
         { label: 'Industry', value: 'Internet Services' },
@@ -241,6 +256,8 @@ describe('FundamentalsPage', () => {
         expect(screen.getByRole('button', { name: 'Company Research' })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'SEC Filings' })).not.toBeInTheDocument();
         expect(screen.getByText(/Akshare international mode is read-only/i)).toBeInTheDocument();
+        expect(screen.getByText('Lunch Break')).toBeInTheDocument();
+        expect(screen.getByText(/Reopens at/i)).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: 'Company Research' }));
 

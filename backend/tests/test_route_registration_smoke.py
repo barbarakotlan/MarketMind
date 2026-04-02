@@ -53,6 +53,7 @@ class RouteRegistrationSmokeTests(unittest.TestCase):
             "/fundamentals/filings/<string:ticker>/<string:accession_number>": {"GET"},
             "/search-symbols": {"GET"},
             "/calendar/economic": {"GET"},
+            "/calendar/market-sessions": {"GET"},
             "/macro/overview": {"GET"},
             "/healthz": {"GET"},
             "/api/public/docs": {"GET"},

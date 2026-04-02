@@ -9,12 +9,30 @@ import {
     Activity
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import {
+    formatMarketSessionDateTime,
+    getMarketSessionLabel,
+    getMarketSessionSummary,
+    getMarketSessionToneClasses,
+    getTimezoneLabel,
+} from './ui/marketSessionUtils';
+
+const SESSION_MARKETS = [
+    { value: 'us', label: 'US' },
+    { value: 'hk', label: 'HK' },
+    { value: 'cn', label: 'CN' },
+];
 
 const MarketCalendarPage = () => {
     const [events, setEvents] = useState([]);
+    const [sessionPayload, setSessionPayload] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [sessionLoading, setSessionLoading] = useState(false);
+    const [sessionError, setSessionError] = useState('');
     const [filter, setFilter] = useState('all'); // 'all', 'report', 'speaker'
     const [searchQuery, setSearchQuery] = useState('');
+    const [activeView, setActiveView] = useState('economic');
+    const [selectedMarket, setSelectedMarket] = useState('us');
 
     useEffect(() => {
         setLoading(true);
@@ -28,6 +46,22 @@ const MarketCalendarPage = () => {
             .catch(err => console.error("Failed to fetch events:", err))
             .finally(() => setLoading(false));
     }, []);
+
+    useEffect(() => {
+        if (activeView !== 'sessions') {
+            return;
+        }
+        setSessionLoading(true);
+        setSessionError('');
+        apiRequest(API_ENDPOINTS.MARKET_SESSIONS_CALENDAR(selectedMarket))
+            .then((data) => setSessionPayload(data))
+            .catch((err) => {
+                console.error("Failed to fetch market sessions:", err);
+                setSessionPayload(null);
+                setSessionError(err?.message || 'Failed to fetch market sessions.');
+            })
+            .finally(() => setSessionLoading(false));
+    }, [activeView, selectedMarket]);
 
     // Filter and search logic
     const filteredEvents = events.filter(event => {
@@ -64,44 +98,178 @@ const MarketCalendarPage = () => {
                 <div>
                     <h1 className="ui-page-title flex items-center">
                         <CalendarIcon className="w-8 h-8 mr-3 text-mm-accent-primary" />
-                        U.S. Economic Calendar
+                        {activeView === 'economic' ? 'U.S. Economic Calendar' : 'Market Sessions'}
                     </h1>
                     <p className="ui-page-subtitle mt-2 max-w-xl">
-                        Track live macroeconomic reports and Federal Reserve speaker schedules.
+                        {activeView === 'economic'
+                            ? 'Track live macroeconomic reports and Federal Reserve speaker schedules.'
+                            : 'Understand regular trading sessions, lunch breaks, and upcoming holidays across US, Hong Kong, and mainland China.'}
                     </p>
                 </div>
 
-                {/* Search & Filters */}
-                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                    <div className="relative flex-1 sm:flex-none">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Search events..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="ui-input w-full sm:w-60 py-2 pl-9 text-sm"
-                        />
-                    </div>
+                <div className="flex flex-col gap-3 w-full md:w-auto">
                     <div className="ui-tab-group flex">
-                        {['all', 'report', 'speaker'].map((f) => (
+                        {[
+                            { key: 'economic', label: 'Economic' },
+                            { key: 'sessions', label: 'Market Sessions' },
+                        ].map((view) => (
                             <button
-                                key={f}
-                                onClick={() => setFilter(f)}
-                                className={`px-4 py-1.5 text-xs capitalize ${
-                                    filter === f 
+                                key={view.key}
+                                onClick={() => setActiveView(view.key)}
+                                className={`px-4 py-1.5 text-xs ${
+                                    activeView === view.key
                                         ? 'ui-tab ui-tab-active'
                                         : 'ui-tab'
                                 }`}
                             >
-                                {f === 'all' ? 'All Events' : f + 's'}
+                                {view.label}
                             </button>
                         ))}
                     </div>
+                    {activeView === 'economic' ? (
+                        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                            <div className="relative flex-1 sm:flex-none">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search events..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="ui-input w-full sm:w-60 py-2 pl-9 text-sm"
+                                />
+                            </div>
+                            <div className="ui-tab-group flex">
+                                {['all', 'report', 'speaker'].map((f) => (
+                                    <button
+                                        key={f}
+                                        onClick={() => setFilter(f)}
+                                        className={`px-4 py-1.5 text-xs capitalize ${
+                                            filter === f 
+                                                ? 'ui-tab ui-tab-active'
+                                                : 'ui-tab'
+                                        }`}
+                                    >
+                                        {f === 'all' ? 'All Events' : f + 's'}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex gap-2">
+                            {SESSION_MARKETS.map((marketOption) => (
+                                <button
+                                    key={marketOption.value}
+                                    type="button"
+                                    onClick={() => setSelectedMarket(marketOption.value)}
+                                    className={selectedMarket === marketOption.value ? 'ui-chip bg-mm-accent-primary text-white border-mm-accent-primary' : 'ui-chip'}
+                                >
+                                    {marketOption.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Dense Data Table Layout */}
+            {activeView === 'sessions' ? (
+                <div className="space-y-6">
+                    {sessionLoading ? (
+                        <div className="ui-panel py-20 flex justify-center items-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-4 border-mm-accent-primary border-t-transparent"></div>
+                        </div>
+                    ) : sessionError ? (
+                        <div className="rounded-card border border-mm-negative/20 bg-mm-negative/10 px-6 py-4 text-mm-negative">
+                            {sessionError}
+                        </div>
+                    ) : sessionPayload ? (
+                        <>
+                            <div className="ui-panel p-6">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <span className={`rounded-pill border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] ${getMarketSessionToneClasses(sessionPayload.today)}`}>
+                                        {getMarketSessionLabel(sessionPayload.today)}
+                                    </span>
+                                    <span className="text-sm font-semibold text-mm-text-primary">{sessionPayload.exchange}</span>
+                                    <span className="text-sm text-mm-text-secondary">• {getTimezoneLabel(sessionPayload.timezone)}</span>
+                                </div>
+                                <h2 className="mt-4 text-2xl font-semibold text-mm-text-primary">
+                                    {sessionPayload.marketLabel} session today
+                                </h2>
+                                <p className="mt-2 text-sm text-mm-text-secondary">
+                                    {getMarketSessionSummary(sessionPayload.today)}
+                                </p>
+                            </div>
+
+                            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,1fr)]">
+                                <div className="ui-panel overflow-hidden">
+                                    <div className="border-b border-mm-border px-6 py-4">
+                                        <h3 className="text-lg font-semibold text-mm-text-primary">Upcoming Sessions</h3>
+                                    </div>
+                                    <div className="divide-y divide-mm-border">
+                                        {(sessionPayload.sessions || []).map((session) => (
+                                            <div key={`${session.market}-${session.sessionDate}`} className="px-6 py-4">
+                                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-mm-text-primary">{session.sessionDate}</p>
+                                                        <p className="mt-1 text-sm text-mm-text-secondary">
+                                                            Opens {formatMarketSessionDateTime(session.opensAt, session.timezone)} • closes {formatMarketSessionDateTime(session.closesAt, session.timezone)}
+                                                        </p>
+                                                        {session.hasBreak ? (
+                                                            <p className="mt-1 text-sm text-mm-text-secondary">
+                                                                Lunch break {formatMarketSessionDateTime(session.breakStart, session.timezone)} to {formatMarketSessionDateTime(session.breakEnd, session.timezone)}
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
+                                                    {session.isEarlyClose ? (
+                                                        <span className="rounded-pill border border-mm-warning/20 bg-mm-warning/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-mm-warning">
+                                                            Early Close
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div className="ui-panel p-6">
+                                        <h3 className="text-lg font-semibold text-mm-text-primary">Upcoming Holidays</h3>
+                                        {(sessionPayload.upcomingHolidays || []).length > 0 ? (
+                                            <div className="mt-4 space-y-3">
+                                                {sessionPayload.upcomingHolidays.map((holiday) => (
+                                                    <div key={holiday.date} className="rounded-card border border-mm-border bg-mm-surface-subtle px-4 py-3">
+                                                        <p className="text-sm font-semibold text-mm-text-primary">{holiday.date}</p>
+                                                        <p className="mt-1 text-sm text-mm-text-secondary">{holiday.label}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="mt-4 text-sm text-mm-text-secondary">No weekday market holidays are visible in the current lookahead window.</p>
+                                        )}
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className="text-lg font-semibold text-mm-text-primary">Special Sessions</h3>
+                                        {(sessionPayload.specialSessions || []).length > 0 ? (
+                                            <div className="mt-4 space-y-3">
+                                                {sessionPayload.specialSessions.map((session) => (
+                                                    <div key={`${session.sessionDate}-${session.type}`} className="rounded-card border border-mm-border bg-mm-surface-subtle px-4 py-3">
+                                                        <p className="text-sm font-semibold text-mm-text-primary">{session.sessionDate}</p>
+                                                        <p className="mt-1 text-sm text-mm-text-secondary">
+                                                            Early close at {formatMarketSessionDateTime(session.closesAt, sessionPayload.timezone)}
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="mt-4 text-sm text-mm-text-secondary">No early-close sessions are visible in the current lookahead window.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    ) : null}
+                </div>
+            ) : (
             <div className="ui-panel overflow-hidden">
 
                 {/* Desktop Table Header */}
@@ -213,6 +381,7 @@ const MarketCalendarPage = () => {
                     ))
                 )}
             </div>
+            )}
         </div>
     );
 };

@@ -104,13 +104,19 @@ def get_fundamentals_handler(
     fundamentals_from_yfinance_fn,
     resolve_asset_fn,
     akshare_service_module,
+    exchange_session_service_module,
 ):
     try:
         market = request_obj.args.get("market")
         asset = resolve_asset_fn(ticker, market)
         if asset["market"] in {"HK", "CN"}:
             try:
-                return jsonify_fn(akshare_service_module.get_equity_fundamentals(asset["assetId"]))
+                payload = dict(akshare_service_module.get_equity_fundamentals(asset["assetId"]))
+                payload["marketSession"] = exchange_session_service_module.get_market_session(
+                    asset["market"],
+                    exchange=payload.get("exchange") or asset["exchange"],
+                )
+                return jsonify_fn(payload)
             except akshare_service_module.AkshareUnavailableError as exc:
                 return jsonify_fn({"error": str(exc)}), 503
             except akshare_service_module.AkshareAssetNotFoundError as exc:
@@ -137,6 +143,13 @@ def get_fundamentals_handler(
         else:
             yf_data = fundamentals_from_yfinance_fn(sanitized_ticker)
             if yf_data:
+                yf_data = dict(yf_data)
+                yf_data.setdefault("assetId", asset["assetId"])
+                yf_data.setdefault("market", asset["market"])
+                yf_data["marketSession"] = exchange_session_service_module.get_market_session(
+                    asset["market"],
+                    exchange=yf_data.get("exchange") or asset.get("exchange"),
+                )
                 return jsonify_fn(yf_data)
             return jsonify_fn({"error": f"No fundamental data found for {ticker}"}), 404
 
@@ -184,6 +197,10 @@ def get_fundamentals_handler(
             "day_200_moving_average": clean_value_fn(data.get("200DayMovingAverage")),
             "shares_outstanding": clean_value_fn(data.get("SharesOutstanding")),
         }
+        formatted_data["marketSession"] = exchange_session_service_module.get_market_session(
+            asset["market"],
+            exchange=formatted_data.get("exchange") or asset.get("exchange"),
+        )
         return jsonify_fn(formatted_data)
     except Exception as exc:
         logger.error(f"Fundamentals error for {ticker}: {exc}")
@@ -259,6 +276,25 @@ def get_economic_calendar_handler(
         if calendar_cache["data"] is not None:
             return jsonify_fn(calendar_cache["data"])
         return jsonify_fn({"error": str(exc)}), 500
+
+
+def get_market_sessions_handler(
+    *,
+    request_obj,
+    jsonify_fn,
+    logger,
+    exchange_session_service_module,
+):
+    market = str(request_obj.args.get("market", "us")).strip()
+    days = request_obj.args.get("days", default=14, type=int)
+    try:
+        payload = exchange_session_service_module.get_market_sessions_calendar(market, days=days)
+        return jsonify_fn(payload)
+    except exchange_session_service_module.ExchangeSessionError as exc:
+        return jsonify_fn({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"Market sessions calendar error for {market}: {exc}")
+        return jsonify_fn({"error": "Failed to load market sessions."}), 500
 
 
 def get_financial_statements_handler(

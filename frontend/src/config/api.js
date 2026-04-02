@@ -144,6 +144,8 @@ export const API_ENDPOINTS = {
     MACRO_OVERVIEW: (region = 'us') =>
         buildApiUrl('/macro/overview', region && String(region).toLowerCase() !== 'us' ? { region } : {}),
     ECONOMIC_CALENDAR: `${API_BASE_URL}/calendar/economic`,
+    MARKET_SESSIONS_CALENDAR: (market = 'us', days = 14) =>
+        buildApiUrl('/calendar/market-sessions', { market: String(market || 'us').toLowerCase(), days }),
     
     // Screener
     SCREENER: (category = 'day_gainers') => `${API_BASE_URL}/screener?category=${category}`,

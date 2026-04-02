@@ -49,13 +49,19 @@ def get_stock_data_handler(
     clean_value_fn,
     resolve_asset_fn,
     akshare_service_module,
+    exchange_session_service_module,
 ):
     try:
         market = request_obj.args.get("market")
         asset = resolve_asset_fn(ticker, market)
         if asset["market"] in {"HK", "CN"}:
             try:
-                return jsonify_fn(akshare_service_module.get_equity_snapshot(asset["assetId"]))
+                snapshot = dict(akshare_service_module.get_equity_snapshot(asset["assetId"]))
+                snapshot["marketSession"] = exchange_session_service_module.get_market_session(
+                    asset["market"],
+                    exchange=snapshot.get("exchange") or asset["exchange"],
+                )
+                return jsonify_fn(snapshot)
             except akshare_service_module.AkshareUnavailableError as exc:
                 return jsonify_fn({"error": str(exc)}), 503
             except akshare_service_module.AkshareAssetNotFoundError as exc:
@@ -168,6 +174,10 @@ def get_stock_data_handler(
             "fundamentals": fundamentals,
             "financials": financials,
         }
+        formatted_data["marketSession"] = exchange_session_service_module.get_market_session(
+            asset["market"],
+            exchange=formatted_data.get("exchange") or asset["exchange"],
+        )
         return jsonify_fn(formatted_data)
     except Exception as exc:
         return jsonify_fn({"error": f"An error occurred: {str(exc)}"}), 500

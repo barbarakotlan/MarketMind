@@ -92,6 +92,7 @@ from prediction_market_analysis import (
     analyze_prediction_market as pm_analyze_market,
 )
 import akshare_service
+import exchange_session_service
 import sec_filings_service
 from asset_identity import parse_asset_reference
 from logger_config import setup_logger, log_api_error
@@ -1354,6 +1355,7 @@ def get_stock_data(ticker):
         clean_value_fn=clean_value,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
+        exchange_session_service_module=exchange_session_service,
     )
 
 
@@ -1990,6 +1992,7 @@ def get_fundamentals(ticker):
         fundamentals_from_yfinance_fn=_fundamentals_from_yfinance,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
+        exchange_session_service_module=exchange_session_service,
     )
 # --- NEW: Autocomplete Symbol Search (from Jimmy's branch) ---
 @app.route('/search-symbols')
@@ -2019,6 +2022,16 @@ def get_economic_calendar():
         jsonify_fn=jsonify,
         time_module=time,
         datetime_cls=datetime,
+    )
+
+
+@app.route('/calendar/market-sessions', methods=['GET'])
+def get_market_sessions_calendar():
+    return reference_data_handlers.get_market_sessions_handler(
+        request_obj=request,
+        jsonify_fn=jsonify,
+        logger=logger,
+        exchange_session_service_module=exchange_session_service,
     )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2166,6 +2179,7 @@ def public_api_stock(ticker):
         clean_value_fn=clean_value,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
+        exchange_session_service_module=exchange_session_service,
     )
 
 
@@ -2280,6 +2294,7 @@ def public_api_fundamentals(ticker):
         fundamentals_from_yfinance_fn=_fundamentals_from_yfinance,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
+        exchange_session_service_module=exchange_session_service,
     )
 
 
@@ -2357,6 +2372,7 @@ def public_api_v2_stock(ticker):
         clean_value_fn=clean_value,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
+        exchange_session_service_module=exchange_session_service,
     )
 
 
@@ -2405,6 +2421,7 @@ def public_api_v2_fundamentals(ticker):
         fundamentals_from_yfinance_fn=_fundamentals_from_yfinance,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
+        exchange_session_service_module=exchange_session_service,
     )
 
 
