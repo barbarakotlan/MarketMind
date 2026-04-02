@@ -96,4 +96,10 @@ describe('API_ENDPOINTS', () => {
             `${API_BASE_URL}/calendar/market-sessions?market=hk&days=7`
         );
     });
+
+    test('uses the authenticated paper portfolio optimization endpoint', () => {
+        expect(API_ENDPOINTS.PORTFOLIO_OPTIMIZE).toBe(
+            `${API_BASE_URL}/paper/portfolio/optimize`
+        );
+    });
 });

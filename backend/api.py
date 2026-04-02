@@ -1,5 +1,5 @@
 # To run this file, you need to install all dependencies:
-# pip install Flask Flask-CORS yfinance pandas scikit-learn numpy requests python-dotenv statsmodels finnhub-python vaderSentiment xgboost schedule statsforecast mlforecast shap
+# pip install Flask Flask-CORS yfinance pandas scikit-learn numpy requests python-dotenv statsmodels finnhub-python vaderSentiment xgboost schedule statsforecast mlforecast shap pyportfolioopt
 
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -93,6 +93,7 @@ from prediction_market_analysis import (
 )
 import akshare_service
 import exchange_session_service
+import portfolio_optimization_service
 import sec_filings_service
 import prediction_service
 from asset_identity import parse_asset_reference
@@ -1534,6 +1535,20 @@ def get_paper_portfolio():
         yf_module=yf,
         pd_module=pd,
         logger=logger,
+    )
+
+
+@app.route('/paper/portfolio/optimize', methods=['POST'])
+@require_auth
+@limiter.limit(RateLimits.STANDARD)
+def optimize_paper_portfolio():
+    return paper_handlers.optimize_paper_portfolio_handler(
+        request_obj=request,
+        get_current_user_id_fn=get_current_user_id,
+        load_portfolio_fn=load_portfolio,
+        optimize_portfolio_fn=portfolio_optimization_service.optimize_paper_portfolio,
+        error_cls=portfolio_optimization_service.PortfolioOptimizationError,
+        jsonify_fn=jsonify,
     )
 
 

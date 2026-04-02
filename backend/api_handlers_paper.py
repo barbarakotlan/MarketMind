@@ -1,6 +1,31 @@
 from __future__ import annotations
 
 
+def optimize_paper_portfolio_handler(
+    *,
+    request_obj,
+    get_current_user_id_fn,
+    load_portfolio_fn,
+    optimize_portfolio_fn,
+    error_cls,
+    jsonify_fn,
+):
+    user_id = get_current_user_id_fn()
+    portfolio = load_portfolio_fn(user_id)
+    payload = request_obj.get_json(silent=True) or {}
+    try:
+        result = optimize_portfolio_fn(
+            portfolio,
+            method=payload.get("method"),
+            use_predictions=payload.get("use_predictions", True),
+            lookback_days=payload.get("lookback_days"),
+            max_weight=payload.get("max_weight"),
+        )
+        return jsonify_fn(result)
+    except error_cls as exc:
+        return jsonify_fn({"error": str(exc), **exc.payload}), exc.status_code
+
+
 def get_paper_portfolio_handler(
     *,
     get_current_user_id_fn,

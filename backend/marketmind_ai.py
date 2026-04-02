@@ -481,6 +481,7 @@ def _compact_context_summary(context: Optional[Dict[str, Any]]) -> Optional[Dict
         "activeAlerts": len(context.get("activeAlerts") or []),
         "paperTradeCount": len(context.get("paperTradeHistory") or []),
         "hasPosition": bool((context.get("currentPaperPosition") or {}).get("shares")),
+        "portfolioOptimizationAvailable": bool(context.get("portfolioOptimizationAvailable")),
         "predictionHeadline": (
             f"${prediction.get('recentPredicted')} predicted vs ${prediction.get('recentClose')} close"
             if prediction.get("recentPredicted") is not None and prediction.get("recentClose") is not None
@@ -684,6 +685,10 @@ def _build_grounded_fallback_reply(
         bullets.append(
             f"Paper position: current MarketMind paper portfolio holds **{current_position.get('shares')}** shares/units."
         )
+        if context.get("portfolioOptimizationAvailable"):
+            bullets.append(
+                "Portfolio intelligence is available in the Paper Portfolio workspace for rebalancing this position against the rest of the account."
+            )
 
     lines.extend(f"- {bullet}" for bullet in bullets)
 
@@ -1249,6 +1254,7 @@ def build_marketmind_ai_context(
         if str(trade.get("ticker", "")).upper() == normalized_ticker
     ][-10:]
     current_position = dict((portfolio.get("positions") or {}).get(normalized_ticker) or {})
+    equity_positions = portfolio.get("positions") or {}
     base_context = {
         "ticker": normalized_ticker,
         "assetId": asset["assetId"] if asset else normalized_ticker,
@@ -1262,6 +1268,11 @@ def build_marketmind_ai_context(
         "fundamentalsSummary": {},
         "paperTradeHistory": paper_trade_history,
         "currentPaperPosition": current_position,
+        "portfolioOptimizationAvailable": (
+            not _is_crypto_ticker(normalized_ticker)
+            and (asset["market"] if asset else "US") == "US"
+            and bool(current_position.get("shares"))
+        ),
     }
     if _is_crypto_ticker(normalized_ticker):
         base_context["predictionSnapshot"] = _prediction_snapshot(normalized_ticker)
