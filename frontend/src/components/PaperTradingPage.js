@@ -291,12 +291,12 @@ const TradeModal = ({ contract, tradeType, stockPrice, onClose, onConfirmTrade }
             return;
         }
 
-        const success = await onConfirmTrade(contract.contractSymbol || contract.ticker, numQuantity, price, isBuy);
+        const result = await onConfirmTrade(contract.contractSymbol || contract.ticker, numQuantity, price, isBuy);
 
-        if (success) {
+        if (result?.success) {
             onClose();
         } else {
-            setError('Trade failed. Check portfolio for details.');
+            setError(result?.errorMessage || 'Trade failed. Check portfolio for details.');
         }
         setLoading(false);
     };
@@ -504,7 +504,7 @@ export default function App() {
     };
 
     const handleConfirmOptionSell = async (contractSymbol, quantity, price, isBuy) => {
-        if (isBuy) return false;
+        if (isBuy) return { success: false, errorMessage: 'Buying options is not supported in this modal.' };
         const body = JSON.stringify({
             contractSymbol: contractSymbol,
             quantity: quantity,
@@ -518,10 +518,10 @@ export default function App() {
             });
             setTradeMessage({ type: 'success', text: data.message });
             fetchPortfolio();
-            return true;
+            return { success: true };
         } catch (err) {
             setTradeMessage({ type: 'error', text: err.message });
-            return false;
+            return { success: false, errorMessage: err.message };
         }
     };
 

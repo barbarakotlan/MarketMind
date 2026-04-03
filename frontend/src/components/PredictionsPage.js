@@ -38,7 +38,7 @@ const PredictionsPage = ({ initialTicker }) => {
             const data = await apiRequest(buildPredictionEndpoint(searchTicker));
             setPredictionData(data);
         } catch (err) {
-            setError(`Error: Could not fetch predictions for ${searchTicker.toUpperCase()}. Please check the ticker and try again.`);
+            setError(err.message || `Error: Could not fetch predictions for ${searchTicker.toUpperCase()}. Please check the ticker and try again.`);
             console.error('Prediction fetch error:', err);
         } finally {
             setLoading(false);

@@ -17,6 +17,37 @@ The project is designed to support both product-facing usage and ongoing backend
 - Explore macro indicators, forex, cryptocurrency, and commodities data.
 - Browse and simulate positions in supported prediction markets.
 
+## Plans And Billing
+
+MarketMind currently exposes two application plans in the pricing and checkout flow:
+
+| Plan | Price | Included limits |
+| --- | --- | --- |
+| Free | `$0` | Basic stock search, `5` AI predictions per day, watchlist up to `10` tickers, `2` active alerts, `20` paper trades per month, and `0` prediction-market paper trades |
+| Pro | `$14.97/month` or annual billing at `20%` off | `100` AI predictions per day, unlimited watchlist size, up to `50` active alerts, unlimited paper trading, unlimited prediction-market paper trades, and full premium access |
+
+The source of truth for the pricing UI lives in [`frontend/src/components/PlanPage.js`](./frontend/src/components/PlanPage.js), and the Stripe checkout experience lives in [`frontend/src/components/CheckoutPage.js`](./frontend/src/components/CheckoutPage.js).
+
+### Stripe Integration
+
+- The frontend starts checkout with `POST /checkout/create-subscription`.
+- [`backend/checkout_endpoint.py`](./backend/checkout_endpoint.py) resolves the authenticated Clerk user, reuses or creates a Stripe customer, and creates a subscription against the configured monthly or annual Stripe Price ID.
+- Stripe Elements confirms payment client-side with the publishable key.
+- Stripe webhooks update the persisted app-user plan and subscription status.
+- The frontend reads `GET /checkout/plan-status` so components such as [`frontend/src/components/Sidebar.js`](./frontend/src/components/Sidebar.js) can show Free vs Pro state.
+
+### Backend-Enforced Free Limits
+
+The backend now enforces the concrete Free-plan limits that were previously only described in the frontend:
+
+- Watchlist additions are capped at `10` unique tickers.
+- Alert creation is capped at `2` active alerts.
+- Prediction requests are capped at `5` per day.
+- Paper-trading orders are capped at `20` per calendar month.
+- Prediction-market paper trades are blocked for Free users.
+
+These checks are centralized in [`backend/subscription_limits.py`](./backend/subscription_limits.py) and applied in [`backend/api.py`](./backend/api.py).
+
 ## Architecture
 
 MarketMind is structured as a browser-based frontend backed by a single Flask service. The frontend lives in [`frontend/`](./frontend/) and is organized around page-level React components for dashboard, search, predictions, evaluation, fundamentals, paper trading, news, macro data, and related workflows. [`frontend/src/App.js`](./frontend/src/App.js) acts as the page switchboard, while [`frontend/src/config/api.js`](./frontend/src/config/api.js) centralizes backend endpoint construction so the UI uses a single API boundary.
@@ -182,8 +213,13 @@ The root [`.env.example`](./.env.example) and [`frontend/.env.example`](./fronte
 - `CORS_ORIGINS` for allowed frontend origins in production-style deployments.
 - `CLERK_JWKS_URL` for backend Clerk token verification when needed.
 - `CLERK_AUDIENCE` for optional Clerk audience validation.
+- `STRIPE_SECRET_KEY` for backend Stripe API access.
+- `STRIPE_WEBHOOK_SECRET` for validating incoming Stripe webhooks.
+- `STRIPE_PRICE_PRO_MONTHLY` for the Pro monthly Stripe Price ID.
+- `STRIPE_PRICE_PRO_ANNUAL` for the Pro annual Stripe Price ID.
 - `REACT_APP_API_URL` for the frontend's backend base URL.
 - `REACT_APP_CLERK_PUBLISHABLE_KEY` for frontend Clerk initialization.
+- `REACT_APP_STRIPE_PUBLISHABLE_KEY` for loading Stripe Elements in checkout.
 
 Keep local secrets out of version control and review provider-specific setup before deploying outside local development.
 
