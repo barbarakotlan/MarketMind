@@ -28,24 +28,78 @@ def create_dataset(ticker, period):
 
 def create_features(df, lookback=14):
     """
-    Create features for ML models including lagged prices and basic technical indicators
+    Create features for ML models including lagged prices and technical indicators.
+    All features are strictly backward-looking — no future leakage.
     """
     df = df.copy()
 
-    # Lagged features (previous days' prices)
+    # Pull full OHLCV if it was stashed in attrs by create_dataset
+    ohlcv = df.attrs.get("canonical_ohlcv")
+    if ohlcv is not None:
+        ohlcv = ohlcv.reindex(df.index)
+        for col in ("Open", "High", "Low", "Volume"):
+            if col in ohlcv.columns:
+                df[col] = ohlcv[col]
+
+    # --- Lagged closes ---
     for i in range(1, lookback + 1):
         df[f'lag_{i}'] = df['Close'].shift(i)
 
-    # Moving averages
+    # --- Moving averages ---
     df['ma_7']  = df['Close'].rolling(window=7,  min_periods=1).mean()
     df['ma_14'] = df['Close'].rolling(window=14, min_periods=1).mean()
     df['ma_30'] = df['Close'].rolling(window=30, min_periods=1).mean()
+    df['ma_50'] = df['Close'].rolling(window=50, min_periods=1).mean()
 
-    # Volatility
-    df['volatility'] = df['Close'].rolling(window=7, min_periods=2).std()
+    # MA crossover signals
+    df['ma_7_14_cross']  = df['ma_7']  - df['ma_14']
+    df['ma_14_30_cross'] = df['ma_14'] - df['ma_30']
 
-    # Price change
+    # --- Volatility & returns ---
+    df['volatility']   = df['Close'].rolling(window=14, min_periods=2).std()
     df['price_change'] = df['Close'].pct_change()
+    df['log_return']   = np.log(df['Close'] / df['Close'].shift(1))
+
+    if 'High' in df.columns and 'Low' in df.columns:
+        df['high_low_range'] = (df['High'] - df['Low']) / df['Close']
+    if 'Open' in df.columns:
+        df['close_open_gap'] = (df['Close'] - df['Open']) / df['Open'].replace(0, np.nan)
+
+    # --- RSI (14-period) ---
+    delta = df['Close'].diff()
+    gain  = delta.clip(lower=0).rolling(window=14, min_periods=1).mean()
+    loss  = (-delta.clip(upper=0)).rolling(window=14, min_periods=1).mean()
+    rs    = gain / loss.replace(0, np.nan)
+    df['rsi_14'] = 100 - (100 / (1 + rs))
+
+    # --- MACD (12/26 EMA, 9-period signal) ---
+    ema_12            = df['Close'].ewm(span=12, adjust=False).mean()
+    ema_26            = df['Close'].ewm(span=26, adjust=False).mean()
+    df['macd']        = ema_12 - ema_26
+    df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
+    df['macd_hist']   = df['macd'] - df['macd_signal']
+
+    # --- Bollinger Bands (20-period, 2σ) ---
+    bb_mid         = df['Close'].rolling(window=20, min_periods=1).mean()
+    bb_std         = df['Close'].rolling(window=20, min_periods=2).std()
+    df['bb_upper'] = bb_mid + 2 * bb_std
+    df['bb_lower'] = bb_mid - 2 * bb_std
+    df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / bb_mid.replace(0, np.nan)
+    df['bb_pct']   = (df['Close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower']).replace(0, np.nan)
+
+    # --- Volume features ---
+    if 'Volume' in df.columns:
+        df['volume_ma_10']  = df['Volume'].rolling(window=10, min_periods=1).mean()
+        df['volume_ratio']  = df['Volume'] / df['volume_ma_10'].replace(0, np.nan)
+        df['volume_change'] = df['Volume'].pct_change()
+
+    # --- Momentum ---
+    df['momentum_5']  = df['Close'] - df['Close'].shift(5)
+    df['momentum_10'] = df['Close'] - df['Close'].shift(10)
+    df['roc_5']       = df['Close'].pct_change(periods=5)
+
+    # Drop OHLCV columns before returning — models should only see engineered features
+    df = df.drop(columns=[c for c in ('Open', 'High', 'Low', 'Volume') if c in df.columns])
 
     # Drop rows with NaN values
     df = df.dropna()
