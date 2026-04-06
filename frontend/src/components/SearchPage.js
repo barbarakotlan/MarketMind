@@ -638,6 +638,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
                             value={ticker}
                             onChange={setTicker}
                             onSelect={(sym) => { setTicker(sym); handleSearch({ preventDefault: () => {} }, sym); }}
+                            market={selectedMarket}
                             placeholder="e.g., AAPL or Apple"
                             className="ui-input w-full py-4 pl-12 pr-32 text-lg"
                         />

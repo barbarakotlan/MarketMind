@@ -199,34 +199,60 @@ def create_sequences(X, y, seq_len, forecast_horizon):
     return np.array(Xs), np.array(ys)
 
 # Train LSTM model
-def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001):
-    '''Train an LSTM model for stock price prediction'''
-    # Prepare data
-    X, y, _ = prepare_ml_data(df, lookback)
-    y = y.reshape(-1, 1)
-    
-    X_seq, y_seq = create_sequences(X, y, seq_len, days_ahead)
-    
-    n_samples, seq_len_, n_features = X_seq.shape
+def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001, val_frac=0.15):
+    '''Train an LSTM model for stock price prediction.
+
+    Leak-free pipeline (mirrors gru_train):
+      1. Feature engineering on full dataset (all backward-looking — no leakage).
+      2. Chronological train / val / test split before any normalization.
+      3. Fit scalers on training sequences only; transform val/test without refitting.
+    '''
+    # --- 1. Feature engineering ---
+    X_all, _, df_features = prepare_ml_data(df, lookback)
+    y_all = df_features[['Close']].values
+
+    # --- 2. Chronological split ---
+    n = len(X_all)
+    test_size = int(n * val_frac)
+    val_size  = int(n * val_frac)
+    val_end   = n - test_size
+    train_end = val_end - val_size
+
+    X_train, y_train = X_all[:train_end],        y_all[:train_end]
+    X_val,   y_val   = X_all[train_end:val_end], y_all[train_end:val_end]
+
+    # --- 3. Sliding-window sequences ---
+    X_train_raw, y_train_raw = create_sequences(X_train, y_train, seq_len, days_ahead)
+    X_val_raw,   y_val_raw   = create_sequences(X_val,   y_val,   seq_len, days_ahead)
+
+    if len(X_train_raw) == 0:
+        raise ValueError("Not enough training data to form sequences.")
+
+    n_train, seq_len_, n_features = X_train_raw.shape
+
+    # --- 4. Fit scalers on training data only ---
     scaler_X = MinMaxScaler()
     scaler_y = MinMaxScaler()
-    
-    X_scaled = scaler_X.fit_transform(X_seq.reshape(-1, n_features)).reshape(n_samples, seq_len_, n_features)
-    y_scaled = scaler_y.fit_transform(y_seq.reshape(-1, 1)).reshape(y_seq.shape)
-    
-    X_tensor = torch.FloatTensor(X_scaled)
-    y_tensor = torch.FloatTensor(y_scaled)
 
-    # Model
+    X_train_scaled = scaler_X.fit_transform(X_train_raw.reshape(-1, n_features)).reshape(n_train, seq_len_, n_features)
+    y_train_scaled = scaler_y.fit_transform(y_train_raw.reshape(-1, 1)).reshape(y_train_raw.shape)
+
+    X_val_scaled = scaler_X.transform(X_val_raw.reshape(-1, n_features)).reshape(X_val_raw.shape)
+    y_val_scaled = scaler_y.transform(y_val_raw.reshape(-1, 1)).reshape(y_val_raw.shape)
+
+    X_train_t = torch.FloatTensor(X_train_scaled)
+    y_train_t = torch.FloatTensor(y_train_scaled)
+    X_val_t   = torch.FloatTensor(X_val_scaled)
+    y_val_t   = torch.FloatTensor(y_val_scaled)
+
+    # --- 5. Build and train model ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    input_size = n_features
-    model = LSTM(input_size, hidden_size, layer_size, days_ahead).to(device)
+    model = LSTM(n_features, hidden_size, layer_size, days_ahead).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
-    loader = DataLoader(TensorDataset(X_tensor, y_tensor), batch_size=batch_size, shuffle=True)
+    loader = DataLoader(TensorDataset(X_train_t, y_train_t), batch_size=batch_size, shuffle=True)
 
-    # Training loop
     for epoch in range(epochs):
         model.train()
         total_loss = 0
@@ -239,8 +265,12 @@ def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_
             optimizer.step()
             total_loss += loss.item()
 
-        if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f}")
+        if (epoch + 1) % 10 == 0 and len(X_val_raw) > 0:
+            model.eval()
+            with torch.no_grad():
+                val_pred = model(X_val_t.to(device), device)
+                val_loss = criterion(val_pred, y_val_t.to(device))
+            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f} | Val Loss: {val_loss:.6f}")
 
     return model, scaler_X, scaler_y, device
 
@@ -471,25 +501,53 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 # Train Transformer model
-def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=50, batch_size=32, lr=0.001):
-    '''Train a Transformer model for stock price prediction'''
-   # Prepare data
-    X, y, _ = prepare_ml_data(df, lookback)
-    y = y.reshape(-1, 1)
+def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=50, batch_size=32, lr=0.001, val_frac=0.15):
+    '''Train a Transformer model for stock price prediction.
 
-    X_seq, y_seq = create_sequences(X, y, seq_len, days_ahead)
+    Leak-free pipeline (mirrors gru_train):
+      1. Feature engineering on full dataset (all backward-looking — no leakage).
+      2. Chronological train / val / test split before any normalization.
+      3. Fit scalers on training sequences only; transform val/test without refitting.
+    '''
+    # --- 1. Feature engineering ---
+    X_all, _, df_features = prepare_ml_data(df, lookback)
+    y_all = df_features[['Close']].values
 
-    n_samples, seq_len_, n_features = X_seq.shape
+    # --- 2. Chronological split ---
+    n = len(X_all)
+    test_size = int(n * val_frac)
+    val_size  = int(n * val_frac)
+    val_end   = n - test_size
+    train_end = val_end - val_size
+
+    X_train, y_train = X_all[:train_end],        y_all[:train_end]
+    X_val,   y_val   = X_all[train_end:val_end], y_all[train_end:val_end]
+
+    # --- 3. Sliding-window sequences ---
+    X_train_raw, y_train_raw = create_sequences(X_train, y_train, seq_len, days_ahead)
+    X_val_raw,   y_val_raw   = create_sequences(X_val,   y_val,   seq_len, days_ahead)
+
+    if len(X_train_raw) == 0:
+        raise ValueError("Not enough training data to form sequences.")
+
+    n_train, seq_len_, n_features = X_train_raw.shape
+
+    # --- 4. Fit scalers on training data only ---
     scaler_X = MinMaxScaler()
     scaler_y = MinMaxScaler()
-    
-    X_scaled = scaler_X.fit_transform(X_seq.reshape(-1, n_features)).reshape(n_samples, seq_len_, n_features)
-    y_scaled = scaler_y.fit_transform(y_seq.reshape(-1, 1)).reshape(y_seq.shape)
-    
-    X_tensor = torch.FloatTensor(X_scaled)
-    y_tensor = torch.FloatTensor(y_scaled)
 
-    # Model
+    X_train_scaled = scaler_X.fit_transform(X_train_raw.reshape(-1, n_features)).reshape(n_train, seq_len_, n_features)
+    y_train_scaled = scaler_y.fit_transform(y_train_raw.reshape(-1, 1)).reshape(y_train_raw.shape)
+
+    X_val_scaled = scaler_X.transform(X_val_raw.reshape(-1, n_features)).reshape(X_val_raw.shape)
+    y_val_scaled = scaler_y.transform(y_val_raw.reshape(-1, 1)).reshape(y_val_raw.shape)
+
+    X_train_t = torch.FloatTensor(X_train_scaled)
+    y_train_t = torch.FloatTensor(y_train_scaled)
+    X_val_t   = torch.FloatTensor(X_val_scaled)
+    y_val_t   = torch.FloatTensor(y_val_scaled)
+
+    # --- 5. Build and train model ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = TransformerModel(
         input_size=n_features,
@@ -501,9 +559,8 @@ def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhe
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
-    loader = DataLoader(TensorDataset(X_tensor, y_tensor), batch_size=batch_size, shuffle=True)
+    loader = DataLoader(TensorDataset(X_train_t, y_train_t), batch_size=batch_size, shuffle=True)
 
-    # Training loop
     for epoch in range(epochs):
         model.train()
         total_loss = 0
@@ -516,8 +573,12 @@ def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhe
             optimizer.step()
             total_loss += loss.item()
 
-        if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f}")
+        if (epoch + 1) % 10 == 0 and len(X_val_raw) > 0:
+            model.eval()
+            with torch.no_grad():
+                val_pred = model(X_val_t.to(device))
+                val_loss = criterion(val_pred, y_val_t.to(device))
+            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f} | Val Loss: {val_loss:.6f}")
 
     return model, scaler_X, scaler_y, device
 
