@@ -1,13 +1,75 @@
 import React, { useState } from 'react';
-import { Building2, Search, TrendingUp, DollarSign, BarChart3, Target, Calendar, FileText, ExternalLink } from 'lucide-react';
+import {
+    Building2,
+    Search,
+    TrendingUp,
+    DollarSign,
+    BarChart3,
+    Target,
+    Calendar,
+    FileText,
+    ExternalLink,
+    ShieldAlert,
+    Users,
+    Activity,
+} from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 import TickerAutocompleteInput from './TickerAutocompleteInput';
+import {
+    getMarketSessionLabel,
+    getMarketSessionSummary,
+    getMarketSessionToneClasses,
+    getTimezoneLabel,
+} from './ui/marketSessionUtils';
+import {
+    getSentimentLabel,
+    getSentimentToneClasses,
+} from './ui/sentimentUtils';
 
-const TABS = [
-    { key: 'overview',   label: 'Overview' },
+const US_TABS = [
+    { key: 'overview', label: 'Overview' },
     { key: 'financials', label: 'Financials' },
-    { key: 'filings',    label: 'SEC Filings' },
+    { key: 'filings', label: 'SEC Filings' },
 ];
+
+const INTERNATIONAL_TABS = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'research', label: 'Company Research' },
+];
+
+const MARKET_OPTIONS = [
+    { value: 'us', label: 'US' },
+    { value: 'hk', label: 'HK' },
+    { value: 'cn', label: 'CN' },
+];
+
+const normalizeMarket = (market = 'us') => {
+    const normalized = String(market || 'us').trim().toLowerCase();
+    return MARKET_OPTIONS.some((option) => option.value === normalized) ? normalized : 'us';
+};
+
+const normalizeAssetInput = (input, fallbackMarket = 'us') => {
+    const rawValue = String(input || '').trim();
+    if (!rawValue) return null;
+
+    const prefixed = rawValue.match(/^([A-Za-z]{2}):(.+)$/);
+    const market = normalizeMarket(prefixed?.[1] || fallbackMarket);
+    const rawSymbol = prefixed?.[2] || rawValue;
+    const symbol = market === 'us'
+        ? rawSymbol.trim().toUpperCase()
+        : rawSymbol.replace(/\D/g, '').padStart(market === 'hk' ? 5 : 6, '0');
+
+    if (!symbol) return null;
+
+    return {
+        symbol,
+        market: market.toUpperCase(),
+        assetId: market === 'us' ? `US:${symbol}` : `${market.toUpperCase()}:${symbol}`,
+        displayLabel: market === 'us' ? symbol : `${market.toUpperCase()}:${symbol}`,
+    };
+};
+
+const isUsAsset = (asset) => !asset || asset.market === 'US';
 
 const fmtBig = (val, prefix = '') => {
     if (val === null || val === undefined || val === 'N/A' || val === 'None') return '—';
@@ -15,61 +77,85 @@ const fmtBig = (val, prefix = '') => {
     if (isNaN(num)) return '—';
     const abs = Math.abs(num);
     if (abs >= 1e12) return `${prefix}${(num / 1e12).toFixed(2)}T`;
-    if (abs >= 1e9)  return `${prefix}${(num / 1e9).toFixed(2)}B`;
-    if (abs >= 1e6)  return `${prefix}${(num / 1e6).toFixed(2)}M`;
+    if (abs >= 1e9) return `${prefix}${(num / 1e9).toFixed(2)}B`;
+    if (abs >= 1e6) return `${prefix}${(num / 1e6).toFixed(2)}M`;
     return `${prefix}${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+const currencyPrefix = (currency) => {
+    switch (String(currency || '').toUpperCase()) {
+    case 'HKD':
+        return 'HK$';
+    case 'CNY':
+        return 'CN¥';
+    case 'USD':
+    default:
+        return '$';
+    }
+};
+
 const INCOME_ROWS = [
-    { label: 'Revenue',          key: 'revenue' },
-    { label: 'Gross Profit',     key: 'gross_profit' },
+    { label: 'Revenue', key: 'revenue' },
+    { label: 'Gross Profit', key: 'gross_profit' },
     { label: 'Operating Income', key: 'operating_income' },
-    { label: 'Net Income',       key: 'net_income' },
-    { label: 'EBITDA',           key: 'ebitda' },
-    { label: 'EPS',              key: 'eps', raw: true },
+    { label: 'Net Income', key: 'net_income' },
+    { label: 'EBITDA', key: 'ebitda' },
+    { label: 'EPS', key: 'eps', raw: true },
 ];
 
 const BALANCE_ROWS = [
-    { label: 'Total Assets',       key: 'total_assets' },
-    { label: 'Total Liabilities',  key: 'total_liab' },
-    { label: 'Total Equity',       key: 'total_equity' },
+    { label: 'Total Assets', key: 'total_assets' },
+    { label: 'Total Liabilities', key: 'total_liab' },
+    { label: 'Total Equity', key: 'total_equity' },
     { label: 'Cash & Equivalents', key: 'cash' },
-    { label: 'Total Debt',         key: 'total_debt' },
-    { label: 'Working Capital',    key: 'working_capital' },
+    { label: 'Total Debt', key: 'total_debt' },
+    { label: 'Working Capital', key: 'working_capital' },
 ];
 
 const CASHFLOW_ROWS = [
-    { label: 'Operating Cash Flow',  key: 'operating' },
-    { label: 'Investing Cash Flow',  key: 'investing' },
-    { label: 'Financing Cash Flow',  key: 'financing' },
+    { label: 'Operating Cash Flow', key: 'operating' },
+    { label: 'Investing Cash Flow', key: 'investing' },
+    { label: 'Financing Cash Flow', key: 'financing' },
     { label: 'Capital Expenditures', key: 'capex' },
-    { label: 'Free Cash Flow',       key: 'free_cf' },
+    { label: 'Free Cash Flow', key: 'free_cf' },
 ];
+
+const metricToneClass = {
+    accent: 'text-mm-accent-primary',
+    positive: 'text-mm-positive',
+    warning: 'text-mm-warning',
+    tertiary: 'text-mm-text-tertiary',
+};
+
+const sectionTitleClass = 'text-2xl font-semibold text-mm-text-primary mb-6';
 
 const FinancialTable = ({ title, rows, data }) => {
     if (!data || data.length === 0) return null;
-    const periods = data.map(d => d.period);
+    const periods = data.map((d) => d.period);
+
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h3>
+        <div className="ui-panel overflow-hidden">
+            <div className="px-5 py-4 border-b border-mm-border">
+                <h3 className="text-sm font-semibold text-mm-text-primary">{title}</h3>
             </div>
             <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+                    <thead className="bg-mm-surface-subtle">
                         <tr>
-                            <th className="px-5 py-2.5 text-left text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Metric</th>
-                            {periods.map(p => (
-                                <th key={p} className="px-5 py-2.5 text-right text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">{p}</th>
+                            <th className="px-5 py-2.5 text-left text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">Metric</th>
+                            {periods.map((p) => (
+                                <th key={p} className="px-5 py-2.5 text-right text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">
+                                    {p}
+                                </th>
                             ))}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    <tbody className="divide-y divide-mm-border">
                         {rows.map(({ label, key, raw }) => (
-                            <tr key={key} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                                <td className="px-5 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{label}</td>
-                                {data.map(d => (
-                                    <td key={d.period} className="px-5 py-2.5 text-right text-gray-900 dark:text-white">
+                            <tr key={key} className="hover:bg-mm-surface-subtle/80">
+                                <td className="px-5 py-2.5 text-mm-text-secondary font-medium">{label}</td>
+                                {data.map((d) => (
+                                    <td key={d.period} className="px-5 py-2.5 text-right text-mm-text-primary">
                                         {raw ? fmtBig(d[key]) : fmtBig(d[key], '$')}
                                     </td>
                                 ))}
@@ -82,21 +168,116 @@ const FinancialTable = ({ title, rows, data }) => {
     );
 };
 
-const MetricCard = ({ title, value, icon: Icon, color = 'blue' }) => (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+const MetricCard = ({ title, value, icon: Icon, tone = 'accent' }) => (
+    <div className="ui-panel-subtle p-4">
         <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-600 dark:text-gray-400">{title}</span>
-            {Icon && <Icon className={`w-4 h-4 text-${color}-600 dark:text-${color}-400`} />}
+            <span className="text-sm text-mm-text-secondary">{title}</span>
+            {Icon && <Icon className={`w-4 h-4 ${metricToneClass[tone] || metricToneClass.accent}`} />}
         </div>
-        <p className="text-xl font-bold text-gray-900 dark:text-white">{value}</p>
+        <p className="text-xl font-semibold text-mm-text-primary">{value}</p>
     </div>
 );
 
+const TabButton = ({ active, children, onClick }) => (
+    <button
+        onClick={onClick}
+        className={active
+            ? 'rounded-control bg-mm-accent-primary px-5 py-2 text-sm font-semibold text-white shadow-card'
+            : 'rounded-control border border-mm-border bg-mm-surface px-5 py-2 text-sm font-semibold text-mm-text-secondary transition hover:bg-mm-surface-subtle hover:text-mm-text-primary'}
+    >
+        {children}
+    </button>
+);
+
+const SentimentBadge = ({ sentiment, prefix = '' }) => {
+    const label = getSentimentLabel(sentiment);
+    if (!label) {
+        return null;
+    }
+    return (
+        <span className={`inline-flex items-center rounded-pill border px-2 py-0.5 text-[11px] font-semibold ${getSentimentToneClasses(sentiment)}`}>
+            {prefix ? `${prefix}: ${label}` : label}
+        </span>
+    );
+};
+
+const ResearchProfileList = ({ items }) => {
+    if (!Array.isArray(items) || items.length === 0) return null;
+    return (
+        <div className="ui-panel p-6">
+            <h3 className={sectionTitleClass}>Company Research</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {items.map((item) => (
+                    <div key={`${item.label}-${item.value}`} className="ui-panel-subtle p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mm-text-tertiary">{item.label}</p>
+                        <p className="mt-2 text-sm leading-6 text-mm-text-primary break-words">{item.value}</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const AnnouncementsPanel = ({ items }) => {
+    if (!Array.isArray(items) || items.length === 0) {
+        return (
+            <div className="ui-panel-subtle py-16 text-mm-text-secondary text-center">
+                <FileText className="w-12 h-12 mx-auto mb-3 opacity-40" />
+                <p>No company announcements were returned for this asset.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="ui-panel p-6">
+            <div className="flex items-center gap-2 mb-4">
+                <FileText className="w-5 h-5 text-mm-accent-primary" />
+                <h3 className="text-lg font-semibold text-mm-text-primary">Company Announcements</h3>
+            </div>
+            <div className="space-y-3">
+                {items.map((item, index) => (
+                    <a
+                        key={`${item.link || item.title}-${index}`}
+                        href={item.link || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block rounded-card border border-mm-border bg-mm-surface px-4 py-4 transition hover:bg-mm-surface-subtle"
+                    >
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-mm-text-tertiary">
+                            <span className="rounded-pill border border-mm-border px-2 py-0.5 font-semibold uppercase tracking-[0.12em]">
+                                {item.type || 'Announcement'}
+                            </span>
+                            {item.date ? <span>{item.date}</span> : null}
+                            {item.publisher ? <span>• {item.publisher}</span> : null}
+                            <SentimentBadge sentiment={item.sentiment} />
+                        </div>
+                        <p className="mt-3 text-sm font-semibold text-mm-text-primary">{item.title || item.description || 'Company announcement'}</p>
+                        {item.description && item.description !== item.title ? (
+                            <p className="mt-2 text-sm leading-6 text-mm-text-secondary">{item.description}</p>
+                        ) : null}
+                        {item.link ? (
+                            <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-mm-accent-primary">
+                                Open source link <ExternalLink className="w-3 h-3" />
+                            </span>
+                        ) : null}
+                    </a>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const FundamentalsPage = () => {
     const [ticker, setTicker] = useState('');
+    const [selectedMarket, setSelectedMarket] = useState('us');
+    const [resolvedAsset, setResolvedAsset] = useState(null);
     const [fundamentals, setFundamentals] = useState(null);
     const [financials, setFinancials] = useState(null);
     const [filings, setFilings] = useState(null);
+    const [secIntelligence, setSecIntelligence] = useState(null);
+    const [secIntelligenceError, setSecIntelligenceError] = useState('');
+    const [expandedFilingAccession, setExpandedFilingAccession] = useState(null);
+    const [filingDetailState, setFilingDetailState] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState('overview');
@@ -135,44 +316,137 @@ const FundamentalsPage = () => {
         }
     };
 
+    const activeAsset = resolvedAsset || (fundamentals ? normalizeAssetInput(fundamentals.assetId || fundamentals.symbol, fundamentals.market || selectedMarket) : null);
+    const internationalResearchMode = activeAsset && !isUsAsset(activeAsset);
+    const tabs = internationalResearchMode ? INTERNATIONAL_TABS : US_TABS;
+    const marketSession = fundamentals?.marketSession || null;
+
     const handleSearch = (e) => {
         e.preventDefault();
         fetchFundamentals(ticker.toUpperCase().trim());
     };
 
     const formatNumber = (value, prefix = '', suffix = '') => {
-        if (value === 'N/A' || value === 'None' || !value) return 'N/A';
+        if (value === 'N/A' || value === 'None' || value === null || value === undefined || value === '') return 'N/A';
         const num = parseFloat(value);
         if (isNaN(num)) return value;
         if (Math.abs(num) >= 1e12) return `${prefix}${(num / 1e12).toFixed(2)}T${suffix}`;
-        else if (Math.abs(num) >= 1e9) return `${prefix}${(num / 1e9).toFixed(2)}B${suffix}`;
-        else if (Math.abs(num) >= 1e6) return `${prefix}${(num / 1e6).toFixed(2)}M${suffix}`;
+        if (Math.abs(num) >= 1e9) return `${prefix}${(num / 1e9).toFixed(2)}B${suffix}`;
+        if (Math.abs(num) >= 1e6) return `${prefix}${(num / 1e6).toFixed(2)}M${suffix}`;
         return `${prefix}${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffix}`;
     };
 
     const formatPercent = (value) => {
-        if (value === 'N/A' || value === 'None' || !value) return 'N/A';
+        if (value === 'N/A' || value === 'None' || value === null || value === undefined || value === '') return 'N/A';
         const num = parseFloat(value);
         if (isNaN(num)) return value;
         return `${(num * 100).toFixed(2)}%`;
     };
 
+    const formatPercentValue = (value) => {
+        if (value === null || value === undefined || value === '') return '—';
+        const num = parseFloat(value);
+        return Number.isFinite(num) ? `${num.toFixed(1)}%` : '—';
+    };
+
+    const formatSignedInteger = (value) => {
+        if (value === null || value === undefined || value === '') return '—';
+        const num = Number(value);
+        if (!Number.isFinite(num)) return '—';
+        return `${num > 0 ? '+' : ''}${Math.round(num).toLocaleString()}`;
+    };
+
+    const filingDetailEndpoint = (accessionNumber) => {
+        const symbol = fundamentals?.symbol || activeAsset?.symbol || ticker.toUpperCase().trim();
+        return API_ENDPOINTS.FUNDAMENTALS_FILING_DETAIL(symbol, accessionNumber);
+    };
+
+    const loadFilingDetail = async (filing, { expand = true } = {}) => {
+        const accessionNumber = filing?.accessionNumber;
+        if (!accessionNumber) return;
+
+        if (expand) {
+            setExpandedFilingAccession(accessionNumber);
+        }
+
+        setFilingDetailState((prev) => ({
+            ...prev,
+            [accessionNumber]: {
+                status: 'loading',
+                error: '',
+                data: prev[accessionNumber]?.data || null,
+                activeSectionKey: prev[accessionNumber]?.activeSectionKey || null,
+            },
+        }));
+
+        try {
+            const detail = await apiRequest(filingDetailEndpoint(accessionNumber));
+            const normalizedDetail = detail || { sections: [] };
+            setFilingDetailState((prev) => ({
+                ...prev,
+                [accessionNumber]: {
+                    status: 'success',
+                    error: '',
+                    data: normalizedDetail,
+                    activeSectionKey: normalizedDetail.sections?.[0]?.key || null,
+                },
+            }));
+        } catch (detailError) {
+            setFilingDetailState((prev) => ({
+                ...prev,
+                [accessionNumber]: {
+                    status: 'error',
+                    error: detailError?.message || 'Failed to load SEC filing detail.',
+                    data: prev[accessionNumber]?.data || null,
+                    activeSectionKey: prev[accessionNumber]?.activeSectionKey || null,
+                },
+            }));
+        }
+    };
+
+    const handleToggleFilingDetail = async (filing) => {
+        const accessionNumber = filing?.accessionNumber;
+        if (!accessionNumber) return;
+
+        if (expandedFilingAccession === accessionNumber) {
+            setExpandedFilingAccession(null);
+            return;
+        }
+
+        const existingState = filingDetailState[accessionNumber];
+        setExpandedFilingAccession(accessionNumber);
+        if (existingState?.status === 'success') {
+            return;
+        }
+        await loadFilingDetail(filing, { expand: false });
+    };
+
+    const setActiveFilingSection = (accessionNumber, sectionKey) => {
+        setFilingDetailState((prev) => ({
+            ...prev,
+            [accessionNumber]: {
+                ...prev[accessionNumber],
+                activeSectionKey: sectionKey,
+            },
+        }));
+    };
+
     return (
-        <div className="container mx-auto px-6 py-8 max-w-7xl">
-            {/* Header */}
-            <div className="text-center mb-8 animate-fade-in">
-                <div className="flex items-center justify-center mb-2">
-                    <Building2 className="w-10 h-10 text-indigo-600 dark:text-indigo-400 mr-3" />
-                    <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Company Fundamentals</h1>
+        <div className="ui-page animate-fade-in space-y-8">
+            <div className="ui-page-header text-center">
+                <div className="flex items-center justify-center mb-3">
+                    <div className="mr-3 inline-flex items-center justify-center rounded-control border border-mm-accent-primary/15 bg-mm-accent-primary/10 p-3">
+                        <Building2 className="w-8 h-8 text-mm-accent-primary" />
+                    </div>
+                    <h1 className="ui-page-title">Company Fundamentals</h1>
                 </div>
-                <p className="text-gray-600 dark:text-gray-400">
+                <p className="ui-page-subtitle">
                     Comprehensive financial data and metrics for publicly traded companies
                 </p>
             </div>
 
-            {/* Search Box */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8 animate-fade-in">
-                <form onSubmit={handleSearch} className="flex gap-4">
+            <div className="ui-panel p-6">
+                <form onSubmit={handleSearch} className="flex gap-4 flex-col md:flex-row">
                     <div className="flex-1 relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 z-10 pointer-events-none" />
                         <TickerAutocompleteInput
@@ -186,174 +460,221 @@ const FundamentalsPage = () => {
                     <button
                         type="submit"
                         disabled={loading || !ticker.trim()}
-                        className={`px-8 py-3 rounded-lg font-semibold transition-all ${
-                            loading || !ticker.trim()
-                                ? 'bg-gray-400 cursor-not-allowed'
-                                : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'
-                        }`}
+                        className={`px-8 py-3 ${loading || !ticker.trim() ? 'ui-button-secondary cursor-not-allowed opacity-60' : 'ui-button-primary'}`}
                     >
                         {loading ? 'Searching...' : 'Search'}
                     </button>
                 </form>
+                <div className="mt-4 flex flex-wrap gap-2">
+                    {MARKET_OPTIONS.map((option) => (
+                        <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setSelectedMarket(option.value)}
+                            className={selectedMarket === option.value ? 'ui-chip bg-mm-accent-primary text-white border-mm-accent-primary' : 'ui-chip'}
+                        >
+                            {option.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
-            {/* Loading */}
             {loading && (
                 <div className="text-center py-12">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
-                    <p className="mt-4 text-gray-600 dark:text-gray-400">Loading fundamentals...</p>
+                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-mm-accent-primary border-t-transparent"></div>
+                    <p className="mt-4 text-mm-text-secondary">Loading fundamentals...</p>
                 </div>
             )}
 
-            {/* Error */}
             {error && (
-                <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-6 py-4 rounded-lg mb-8">
+                <div className="rounded-card border border-mm-negative/20 bg-mm-negative/10 px-6 py-4 text-mm-negative">
                     {error}
                 </div>
             )}
 
-            {/* Data view */}
             {fundamentals && !loading && (
-                <div className="space-y-6 animate-fade-in">
-                    {/* Tab bar */}
-                    <div className="flex gap-2">
-                        {TABS.map(tab => (
-                            <button
+                <div className="space-y-6">
+                    <div className="flex flex-wrap gap-2">
+                        {tabs.map((tab) => (
+                            <TabButton
                                 key={tab.key}
+                                active={activeTab === tab.key}
                                 onClick={() => setActiveTab(tab.key)}
-                                className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                    activeTab === tab.key
-                                        ? 'bg-indigo-600 text-white shadow'
-                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                }`}
                             >
                                 {tab.label}
-                            </button>
+                            </TabButton>
                         ))}
                     </div>
 
-                    {/* ── Overview tab ── */}
                     {activeTab === 'overview' && (
                         <div className="space-y-6">
-                            {/* Company Header */}
-                            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-xl p-8 border border-indigo-100 dark:border-indigo-800">
-                                <div className="flex items-start justify-between mb-4">
+                            <div className="ui-panel-elevated p-8">
+                                <p className="ui-section-label mb-3">Company Snapshot</p>
+                                <div className="flex items-start justify-between mb-4 gap-6 flex-col lg:flex-row">
                                     <div>
-                                        <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                                        <h2 className="text-3xl font-semibold text-mm-text-primary mb-2">
                                             {fundamentals.name}
                                         </h2>
-                                        <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
-                                            <span className="font-semibold">{fundamentals.symbol}</span>
+                                        <div className="flex flex-wrap items-center gap-3 text-sm text-mm-text-secondary">
+                                            <span className="font-semibold text-mm-text-primary">
+                                                {internationalResearchMode ? activeAsset?.assetId || fundamentals.symbol : fundamentals.symbol}
+                                            </span>
                                             <span>•</span>
                                             <span>{fundamentals.exchange}</span>
                                             <span>•</span>
                                             <span>{fundamentals.currency}</span>
                                         </div>
+                                        {marketSession ? (
+                                            <div className="mt-4 rounded-card border border-mm-border bg-mm-surface-subtle px-4 py-3">
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-mm-text-secondary">
+                                                    <span className={`rounded-pill border px-2.5 py-1 font-semibold uppercase tracking-[0.12em] ${getMarketSessionToneClasses(marketSession)}`}>
+                                                        {getMarketSessionLabel(marketSession)}
+                                                    </span>
+                                                    <span>{marketSession.exchange || fundamentals.exchange}</span>
+                                                    {marketSession.timezone ? <span>• {getTimezoneLabel(marketSession.timezone)}</span> : null}
+                                                </div>
+                                                <p className="mt-2 text-sm text-mm-text-secondary">
+                                                    {getMarketSessionSummary(marketSession)}
+                                                </p>
+                                            </div>
+                                        ) : null}
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">Sector</p>
-                                        <p className="text-lg font-bold text-gray-900 dark:text-white">{fundamentals.sector}</p>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{fundamentals.industry}</p>
+                                    <div className="text-left lg:text-right">
+                                        <p className="ui-section-label mb-2">Sector</p>
+                                        <p className="text-lg font-semibold text-mm-text-primary">{fundamentals.sector}</p>
+                                        <p className="text-sm text-mm-text-secondary mt-1">{fundamentals.industry}</p>
                                     </div>
                                 </div>
                                 {fundamentals.description !== 'N/A' && (
-                                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+                                    <p className="text-mm-text-secondary leading-relaxed">
                                         {fundamentals.description}
                                     </p>
                                 )}
                             </div>
 
-                            {/* Key Metrics */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
-                                    <BarChart3 className="w-6 h-6 mr-2 text-indigo-600" />
-                                    Key Metrics
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <MetricCard title="Market Cap" value={formatNumber(fundamentals.market_cap, '$')} icon={DollarSign} color="green" />
-                                    <MetricCard title="P/E Ratio" value={formatNumber(fundamentals.pe_ratio)} icon={Target} color="blue" />
-                                    <MetricCard title="EPS" value={formatNumber(fundamentals.eps, '$')} icon={TrendingUp} color="purple" />
-                                    <MetricCard title="Beta" value={formatNumber(fundamentals.beta)} icon={BarChart3} color="orange" />
-                                </div>
-                            </div>
-
-                            {/* Valuation */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Valuation Metrics</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <MetricCard title="Forward P/E" value={formatNumber(fundamentals.forward_pe)} />
-                                    <MetricCard title="Trailing P/E" value={formatNumber(fundamentals.trailing_pe)} />
-                                    <MetricCard title="PEG Ratio" value={formatNumber(fundamentals.peg_ratio)} />
-                                    <MetricCard title="Price/Book" value={formatNumber(fundamentals.price_to_book_ratio)} />
-                                    <MetricCard title="Price/Sales (TTM)" value={formatNumber(fundamentals.price_to_sales_ratio_ttm)} />
-                                    <MetricCard title="EV/Revenue" value={formatNumber(fundamentals.ev_to_revenue)} />
-                                </div>
-                            </div>
-
-                            {/* Profitability */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Profitability</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <MetricCard title="Profit Margin" value={formatPercent(fundamentals.profit_margin)} />
-                                    <MetricCard title="Operating Margin" value={formatPercent(fundamentals.operating_margin_ttm)} />
-                                    <MetricCard title="ROA (TTM)" value={formatPercent(fundamentals.return_on_assets_ttm)} />
-                                    <MetricCard title="ROE (TTM)" value={formatPercent(fundamentals.return_on_equity_ttm)} />
-                                </div>
-                            </div>
-
-                            {/* Financial Performance */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Financial Performance</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <MetricCard title="Revenue (TTM)" value={formatNumber(fundamentals.revenue_ttm, '$')} />
-                                    <MetricCard title="Gross Profit (TTM)" value={formatNumber(fundamentals.gross_profit_ttm, '$')} />
-                                    <MetricCard title="Diluted EPS (TTM)" value={formatNumber(fundamentals.diluted_eps_ttm, '$')} />
-                                    <MetricCard title="Revenue/Share (TTM)" value={formatNumber(fundamentals.revenue_per_share_ttm, '$')} />
-                                    <MetricCard title="EV/EBITDA" value={formatNumber(fundamentals.ev_to_ebitda)} />
-                                    <MetricCard title="Analyst Target" value={formatNumber(fundamentals.analyst_target_price, '$')} />
-                                </div>
-                            </div>
-
-                            {/* Price & Technicals */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Price & Technicals</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <MetricCard title="52-Week High" value={formatNumber(fundamentals.week_52_high, '$')} />
-                                    <MetricCard title="52-Week Low" value={formatNumber(fundamentals.week_52_low, '$')} />
-                                    <MetricCard title="50-Day MA" value={formatNumber(fundamentals.day_50_moving_average, '$')} />
-                                    <MetricCard title="200-Day MA" value={formatNumber(fundamentals.day_200_moving_average, '$')} />
-                                </div>
-                            </div>
-
-                            {/* Dividends */}
-                            {fundamentals.dividend_per_share !== 'N/A' && fundamentals.dividend_per_share !== '0' && (
-                                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
-                                        <Calendar className="w-6 h-6 mr-2 text-green-600" />
-                                        Dividend Information
-                                    </h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <MetricCard title="Dividend Per Share" value={formatNumber(fundamentals.dividend_per_share, '$')} />
-                                        <MetricCard title="Dividend Yield" value={formatPercent(fundamentals.dividend_yield)} />
-                                        <MetricCard title="Dividend Date" value={fundamentals.dividend_date || 'N/A'} />
-                                        <MetricCard title="Ex-Dividend Date" value={fundamentals.ex_dividend_date || 'N/A'} />
+                            {internationalResearchMode ? (
+                                <>
+                                    <div className="ui-panel-subtle p-5 text-sm text-mm-text-secondary">
+                                        Akshare international mode is read-only in phase 1. You can inspect company context, technical levels, and announcement history here, while SEC, watchlist, prediction, and paper-trading flows remain US-only.
                                     </div>
-                                </div>
-                            )}
 
-                            {/* Additional */}
-                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Additional Information</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <MetricCard title="Shares Outstanding" value={formatNumber(fundamentals.shares_outstanding)} />
-                                    <MetricCard title="Book Value" value={formatNumber(fundamentals.book_value, '$')} />
-                                    <MetricCard title="Country" value={fundamentals.country || 'N/A'} />
-                                </div>
-                            </div>
+                                    <div className="ui-panel p-6">
+                                        <h3 className={`${sectionTitleClass} flex items-center`}>
+                                            <BarChart3 className="w-6 h-6 mr-2 text-mm-accent-primary" />
+                                            International Snapshot
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <MetricCard title="Market Cap" value={formatNumber(fundamentals.market_cap, currencyPrefix(fundamentals.currency))} icon={DollarSign} tone="accent" />
+                                            <MetricCard title="P/E Ratio" value={formatNumber(fundamentals.pe_ratio)} icon={Target} tone="accent" />
+                                            <MetricCard title="Price/Book" value={formatNumber(fundamentals.price_to_book_ratio)} icon={BarChart3} tone="warning" />
+                                            <MetricCard title="Shares Outstanding" value={formatNumber(fundamentals.shares_outstanding)} icon={Users} tone="tertiary" />
+                                        </div>
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Price & Technicals</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <MetricCard title="52-Week High" value={formatNumber(fundamentals.week_52_high, currencyPrefix(fundamentals.currency))} />
+                                            <MetricCard title="52-Week Low" value={formatNumber(fundamentals.week_52_low, currencyPrefix(fundamentals.currency))} />
+                                            <MetricCard title="50-Day MA" value={formatNumber(fundamentals.day_50_moving_average, currencyPrefix(fundamentals.currency))} />
+                                            <MetricCard title="200-Day MA" value={formatNumber(fundamentals.day_200_moving_average, currencyPrefix(fundamentals.currency))} />
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="ui-panel p-6">
+                                        <h3 className={`${sectionTitleClass} flex items-center`}>
+                                            <BarChart3 className="w-6 h-6 mr-2 text-mm-accent-primary" />
+                                            Key Metrics
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <MetricCard title="Market Cap" value={formatNumber(fundamentals.market_cap, '$')} icon={DollarSign} tone="accent" />
+                                            <MetricCard title="P/E Ratio" value={formatNumber(fundamentals.pe_ratio)} icon={Target} tone="accent" />
+                                            <MetricCard title="EPS" value={formatNumber(fundamentals.eps, '$')} icon={TrendingUp} tone="accent" />
+                                            <MetricCard title="Beta" value={formatNumber(fundamentals.beta)} icon={BarChart3} tone="warning" />
+                                        </div>
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Valuation Metrics</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            <MetricCard title="Forward P/E" value={formatNumber(fundamentals.forward_pe)} />
+                                            <MetricCard title="Trailing P/E" value={formatNumber(fundamentals.trailing_pe)} />
+                                            <MetricCard title="PEG Ratio" value={formatNumber(fundamentals.peg_ratio)} />
+                                            <MetricCard title="Price/Book" value={formatNumber(fundamentals.price_to_book_ratio)} />
+                                            <MetricCard title="Price/Sales (TTM)" value={formatNumber(fundamentals.price_to_sales_ratio_ttm)} />
+                                            <MetricCard title="EV/Revenue" value={formatNumber(fundamentals.ev_to_revenue)} />
+                                        </div>
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Profitability</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <MetricCard title="Profit Margin" value={formatPercent(fundamentals.profit_margin)} tone="positive" />
+                                            <MetricCard title="Operating Margin" value={formatPercent(fundamentals.operating_margin_ttm)} tone="positive" />
+                                            <MetricCard title="ROA (TTM)" value={formatPercent(fundamentals.return_on_assets_ttm)} tone="positive" />
+                                            <MetricCard title="ROE (TTM)" value={formatPercent(fundamentals.return_on_equity_ttm)} tone="positive" />
+                                        </div>
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Financial Performance</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            <MetricCard title="Revenue (TTM)" value={formatNumber(fundamentals.revenue_ttm, '$')} />
+                                            <MetricCard title="Gross Profit (TTM)" value={formatNumber(fundamentals.gross_profit_ttm, '$')} />
+                                            <MetricCard title="Diluted EPS (TTM)" value={formatNumber(fundamentals.diluted_eps_ttm, '$')} />
+                                            <MetricCard title="Revenue/Share (TTM)" value={formatNumber(fundamentals.revenue_per_share_ttm, '$')} />
+                                            <MetricCard title="EV/EBITDA" value={formatNumber(fundamentals.ev_to_ebitda)} />
+                                            <MetricCard title="Analyst Target" value={formatNumber(fundamentals.analyst_target_price, '$')} />
+                                        </div>
+                                    </div>
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Price & Technicals</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <MetricCard title="52-Week High" value={formatNumber(fundamentals.week_52_high, '$')} />
+                                            <MetricCard title="52-Week Low" value={formatNumber(fundamentals.week_52_low, '$')} />
+                                            <MetricCard title="50-Day MA" value={formatNumber(fundamentals.day_50_moving_average, '$')} />
+                                            <MetricCard title="200-Day MA" value={formatNumber(fundamentals.day_200_moving_average, '$')} />
+                                        </div>
+                                    </div>
+
+                                    {fundamentals.dividend_per_share !== 'N/A' && fundamentals.dividend_per_share !== '0' && (
+                                        <div className="ui-panel p-6">
+                                            <h3 className={`${sectionTitleClass} flex items-center`}>
+                                                <Calendar className="w-6 h-6 mr-2 text-mm-positive" />
+                                                Dividend Information
+                                            </h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                <MetricCard title="Dividend Per Share" value={formatNumber(fundamentals.dividend_per_share, '$')} tone="positive" />
+                                                <MetricCard title="Dividend Yield" value={formatPercent(fundamentals.dividend_yield)} tone="positive" />
+                                                <MetricCard title="Dividend Date" value={fundamentals.dividend_date || 'N/A'} tone="positive" />
+                                                <MetricCard title="Ex-Dividend Date" value={fundamentals.ex_dividend_date || 'N/A'} tone="positive" />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="ui-panel p-6">
+                                        <h3 className={sectionTitleClass}>Additional Information</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            <MetricCard title="Shares Outstanding" value={formatNumber(fundamentals.shares_outstanding)} />
+                                            <MetricCard title="Book Value" value={formatNumber(fundamentals.book_value, '$')} />
+                                            <MetricCard title="Country" value={fundamentals.country || 'N/A'} />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
 
-                    {/* ── Financials tab ── */}
+                    {activeTab === 'research' && (
+                        <div className="space-y-6">
+                            <ResearchProfileList items={fundamentals.researchProfile} />
+                            <AnnouncementsPanel items={fundamentals.announcements} />
+                        </div>
+                    )}
+
                     {activeTab === 'financials' && (
                         <div className="space-y-6">
                             {financials ? (
@@ -363,7 +684,7 @@ const FundamentalsPage = () => {
                                     <FinancialTable title="Cash Flow Statement" rows={CASHFLOW_ROWS} data={financials.cash_flow} />
                                 </>
                             ) : (
-                                <div className="text-center py-16 text-gray-500 dark:text-gray-400">
+                                <div className="ui-panel-subtle py-16 text-mm-text-secondary text-center">
                                     <FileText className="w-12 h-12 mx-auto mb-3 opacity-40" />
                                     <p>Financial statements not available for this ticker.</p>
                                 </div>
@@ -371,62 +692,285 @@ const FundamentalsPage = () => {
                         </div>
                     )}
 
-                    {/* ── SEC Filings tab ── */}
                     {activeTab === 'filings' && (
-                        <div>
+                        <div className="space-y-6">
+                            {(secIntelligence || secIntelligenceError) && (
+                                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                                    <div className="ui-panel p-5">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <ShieldAlert className="w-4 h-4 text-mm-warning" />
+                                            <h3 className="text-sm font-semibold text-mm-text-primary">Filing Change Watch</h3>
+                                        </div>
+                                        {secIntelligence?.filingChangeSummary?.comparisonForm ? (
+                                            <div className="space-y-3">
+                                                <div className="text-sm text-mm-text-secondary">
+                                                    Comparing latest <span className="font-semibold text-mm-text-primary">{secIntelligence.filingChangeSummary.comparisonForm}</span>
+                                                    {' '}on {secIntelligence.filingChangeSummary.currentFiling?.date || '—'}
+                                                    {' '}vs {secIntelligence.filingChangeSummary.previousFiling?.date || '—'}.
+                                                </div>
+                                                {(secIntelligence.filingChangeSummary.sectionChanges || []).length > 0 ? (
+                                                    <div className="space-y-3">
+                                                        {secIntelligence.filingChangeSummary.sectionChanges.slice(0, 3).map((sectionChange) => (
+                                                            <div key={sectionChange.key} className="rounded-card border border-mm-border bg-mm-surface-subtle px-3 py-3">
+                                                                <div className="flex items-center justify-between gap-3 mb-2">
+                                                                    <h4 className="text-sm font-semibold text-mm-text-primary">{sectionChange.title}</h4>
+                                                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                                                        <span className="inline-flex items-center rounded-pill border border-mm-warning/20 bg-mm-warning/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-mm-warning">
+                                                                            {sectionChange.status}
+                                                                        </span>
+                                                                        <SentimentBadge sentiment={sectionChange.currentSentiment} prefix="Current" />
+                                                                        <SentimentBadge sentiment={sectionChange.previousSentiment} prefix="Previous" />
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-xs leading-6 text-mm-text-secondary whitespace-pre-wrap">
+                                                                    {sectionChange.currentExcerpt || sectionChange.previousExcerpt || 'No excerpt available.'}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-mm-text-secondary">No material section changes were detected between the latest comparable filings.</p>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-mm-text-secondary">Comparable annual or quarterly filings are not available yet for change detection.</p>
+                                        )}
+                                    </div>
+
+                                    <div className="ui-panel p-5">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Activity className="w-4 h-4 text-mm-positive" />
+                                            <h3 className="text-sm font-semibold text-mm-text-primary">Insider Activity</h3>
+                                        </div>
+                                        {(secIntelligence?.insiderActivity || []).length > 0 ? (
+                                            <div className="space-y-3">
+                                                {secIntelligence.insiderActivity.slice(0, 4).map((item) => (
+                                                    <div key={item.accessionNumber || `${item.date}-${item.insiderName}`} className="rounded-card border border-mm-border bg-mm-surface-subtle px-3 py-3">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <h4 className="text-sm font-semibold text-mm-text-primary">{item.insiderName || 'Unspecified insider'}</h4>
+                                                                <p className="text-xs text-mm-text-secondary">{item.position || item.type || 'Ownership filing'}</p>
+                                                            </div>
+                                                            <span className="text-[11px] uppercase tracking-[0.12em] text-mm-text-tertiary">{item.date || '—'}</span>
+                                                        </div>
+                                                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-mm-text-secondary">
+                                                            {item.activity ? <span className="rounded-pill border border-mm-border px-2 py-0.5">{item.activity}</span> : null}
+                                                            {item.netShares !== null && item.netShares !== undefined ? <span className="rounded-pill border border-mm-border px-2 py-0.5">{formatSignedInteger(item.netShares)} shares</span> : null}
+                                                            {item.remainingShares !== null && item.remainingShares !== undefined ? <span className="rounded-pill border border-mm-border px-2 py-0.5">{Math.round(item.remainingShares).toLocaleString()} held after filing</span> : null}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-mm-text-secondary">No recent insider Form 4 / Form 5 activity was parsed for this ticker.</p>
+                                        )}
+                                    </div>
+
+                                    <div className="ui-panel p-5">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Users className="w-4 h-4 text-mm-accent-primary" />
+                                            <h3 className="text-sm font-semibold text-mm-text-primary">Major Holders (13D/G)</h3>
+                                        </div>
+                                        {(secIntelligence?.beneficialOwnership || []).length > 0 ? (
+                                            <div className="space-y-3">
+                                                {secIntelligence.beneficialOwnership.slice(0, 4).map((item) => (
+                                                    <div key={item.accessionNumber || `${item.date}-${(item.owners || []).join('-')}`} className="rounded-card border border-mm-border bg-mm-surface-subtle px-3 py-3">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <h4 className="text-sm font-semibold text-mm-text-primary">{(item.owners || []).join(', ') || 'Reporting holders unavailable'}</h4>
+                                                                <p className="text-xs text-mm-text-secondary">{item.type || '13D/G filing'}</p>
+                                                            </div>
+                                                            <span className="text-[11px] uppercase tracking-[0.12em] text-mm-text-tertiary">{item.date || '—'}</span>
+                                                        </div>
+                                                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-mm-text-secondary">
+                                                            {item.ownershipPercent !== null && item.ownershipPercent !== undefined ? <span className="rounded-pill border border-mm-border px-2 py-0.5">{formatPercentValue(item.ownershipPercent)}</span> : null}
+                                                            {item.isPassive !== null && item.isPassive !== undefined ? <span className="rounded-pill border border-mm-border px-2 py-0.5">{item.isPassive ? 'Passive' : 'Active / activist'}</span> : null}
+                                                        </div>
+                                                        {item.purpose ? (
+                                                            <p className="mt-3 text-xs leading-6 text-mm-text-secondary whitespace-pre-wrap">
+                                                                {item.purpose}
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-mm-text-secondary">No recent 13D/G beneficial ownership disclosures were parsed for this ticker.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {secIntelligenceError && (
+                                <div className="rounded-card border border-mm-warning/20 bg-mm-warning/10 px-5 py-4 text-sm text-mm-warning">
+                                    SEC intelligence is temporarily unavailable: {secIntelligenceError}
+                                </div>
+                            )}
+
                             {filings && filings.length > 0 ? (
-                                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-                                    <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                                        <FileText className="w-4 h-4 text-indigo-500" />
-                                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                <div className="ui-panel overflow-hidden">
+                                    <div className="px-5 py-4 border-b border-mm-border flex items-center gap-2">
+                                        <FileText className="w-4 h-4 text-mm-accent-primary" />
+                                        <h3 className="text-sm font-semibold text-mm-text-primary">
                                             SEC Filings — {fundamentals.symbol}
                                         </h3>
-                                        <span className="ml-auto text-xs text-gray-400">{filings.length} results</span>
+                                        <span className="ml-auto text-xs text-mm-text-tertiary">{filings.length} results</span>
                                     </div>
                                     <div className="overflow-x-auto">
                                         <table className="min-w-full text-sm">
-                                            <thead className="bg-gray-50 dark:bg-gray-700/50">
+                                            <thead className="bg-mm-surface-subtle">
                                                 <tr>
-                                                    <th className="px-5 py-2.5 text-left text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Date</th>
-                                                    <th className="px-5 py-2.5 text-left text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Type</th>
-                                                    <th className="px-5 py-2.5 text-left text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Description</th>
-                                                    <th className="px-5 py-2.5 text-center text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Link</th>
+                                                    <th className="px-5 py-2.5 text-left text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">Date</th>
+                                                    <th className="px-5 py-2.5 text-left text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">Type</th>
+                                                    <th className="px-5 py-2.5 text-left text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">Description</th>
+                                                    <th className="px-5 py-2.5 text-center text-xs text-mm-text-tertiary font-semibold uppercase tracking-[0.14em]">Link</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                                {filings.map((f, i) => (
-                                                    <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                                                        <td className="px-5 py-2.5 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                                            {f.date ? new Date(f.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                                                        </td>
-                                                        <td className="px-5 py-2.5">
-                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300">
-                                                                {f.type}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-5 py-2.5 text-gray-600 dark:text-gray-400 max-w-xs truncate">
-                                                            {f.description || '—'}
-                                                        </td>
-                                                        <td className="px-5 py-2.5 text-center">
-                                                            {f.url ? (
-                                                                <a
-                                                                    href={f.url}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline text-xs"
-                                                                >
-                                                                    View <ExternalLink className="w-3 h-3" />
-                                                                </a>
-                                                            ) : '—'}
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                            <tbody className="divide-y divide-mm-border">
+                                                {filings.map((f, i) => {
+                                                    const accessionNumber = f.accessionNumber || `filing-${i}`;
+                                                    const isExpanded = expandedFilingAccession === accessionNumber;
+                                                    const detailState = filingDetailState[accessionNumber];
+                                                    const detail = detailState?.data;
+                                                    const sections = detail?.sections || [];
+                                                    const activeSectionKey = detailState?.activeSectionKey || sections[0]?.key;
+                                                    const activeSection = sections.find((section) => section.key === activeSectionKey) || sections[0];
+
+                                                    return (
+                                                        <React.Fragment key={accessionNumber}>
+                                                            <tr className="hover:bg-mm-surface-subtle/80">
+                                                                <td className="px-5 py-2.5 text-mm-text-secondary whitespace-nowrap">
+                                                                    {f.date ? new Date(f.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                                                                </td>
+                                                                <td className="px-5 py-2.5">
+                                                                    <span className="inline-flex items-center rounded-pill border border-mm-accent-primary/15 bg-mm-accent-primary/10 px-2 py-0.5 text-xs font-semibold text-mm-accent-primary">
+                                                                        {f.type}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-5 py-2.5 text-mm-text-secondary max-w-xs truncate">
+                                                                    {f.description || '—'}
+                                                                </td>
+                                                                <td className="px-5 py-2.5 text-center">
+                                                                    <div className="flex flex-col items-center gap-2">
+                                                                        {f.url ? (
+                                                                            <a
+                                                                                href={f.url}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className="inline-flex items-center gap-1 text-mm-accent-primary hover:underline text-xs"
+                                                                            >
+                                                                                View <ExternalLink className="w-3 h-3" />
+                                                                            </a>
+                                                                        ) : (
+                                                                            <span>—</span>
+                                                                        )}
+                                                                        {f.hasKeySections && f.accessionNumber ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleToggleFilingDetail(f)}
+                                                                                className="text-xs font-semibold text-mm-accent-primary hover:underline"
+                                                                            >
+                                                                                {isExpanded ? 'Hide key sections' : 'Read key sections'}
+                                                                            </button>
+                                                                        ) : null}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                            {isExpanded && (
+                                                                <tr>
+                                                                    <td colSpan={4} className="px-5 py-4 bg-mm-surface-subtle/60">
+                                                                        <div className="ui-panel-subtle p-4 space-y-4">
+                                                                            <div className="flex flex-wrap items-center gap-3">
+                                                                                <span className="inline-flex items-center rounded-pill border border-mm-accent-primary/15 bg-mm-accent-primary/10 px-2.5 py-0.5 text-xs font-semibold text-mm-accent-primary">
+                                                                                    {f.type}
+                                                                                </span>
+                                                                                <span className="text-xs text-mm-text-secondary">
+                                                                                    {f.date ? new Date(f.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date unavailable'}
+                                                                                </span>
+                                                                                {detail?.url ? (
+                                                                                    <a
+                                                                                        href={detail.url}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        className="inline-flex items-center gap-1 text-xs text-mm-accent-primary hover:underline"
+                                                                                    >
+                                                                                        Open on EDGAR <ExternalLink className="w-3 h-3" />
+                                                                                    </a>
+                                                                                ) : null}
+                                                                            </div>
+
+                                                                            {detailState?.status === 'loading' && (
+                                                                                <p className="text-sm text-mm-text-secondary">Loading key SEC filing sections...</p>
+                                                                            )}
+
+                                                                            {detailState?.status === 'error' && (
+                                                                                <div className="flex flex-wrap items-center gap-3">
+                                                                                    <p className="text-sm text-mm-negative">{detailState.error}</p>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => loadFilingDetail(f)}
+                                                                                        className="text-xs font-semibold text-mm-accent-primary hover:underline"
+                                                                                    >
+                                                                                        Retry
+                                                                                    </button>
+                                                                                </div>
+                                                                            )}
+
+                                                                            {detailState?.status === 'success' && (
+                                                                                <div className="space-y-4">
+                                                                                    {sections.length > 0 ? (
+                                                                                        <>
+                                                                                            <div className="flex flex-wrap gap-2">
+                                                                                                {sections.map((section) => (
+                                                                                                    <button
+                                                                                                        key={section.key}
+                                                                                                        type="button"
+                                                                                                        onClick={() => setActiveFilingSection(accessionNumber, section.key)}
+                                                                                                        className={activeSection?.key === section.key
+                                                                                                            ? 'rounded-control bg-mm-accent-primary px-3 py-1.5 text-xs font-semibold text-white'
+                                                                                                            : 'rounded-control border border-mm-border bg-mm-surface px-3 py-1.5 text-xs font-semibold text-mm-text-secondary hover:bg-mm-surface'}
+                                                                                                    >
+                                                                                                        {section.title}
+                                                                                                    </button>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                            {activeSection && (
+                                                                                                <div className="rounded-card border border-mm-border bg-mm-surface px-4 py-4">
+                                                                                                    <div className="flex items-center justify-between gap-3 mb-3">
+                                                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                                                            <h4 className="text-sm font-semibold text-mm-text-primary">{activeSection.title}</h4>
+                                                                                                            <SentimentBadge sentiment={activeSection.sentiment} />
+                                                                                                        </div>
+                                                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                                                            {activeSection.truncated ? (
+                                                                                                                <span className="text-[11px] uppercase tracking-[0.14em] text-mm-text-tertiary">Excerpt</span>
+                                                                                                            ) : null}
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                    <p className="text-sm leading-7 text-mm-text-secondary whitespace-pre-wrap">
+                                                                                                        {activeSection.text}
+                                                                                                    </p>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <p className="text-sm text-mm-text-secondary">No key sections were parsed for this filing.</p>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                        </React.Fragment>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-16 text-gray-500 dark:text-gray-400">
+                                <div className="ui-panel-subtle py-16 text-mm-text-secondary text-center">
                                     <FileText className="w-12 h-12 mx-auto mb-3 opacity-40" />
                                     <p>SEC filings not available for this ticker.</p>
                                 </div>
@@ -436,14 +980,13 @@ const FundamentalsPage = () => {
                 </div>
             )}
 
-            {/* Empty State */}
             {!fundamentals && !loading && !error && (
-                <div className="text-center py-12">
-                    <Building2 className="w-24 h-24 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
-                    <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                <div className="ui-panel-subtle py-12 text-center">
+                    <Building2 className="w-24 h-24 mx-auto mb-4 text-mm-text-tertiary" />
+                    <h3 className="text-xl font-semibold text-mm-text-secondary mb-2">
                         Search for Company Fundamentals
                     </h3>
-                    <p className="text-gray-500 dark:text-gray-500">
+                    <p className="text-mm-text-tertiary">
                         Enter a stock ticker to view detailed financial metrics, annual statements, and SEC filings
                     </p>
                 </div>

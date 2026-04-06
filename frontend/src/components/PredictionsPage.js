@@ -14,13 +14,19 @@ const PredictionsPage = ({ initialTicker }) => {
     const [error, setError] = useState('');
     const [useEnsemble, setUseEnsemble] = useState(true);
     const [useModel, setUseModel] = useState(DEFAULT_SINGLE_MODEL);
-    // Auto-search when initialTicker is provided or ensemble mode changes
+
+    const buildPredictionEndpoint = (searchTicker) => {
+        const selectedModel = useModel || DEFAULT_SINGLE_MODEL;
+        return useEnsemble
+            ? API_ENDPOINTS.PREDICT_ENSEMBLE(searchTicker.toUpperCase())
+            : API_ENDPOINTS.PREDICT(selectedModel, searchTicker.toUpperCase());
+    };
+
     useEffect(() => {
         if (initialTicker && initialTicker.trim()) {
             setTicker(initialTicker);
             fetchPredictions(initialTicker);
         }
-        // Keep behavior tied to prop/mode changes without re-running on every render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialTicker, useEnsemble]);
 
@@ -30,15 +36,10 @@ const PredictionsPage = ({ initialTicker }) => {
         setPredictionData(null);
 
         try {
-            const selectedModel = useModel || DEFAULT_SINGLE_MODEL;
-            const endpoint = useEnsemble 
-                ? API_ENDPOINTS.PREDICT_ENSEMBLE(searchTicker.toUpperCase())
-                : API_ENDPOINTS.PREDICT(selectedModel, searchTicker.toUpperCase());
-
-            const data = await apiRequest(endpoint);
+            const data = await apiRequest(buildPredictionEndpoint(searchTicker));
             setPredictionData(data);
         } catch (err) {
-            setError(`Error: Could not fetch predictions for ${searchTicker.toUpperCase()}. Please check the ticker and try again.`);
+            setError(err.message || `Error: Could not fetch predictions for ${searchTicker.toUpperCase()}. Please check the ticker and try again.`);
             console.error('Prediction fetch error:', err);
         } finally {
             setLoading(false);
@@ -47,7 +48,7 @@ const PredictionsPage = ({ initialTicker }) => {
 
     const handleSearch = async (e) => {
         e.preventDefault();
-        
+
         if (!ticker.trim()) {
             setError('Please enter a stock ticker');
             return;
@@ -67,14 +68,24 @@ const PredictionsPage = ({ initialTicker }) => {
         }
     };
 
+    const modeButtonClass = (active) => (
+        active
+            ? 'rounded-control border border-mm-accent-primary/20 bg-mm-accent-primary/10 px-4 py-2 font-semibold text-mm-accent-primary'
+            : 'rounded-control border border-mm-border bg-mm-surface px-4 py-2 font-semibold text-mm-text-secondary transition hover:bg-mm-surface-subtle hover:text-mm-text-primary'
+    );
+
+    const modelButtonClass = (active) => (
+        active
+            ? 'rounded-control bg-mm-accent-primary px-3 py-2 text-white ring-2 ring-mm-accent-primary/25'
+            : 'rounded-control border border-mm-border bg-mm-surface px-3 py-2 text-mm-text-secondary transition hover:bg-mm-surface-subtle hover:text-mm-text-primary'
+    );
+
     return (
-        <div className="container mx-auto px-6 py-8 max-w-5xl">
-            <div className="text-center mb-8 animate-fade-in">
-                <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-                    Stock Price Predictions
-                </h1>
-                <p className="text-gray-600 dark:text-gray-400">
-                    Get 7-day price predictions powered by machine learning
+        <div className="ui-page animate-fade-in space-y-8">
+            <div className="ui-page-header text-center">
+                <h1 className="ui-page-title mb-2">Stock Price Predictions</h1>
+                <p className="ui-page-subtitle">
+                    Get 7 trading-session price predictions powered by a unified forecasting stack
                 </p>
             </div>
 
@@ -100,6 +111,7 @@ const PredictionsPage = ({ initialTicker }) => {
                             </svg>
                         </div>
                     </div>
+
                     <button
                         type="submit"
                         disabled={loading}
@@ -220,42 +232,49 @@ const PredictionsPage = ({ initialTicker }) => {
                             >
                                 LSTM
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => setUseModel('Transformer')}
+                                className={`px-3 py-2 rounded-md transition-all ${
+                                    useModel === 'Transformer'
+                                        ? 'bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-400'
+                                        : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800'
+                                }`}
+                            >
+                                Transformer
+                            </button>
                         </div>
                     )}
                 </div>
             </div>
-
-            {/* Error Message */}
             {error && (
-                <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-6 py-4 rounded-lg mb-8 animate-fade-in">
-                    <p className="font-medium">{error}</p>
+                <div className="rounded-card border border-mm-negative/20 bg-mm-negative/10 px-6 py-4 animate-fade-in">
+                    <p className="font-medium text-mm-negative">{error}</p>
                 </div>
             )}
 
-            {/* Loading State */}
             {loading && (
                 <div className="text-center py-12 animate-fade-in">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
-                    <p className="mt-4 text-gray-600 dark:text-gray-400">Analyzing stock data and generating predictions...</p>
+                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-mm-accent-primary border-t-transparent"></div>
+                    <p className="mt-4 text-mm-text-secondary">Analyzing stock data and generating predictions...</p>
                 </div>
             )}
 
-            {/* Prediction Results */}
             {predictionData && !loading && (
-                <div className="animate-fade-in">
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-xl p-6 mb-6 border border-blue-100 dark:border-blue-800">
+                <div className="animate-fade-in space-y-6">
+                    <div className="ui-panel-elevated p-6">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="text-center">
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Recent Date</p>
-                                <p className="text-xl font-bold text-gray-900 dark:text-white">{predictionData.recentDate}</p>
+                                <p className="text-sm text-mm-text-secondary mb-1">Recent Date</p>
+                                <p className="text-xl font-semibold text-mm-text-primary">{predictionData.recentDate}</p>
                             </div>
                             <div className="text-center">
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Actual Close</p>
-                                <p className="text-xl font-bold text-green-600 dark:text-green-400">${predictionData.recentClose}</p>
+                                <p className="text-sm text-mm-text-secondary mb-1">Actual Close</p>
+                                <p className="text-xl font-semibold text-mm-positive">${predictionData.recentClose}</p>
                             </div>
                             <div className="text-center">
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Predicted Close</p>
-                                <p className="text-xl font-bold text-blue-600 dark:text-blue-400">${predictionData.recentPredicted}</p>
+                                <p className="text-sm text-mm-text-secondary mb-1">Predicted Close</p>
+                                <p className="text-xl font-semibold text-mm-accent-primary">${predictionData.recentPredicted}</p>
                             </div>
                         </div>
                     </div>
@@ -266,9 +285,9 @@ const PredictionsPage = ({ initialTicker }) => {
                             return day !== 0 && day !== 6; // skip weekends
                         });
 
-                        const filteredData = { 
-                            ...predictionData, 
-                            predictions: filteredPredictions 
+                        const filteredData = {
+                            ...predictionData,
+                            predictions: filteredPredictions
                         };
 
                         return (
@@ -288,9 +307,9 @@ const PredictionsPage = ({ initialTicker }) => {
                         );
                     })()}
 
-                    <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                        <h3 className="font-semibold text-blue-900 dark:text-blue-300 mb-2">About These Predictions</h3>
-                        <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
+                    <div className="ui-panel-subtle p-4">
+                        <h3 className="font-semibold text-mm-accent-primary mb-2">About These Predictions</h3>
+                        <ul className="text-sm text-mm-text-secondary space-y-1">
                             <li>• Predictions are based on historical price patterns using machine learning</li>
                             <li>• Lower prediction error percentage indicates higher accuracy</li>
                             <li>• Use predictions as one of many tools for investment research</li>
@@ -300,19 +319,18 @@ const PredictionsPage = ({ initialTicker }) => {
                 </div>
             )}
 
-            {/* Empty State */}
             {!predictionData && !loading && !error && (
-                <div className="text-center py-16 animate-fade-in">
-                    <div className="inline-block p-6 bg-gray-100 rounded-full mb-4">
-                        <svg className="w-16 h-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="ui-panel-subtle text-center py-16 animate-fade-in">
+                    <div className="inline-block p-6 rounded-full bg-mm-surface mb-4 border border-mm-border">
+                        <svg className="w-16 h-16 text-mm-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
                     </div>
-                    <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    <h3 className="text-xl font-semibold text-mm-text-primary mb-2">
                         Enter a stock ticker to see predictions
                     </h3>
-                    <p className="text-gray-500 dark:text-gray-400">
-                        Get AI-powered 7-day price forecasts for any stock
+                    <p className="text-mm-text-secondary">
+                        Get 7 trading-session price forecasts for any U.S. stock
                     </p>
                 </div>
             )}

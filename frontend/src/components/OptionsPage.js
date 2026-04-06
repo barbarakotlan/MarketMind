@@ -70,59 +70,61 @@ export const TradeModal = ({ contract, tradeType, stockPrice, onClose, onConfirm
             onClick={onClose}
         >
             <div 
-                className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full mx-4 animate-in fade-in zoom-in duration-200 shadow-2xl" 
+                className="ui-panel-elevated max-w-md w-full mx-4 p-8 animate-in fade-in zoom-in duration-200" 
                 onClick={(e) => e.stopPropagation()}
             >
-                <h2 className={`text-2xl font-bold mb-2 ${isBuy ? 'text-green-600' : 'text-red-600'}`}>
+                <h2 className={`mb-2 text-2xl font-semibold ${isBuy ? 'text-mm-positive' : 'text-mm-negative'}`}>
                     {isBuy ? 'Buy to Open' : 'Sell to Close'}
                 </h2>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{contract.contractSymbol}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                <p className="text-xl font-semibold text-mm-text-primary">{contract.contractSymbol}</p>
+                <p className="mb-6 text-sm text-mm-text-secondary">
                     {`Underlying Price: $${formatNum(stockPrice)}`}
                 </p>
                 
                 <form onSubmit={handleSubmit}>
                     <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        <label className="ui-form-label normal-case tracking-normal text-mm-text-secondary">
                             Quantity (1 contract = 100 shares)
                         </label>
                         <input
                             type="number"
                             value={quantity}
                             onChange={(e) => setQuantity(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-lg"
+                            className="ui-input text-lg"
                             placeholder="1"
                             min="1"
                             step="1"
                             required
                         />
                     </div>
-                    <div className="mb-8 p-5 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-700">
-                        <div className="flex justify-between text-gray-600 dark:text-gray-400 mb-2">
+                    <div className="ui-panel-subtle mb-8 p-5">
+                        <div className="mb-2 flex justify-between text-mm-text-secondary">
                             <span>Limit Price:</span>
-                            <span className="font-semibold text-gray-900 dark:text-white">${formatNum(price)}</span>
+                            <span className="font-semibold text-mm-text-primary">${formatNum(price)}</span>
                         </div>
-                        <div className="flex justify-between text-gray-900 dark:text-white font-black text-xl pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex justify-between border-t border-mm-border pt-2 text-xl font-semibold text-mm-text-primary">
                             <span>Estimated {isBuy ? 'Cost' : 'Credit'}:</span>
                             <span>${totalCost}</span>
                         </div>
                     </div>
                     
-                    {error && <p className="text-red-500 text-sm text-center mb-4 bg-red-50 dark:bg-red-900/20 p-2 rounded">{error}</p>}
+                    {error && <p className="ui-banner ui-banner-error mb-4 text-center text-sm">{error}</p>}
                     
                     <div className="flex gap-4">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 px-6 py-3.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-xl font-bold transition-all"
+                            className="ui-button-secondary flex-1 px-6 py-3.5"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={loading || price <= 0}
-                            className={`flex-1 px-6 py-3.5 text-white rounded-xl font-bold transition-all shadow-lg ${
-                                (loading || price <= 0) ? 'bg-gray-400 cursor-not-allowed shadow-none' : (isBuy ? 'bg-green-600 hover:bg-green-700 shadow-green-600/20' : 'bg-red-600 hover:bg-red-700 shadow-red-600/20')
+                            className={`flex-1 px-6 py-3.5 rounded-control font-semibold transition ${
+                                (loading || price <= 0)
+                                    ? 'cursor-not-allowed bg-mm-text-tertiary text-white opacity-60'
+                                    : (isBuy ? 'bg-mm-positive text-white hover:opacity-90' : 'bg-mm-negative text-white hover:opacity-90')
                             }`}
                         >
                             {loading ? 'Submitting...' : (price <= 0 ? 'Unavailable' : `Confirm ${isBuy ? 'Buy' : 'Sell'}`)}
@@ -138,12 +140,12 @@ export const TradeModal = ({ contract, tradeType, stockPrice, onClose, onConfirm
 const SuggestionCard = ({ suggestion, onTrade }) => {
     if (!suggestion || suggestion.suggestion === "Hold") {
         return (
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-8 animate-in fade-in slide-in-from-bottom-4">
+            <div className="ui-panel mb-8 p-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="flex items-center">
-                    <Info className="w-8 h-8 text-blue-500 mr-4" />
+                    <Info className="mr-4 h-8 w-8 text-mm-accent-primary" />
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">Analysis Complete</h2>
-                        <p className="text-gray-600 dark:text-gray-400">
+                        <h2 className="mb-1 text-xl font-semibold text-mm-text-primary">Analysis Complete</h2>
+                        <p className="text-mm-text-secondary">
                             {suggestion ? suggestion.reason : "No strong signal found. Hold."}
                         </p>
                     </div>
@@ -168,80 +170,80 @@ const SuggestionCard = ({ suggestion, onTrade }) => {
     };
 
     return (
-        <div className={`rounded-2xl shadow-lg p-8 mb-8 animate-in fade-in slide-in-from-bottom-4 border-2 ${confidenceColors[confidence]}`}>
+        <div className={`ui-panel-elevated p-8 mb-8 animate-in fade-in slide-in-from-bottom-4 border-2 ${confidenceColors[confidence]}`}>
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div className="flex items-center">
-                    <Brain className="w-8 h-8 text-blue-600 dark:text-blue-400 mr-3" />
-                    <h2 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">AI Quant Suggestion</h2>
+                    <Brain className="w-8 h-8 text-mm-accent-primary mr-3" />
+                    <h2 className="text-2xl font-semibold text-mm-text-primary tracking-tight">AI Quant Suggestion</h2>
                 </div>
-                <span className={`px-4 py-1.5 rounded-full text-sm font-bold uppercase tracking-wider bg-white/50 dark:bg-black/20`}>
+                <span className="ui-chip px-4 py-1.5 text-sm uppercase tracking-wider">
                     {confidence} Confidence
                 </span>
             </div>
 
-            <p className="text-gray-800 dark:text-gray-200 mb-8 text-lg leading-relaxed">{reason}</p>
+            <p className="mb-8 text-lg leading-relaxed text-mm-text-primary">{reason}</p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Column 1: The Trade */}
-                <div className="bg-white dark:bg-gray-900/50 p-6 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Suggested Action</h3>
+                <div className="ui-panel-subtle p-6">
+                    <h3 className="ui-form-label mb-4">Suggested Action</h3>
                     <div className="flex items-center mb-6">
                         {isCall ? (
-                            <TrendingUp className="w-12 h-12 text-green-500 mr-4" />
+                            <TrendingUp className="w-12 h-12 text-mm-positive mr-4" />
                         ) : (
-                            <TrendingDown className="w-12 h-12 text-red-500 mr-4" />
+                            <TrendingDown className="w-12 h-12 text-mm-negative mr-4" />
                         )}
-                        <span className={`text-3xl font-black tracking-tight ${isCall ? 'text-green-600' : 'text-red-600'}`}>
+                        <span className={`text-3xl font-semibold tracking-tight ${isCall ? 'text-mm-positive' : 'text-mm-negative'}`}>
                             {tradeType}
                         </span>
                     </div>
                     <button
                         onClick={() => onTrade(contract, 'Buy')}
-                        className={`w-full px-4 py-3 text-white font-bold rounded-xl transition-all shadow-lg ${isCall ? 'bg-green-600 hover:bg-green-700 shadow-green-600/20' : 'bg-red-600 hover:bg-red-700 shadow-red-600/20'}`}
+                        className={`w-full rounded-control px-4 py-3 text-white font-semibold transition ${isCall ? 'bg-mm-positive hover:opacity-90' : 'bg-mm-negative hover:opacity-90'}`}
                     >
                         Trade Contract
                     </button>
                 </div>
 
                 {/* Column 2: Contract Details */}
-                <div className="bg-white dark:bg-gray-900/50 p-6 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Contract Data</h3>
+                <div className="ui-panel-subtle p-6">
+                    <h3 className="ui-form-label mb-4">Contract Data</h3>
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
-                            <span className="text-gray-500 dark:text-gray-400">Strike Price:</span>
-                            <span className="font-bold text-gray-900 dark:text-white">${formatNum(contract.strikePrice)}</span>
+                            <span className="text-mm-text-secondary">Strike Price:</span>
+                            <span className="font-semibold text-mm-text-primary">${formatNum(contract.strikePrice)}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                            <span className="text-gray-500 dark:text-gray-400">Expiration:</span>
-                            <span className="font-bold text-gray-900 dark:text-white">{contract.expirationDate}</span>
+                            <span className="text-mm-text-secondary">Expiration:</span>
+                            <span className="font-semibold text-mm-text-primary">{contract.expirationDate}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                            <span className="text-gray-500 dark:text-gray-400">Premium (Ask):</span>
-                            <span className="font-bold text-blue-600 dark:text-blue-400">${formatNum(contract.currentPrice || contract.ask)}</span>
+                            <span className="text-mm-text-secondary">Premium (Ask):</span>
+                            <span className="font-semibold text-mm-accent-primary">${formatNum(contract.currentPrice || contract.ask)}</span>
                         </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-gray-100 dark:border-gray-800">
-                            <span className="text-gray-500 dark:text-gray-400">Implied Volatility:</span>
-                            <span className="font-bold text-orange-500">{contract.impliedVolatility || 'N/A'}%</span>
+                        <div className="flex justify-between items-center pt-2 border-t border-mm-border">
+                            <span className="text-mm-text-secondary">Implied Volatility:</span>
+                            <span className="font-semibold text-mm-warning">{contract.impliedVolatility || 'N/A'}%</span>
                         </div>
                     </div>
                 </div>
                 
                 {/* Column 3: Targets */}
-                <div className="bg-white dark:bg-gray-900/50 p-6 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col justify-center">
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Risk Parameters</h3>
+                <div className="ui-panel-subtle flex flex-col justify-center p-6">
+                    <h3 className="ui-form-label mb-4">Risk Parameters</h3>
                     <div className="space-y-5">
-                        <div className="flex items-start bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
-                            <XCircle className="w-5 h-5 text-red-500 mr-3 flex-shrink-0 mt-0.5" />
+                        <div className="flex items-start rounded-control border p-3" style={{ backgroundColor: 'rgb(var(--mm-negative) / 0.08)', borderColor: 'rgb(var(--mm-negative) / 0.16)' }}>
+                            <XCircle className="w-5 h-5 text-mm-negative mr-3 flex-shrink-0 mt-0.5" />
                             <div>
-                                <span className="text-xs font-bold text-red-800 dark:text-red-400 uppercase">Stop Loss</span>
-                                <p className="font-medium text-sm text-gray-800 dark:text-gray-200 mt-1">{targets.stopLoss}</p>
+                                <span className="text-xs font-semibold text-mm-negative uppercase">Stop Loss</span>
+                                <p className="mt-1 text-sm font-medium text-mm-text-primary">{targets.stopLoss}</p>
                             </div>
                         </div>
-                        <div className="flex items-start bg-green-50 dark:bg-green-900/10 p-3 rounded-lg border border-green-100 dark:border-green-900/30">
-                            <CheckCircle className="w-5 h-5 text-green-500 mr-3 flex-shrink-0 mt-0.5" />
+                        <div className="flex items-start rounded-control border p-3" style={{ backgroundColor: 'rgb(var(--mm-positive) / 0.08)', borderColor: 'rgb(var(--mm-positive) / 0.16)' }}>
+                            <CheckCircle className="w-5 h-5 text-mm-positive mr-3 flex-shrink-0 mt-0.5" />
                             <div>
-                                <span className="text-xs font-bold text-green-800 dark:text-green-400 uppercase">Take Profit</span>
-                                <p className="font-medium text-sm text-gray-800 dark:text-gray-200 mt-1">{targets.takeProfit}</p>
+                                <span className="text-xs font-semibold text-mm-positive uppercase">Take Profit</span>
+                                <p className="mt-1 text-sm font-medium text-mm-text-primary">{targets.takeProfit}</p>
                             </div>
                         </div>
                     </div>
@@ -289,29 +291,29 @@ const ChainTable = ({ data, type, stockPrice, onTradeClick, ownedPositions }) =>
     }, [filteredAndSortedData, stockPrice]);
 
     return (
-        <div className="w-full bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div className={`px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50/80 dark:bg-gray-800/80`}>
-                <h3 className={`text-xl font-black tracking-tight flex items-center gap-2 ${headerColor}`}>
+        <div className="ui-panel w-full overflow-hidden">
+            <div className="flex items-center justify-between border-b border-mm-border bg-mm-surface-subtle px-6 py-4">
+                <h3 className={`flex items-center gap-2 text-xl font-semibold tracking-tight ${headerColor}`}>
                     {type === 'Calls' ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
                     {type}
                 </h3>
-                <span className="text-[11px] uppercase font-bold tracking-wider text-gray-500 bg-gray-200 dark:bg-gray-700 px-3 py-1.5 rounded-full">
+                <span className="ui-chip px-3 py-1.5 text-[11px] uppercase tracking-wider">
                     ±15% from ATM
                 </span>
             </div>
             
             <div ref={chainContainerRef} className="overflow-y-auto max-h-[600px] custom-scrollbar">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-gray-50/95 dark:bg-gray-900/95 sticky top-0 z-10 backdrop-blur-md">
+                <table className="min-w-full divide-y divide-mm-border">
+                    <thead className="sticky top-0 z-10 bg-mm-surface-subtle backdrop-blur-md">
                         <tr>
-                            <th className="px-5 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Action</th>
-                            <th className="px-5 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Strike</th>
-                            <th className="px-5 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Bid / Ask</th>
-                            <th className="px-5 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Vol / OI</th>
-                            <th className="px-5 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">IV</th>
+                            <th className="px-5 py-4 text-left text-xs font-semibold text-mm-text-secondary uppercase tracking-widest">Action</th>
+                            <th className="px-5 py-4 text-left text-xs font-semibold text-mm-text-secondary uppercase tracking-widest">Strike</th>
+                            <th className="px-5 py-4 text-left text-xs font-semibold text-mm-text-secondary uppercase tracking-widest">Bid / Ask</th>
+                            <th className="px-5 py-4 text-left text-xs font-semibold text-mm-text-secondary uppercase tracking-widest">Vol / OI</th>
+                            <th className="px-5 py-4 text-left text-xs font-semibold text-mm-text-secondary uppercase tracking-widest">IV</th>
                         </tr>
                     </thead>
-                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700/50">
+                    <tbody className="divide-y divide-mm-border bg-mm-surface">
                         {filteredAndSortedData.map((contract, index) => { 
                             const isITM = stockPrice ? 
                                 (type === 'Calls' ? contract.strike < stockPrice : contract.strike > stockPrice) 
@@ -337,14 +339,14 @@ const ChainTable = ({ data, type, stockPrice, onTradeClick, ownedPositions }) =>
                                     <td className="px-5 py-3 whitespace-nowrap">
                                         <div className="flex gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                                             <button 
-                                                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all shadow-sm ${type === 'Calls' ? 'bg-green-100 text-green-700 hover:bg-green-600 hover:text-white dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-600 dark:hover:text-white' : 'bg-red-100 text-red-700 hover:bg-red-600 hover:text-white dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-600 dark:hover:text-white'}`}
+                                                className={`rounded-control px-4 py-2 text-xs font-semibold transition ${type === 'Calls' ? 'bg-mm-positive/12 text-mm-positive hover:bg-mm-positive hover:text-white' : 'bg-mm-negative/12 text-mm-negative hover:bg-mm-negative hover:text-white'}`}
                                                 onClick={() => onTradeClick(contract, 'Buy')}
                                             >
                                                 Trade
                                             </button>
                                             {owned && (
                                                 <button 
-                                                    className="px-4 py-2 bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-800 text-xs font-bold rounded-lg hover:opacity-80 transition-opacity shadow-sm"
+                                                    className="ui-button-secondary px-4 py-2 text-xs"
                                                     onClick={() => onTradeClick(contract, 'Sell')}
                                                 >
                                                     Close
@@ -354,31 +356,31 @@ const ChainTable = ({ data, type, stockPrice, onTradeClick, ownedPositions }) =>
                                     </td>
                                     <td className="px-5 py-3 whitespace-nowrap">
                                         <div className="flex items-center gap-3">
-                                            <span className={`font-black text-lg ${isITM ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
+                                            <span className={`text-lg font-semibold ${isITM ? 'text-mm-text-primary' : 'text-mm-text-secondary'}`}>
                                                 ${formatNum(contract.strike)}
                                             </span>
-                                            {isATM && <span className="text-[10px] uppercase font-black tracking-widest text-blue-600 bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 rounded-md">ATM</span>}
+                                            {isATM && <span className="rounded-control bg-mm-accent-primary/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-mm-accent-primary">ATM</span>}
                                         </div>
                                     </td>
                                     <td className="px-5 py-3 whitespace-nowrap">
                                         <div className="flex flex-col">
-                                            <span className="text-sm font-semibold text-gray-900 dark:text-gray-200">${formatNum(contract.ask)} <span className="text-xs text-gray-400 font-medium ml-1">Ask</span></span>
-                                            <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">${formatNum(contract.bid)} Bid</span>
+                                            <span className="text-sm font-semibold text-mm-text-primary">${formatNum(contract.ask)} <span className="ml-1 text-xs font-medium text-mm-text-tertiary">Ask</span></span>
+                                            <span className="mt-0.5 text-xs text-mm-text-secondary">${formatNum(contract.bid)} Bid</span>
                                         </div>
                                     </td>
                                     <td className="px-5 py-3 whitespace-nowrap">
                                         <div className="flex flex-col">
-                                            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                                                <BarChart2 className="w-3.5 h-3.5 text-gray-400" />
+                                            <span className="text-sm font-semibold text-mm-text-secondary flex items-center gap-1.5">
+                                                <BarChart2 className="w-3.5 h-3.5 text-mm-text-tertiary" />
                                                 {contract.volume || 0}
                                             </span>
-                                            <span className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">OI: {contract.openInterest || 0}</span>
+                                            <span className="mt-0.5 text-xs text-mm-text-tertiary">OI: {contract.openInterest || 0}</span>
                                         </div>
                                     </td>
                                     <td className="px-5 py-3 whitespace-nowrap">
                                         <div className="flex items-center gap-1.5">
-                                            <Activity className={`w-4 h-4 ${(contract.impliedVolatility || 0) > 0.5 ? 'text-orange-500' : 'text-gray-400'}`} />
-                                            <span className={`text-sm font-semibold ${(contract.impliedVolatility || 0) > 0.5 ? 'text-orange-600 dark:text-orange-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                                            <Activity className={`w-4 h-4 ${(contract.impliedVolatility || 0) > 0.5 ? 'text-mm-warning' : 'text-mm-text-tertiary'}`} />
+                                            <span className={`text-sm font-semibold ${(contract.impliedVolatility || 0) > 0.5 ? 'text-mm-warning' : 'text-mm-text-secondary'}`}>
                                                 {contract.impliedVolatility ? (contract.impliedVolatility * 100).toFixed(1) + '%' : 'N/A'}
                                             </span>
                                         </div>
@@ -538,18 +540,18 @@ const OptionsPage = () => {
                 />
             )}
         
-            <div className="container mx-auto px-6 py-8 max-w-7xl">
-                <div className="text-center mb-10 animate-in fade-in slide-in-from-top-4 duration-500">
-                    <h1 className="text-4xl font-black tracking-tight text-gray-900 dark:text-white mb-3">
+            <div className="ui-page">
+                <div className="ui-page-header text-center animate-in fade-in slide-in-from-top-4 duration-500">
+                    <h1 className="ui-page-title mb-3">
                         Options Intelligence
                     </h1>
-                    <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+                    <p className="mx-auto max-w-2xl text-lg text-mm-text-secondary">
                         Analyze option chains and receive AI-driven quantitative trade suggestions.
                     </p>
                 </div>
 
                 {/* Search Bar */}
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="ui-panel mb-8 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <form onSubmit={handleSearchTicker} className="flex flex-col md:flex-row gap-4">
                         <div className="flex-1 relative">
                             <TickerAutocompleteInput
@@ -557,14 +559,14 @@ const OptionsPage = () => {
                                 onChange={setTicker}
                                 onSelect={(sym) => { setTicker(sym); searchTicker(sym); }}
                                 placeholder="Search ticker (e.g., AAPL)"
-                                className="w-full px-5 py-4 pl-14 border-2 border-gray-200 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-lg font-medium transition-all"
+                                className="ui-input py-4 pl-14 text-lg font-medium"
                             />
                             <Search className="absolute left-5 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6 pointer-events-none" />
                         </div>
                         <button
                             type="submit"
                             disabled={loading || suggestionLoading}
-                            className={`px-10 py-4 rounded-xl font-bold text-lg text-white transition-all shadow-lg ${loading || suggestionLoading ? 'bg-gray-400 shadow-none' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20 hover:-translate-y-0.5'}`}
+                            className={loading || suggestionLoading ? 'ui-button-secondary cursor-not-allowed opacity-60 px-10 py-4 text-lg' : 'ui-button-primary px-10 py-4 text-lg'}
                         >
                             {loading || suggestionLoading ? 'Loading...' : 'Analyze'}
                         </button>
@@ -572,10 +574,10 @@ const OptionsPage = () => {
                 </div>
                 
                 {tradeMessage.text && (
-                    <div className={`mb-8 p-5 rounded-xl animate-in fade-in slide-in-from-top-2 border-2 ${
+                    <div className={`mb-8 p-5 rounded-card animate-in fade-in slide-in-from-top-2 border ${
                         tradeMessage.type === 'success' 
-                            ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800'
-                            : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 border-red-200 dark:border-red-800'
+                            ? 'ui-banner ui-banner-success'
+                            : 'ui-banner ui-banner-error'
                     }`}>
                         <div className="flex items-center gap-3 font-semibold">
                             {tradeMessage.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
@@ -586,10 +588,10 @@ const OptionsPage = () => {
 
                 {/* Suggestion Rendering */}
                 {suggestionLoading && (
-                    <div className="text-center p-12 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 mb-8">
-                        <Loader2 className="w-10 h-10 text-blue-500 animate-spin mx-auto mb-4" />
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Running Quantitative Analysis...</h3>
-                        <p className="text-gray-500 dark:text-gray-400 mt-2">Training random forest model and calculating implied volatility.</p>
+                    <div className="ui-panel mb-8 p-12 text-center">
+                        <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-mm-accent-primary" />
+                        <h3 className="text-lg font-semibold text-mm-text-primary">Running Quantitative Analysis...</h3>
+                        <p className="mt-2 text-mm-text-secondary">Training random forest model and calculating implied volatility.</p>
                     </div>
                 )}
                 {suggestion && !suggestionLoading && (
@@ -599,19 +601,19 @@ const OptionsPage = () => {
                     />
                 )}
 
-                {error && <div className="text-center p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-2xl font-semibold mb-8">{error}</div>}
+                {error && <div className="ui-banner ui-banner-error mb-8 text-center font-semibold">{error}</div>}
 
                 {expirations.length > 0 && (
-                    <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 animate-in fade-in duration-500">
+                    <div className="ui-panel mb-8 flex flex-col items-start justify-between gap-6 p-6 md:flex-row md:items-end animate-in fade-in duration-500">
                         <div className="w-full md:w-auto">
-                            <label htmlFor="expiration" className="block text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                            <label htmlFor="expiration" className="ui-form-label mb-2">
                                 Expiration Date
                             </label>
                             <select
                                 id="expiration"
                                 value={selectedDate}
                                 onChange={handleDateChange}
-                                className="w-full md:w-64 px-4 py-3 border-2 border-gray-200 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 outline-none font-medium cursor-pointer"
+                                className="ui-input w-full cursor-pointer font-medium md:w-64"
                             >
                                 {expirations.map(date => (
                                     <option key={date} value={date}>{date}</option>
@@ -620,15 +622,15 @@ const OptionsPage = () => {
                         </div>
                         {stockPrice && (
                             <div className="text-left md:text-right w-full md:w-auto">
-                                <span className="block text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Underlying Price</span>
-                                <p className="text-4xl font-black text-gray-900 dark:text-white">${formatNum(stockPrice)}</p>
+                                <span className="ui-form-label mb-1 block">Underlying Price</span>
+                                <p className="text-4xl font-semibold text-mm-text-primary">${formatNum(stockPrice)}</p>
                             </div>
                         )}
                     </div>
                 )}
                 
                 {chain && !loading && (
-                    <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/10 border-2 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-400 p-4 rounded-xl flex items-center gap-3">
+                    <div className="ui-banner ui-banner-warning mb-6 flex items-center gap-3">
                         <AlertTriangle className="w-6 h-6 flex-shrink-0" />
                         <p className="text-sm font-medium">
                             Options data is from a free developer sandbox and is delayed. Prices are not real-time.

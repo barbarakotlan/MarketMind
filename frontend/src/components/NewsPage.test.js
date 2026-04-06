@@ -90,4 +90,25 @@ describe('NewsPage', () => {
         expect(image.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
         expect(image.getAttribute('src')).not.toContain('images.unsplash.com');
     });
+
+    test('renders sentiment badges when article sentiment is scored', async () => {
+        apiRequest.mockResolvedValue([
+            {
+                title: 'Constructive demand outlook',
+                publisher: 'Reuters',
+                publishTime: '2026-04-02T10:00:00Z',
+                link: 'https://example.com/constructive',
+                sentiment: {
+                    status: 'scored',
+                    label: 'positive',
+                    confidence: 0.82,
+                },
+            },
+        ]);
+
+        render(<NewsPage />);
+
+        expect(await screen.findByText('Constructive demand outlook')).toBeInTheDocument();
+        expect(screen.getByText('Positive')).toBeInTheDocument();
+    });
 });

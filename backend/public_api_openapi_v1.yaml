@@ -1,0 +1,401 @@
+openapi: 3.1.0
+info:
+  title: MarketMind Public API
+  version: v1
+  summary: Private beta, read-only API for market data and ensemble predictions.
+  description: |
+    MarketMind Public API v1 is a private beta, server-to-server REST API.
+
+    Authentication uses MarketMind developer API keys sent as a Bearer token.
+    This version is read-only and intentionally limited in scope.
+servers:
+  - url: https://api.marketmind.example.com
+    description: Example production server
+  - url: http://127.0.0.1:5001
+    description: Local development server
+security:
+  - MarketMindDeveloperKey: []
+tags:
+  - name: Health
+  - name: Market Data
+  - name: Predictions
+  - name: Fundamentals
+  - name: Macro
+paths:
+  /api/public/v1/health:
+    get:
+      tags: [Health]
+      summary: Check public API availability
+      responses:
+        '200':
+          description: API is available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '401':
+          $ref: '#/components/responses/PublicAuthError'
+        '429':
+          $ref: '#/components/responses/PublicRateLimitError'
+  /api/public/v1/stock/{ticker}:
+    get:
+      tags: [Market Data]
+      summary: Get a stock quote summary
+      parameters:
+        - $ref: '#/components/parameters/Ticker'
+      responses:
+        '200':
+          description: Quote summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockResponse'
+        '401':
+          $ref: '#/components/responses/PublicAuthError'
+        '404':
+          $ref: '#/components/responses/PublicTickerError'
+        '429':
+          $ref: '#/components/responses/PublicRateLimitError'
+        '503':
+          $ref: '#/components/responses/PublicUpstreamError'
+  /api/public/v1/chart/{ticker}:
+    get:
+      tags: [Market Data]
+      summary: Get historical chart candles
+      parameters:
+        - $ref: '#/components/parameters/Ticker'
+        - in: query
+          name: period
+          required: false
+          schema:
+            type: string
+            enum: [1d, 5d, 14d, 1mo, 6mo, 1y]
+            default: 6mo
+      responses:
+        '200':
+          description: Historical candles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartResponse'
+        '400':
+          $ref: '#/components/responses/PublicInvalidQueryError'
+        '401':
+          $ref: '#/components/responses/PublicAuthError'
+        '404':
+          $ref: '#/components/responses/PublicTickerError'
+        '429':
+          $ref: '#/components/responses/PublicRateLimitError'
+        '503':
+          $ref: '#/components/responses/PublicUpstreamError'
+  /api/public/v1/news:
+    get:
+      tags: [Market Data]
+      summary: Get market news or query-specific news
+      parameters:
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+          description: Optional search query. When omitted, the API returns general market news.
+      responses:
+        '200':
+          description: News results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsResponse'
+        '401':
+          $ref: '#/components/responses/PublicAuthError'
+        '429':
+          $ref: '#/components/responses/PublicRateLimitError'
+        '503':
+          $ref: '#/components/responses/PublicUpstreamError'
+  /api/public/v1/search-symbols:
+    get:
+      tags: [Market Data]
+      summary: Search for U.S. symbols
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: Search matches
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchSymbolsResponse'
+        '400':
+          $ref: '#/components/responses/PublicInvalidQueryError'
+        '401':
+          $ref: '#/components/responses/PublicAuthError'
+        '429':
+          $ref: '#/components/responses/PublicRateLimitError'
+        '503':
+          $ref: '#/components/responses/PublicUpstreamError'
+  /api/public/v1/predictions/ensemble/{ticker}:
+    get:
+      tags: [Predictions]
+      summary: Get MarketMind ensemble predictions for a ticker
+      parameters:
+        - $ref: '#/components/parameters/Ticker'
+      responses:
+        '200':
+          description: Ensemble prediction summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnsemblePredictionResponse'
+        '401':
+          $ref: '#/components/responses/PublicAuthError'
+        '404':
+          $ref: '#/components/responses/PublicTickerError'
+        '429':
+          $ref: '#/components/responses/PublicRateLimitError'
+        '503':
+          $ref: '#/components/responses/PublicUpstreamError'
+  /api/public/v1/fundamentals/{ticker}:
+    get:
+      tags: [Fundamentals]
+      summary: Get company fundamentals
+      parameters:
+        - $ref: '#/components/parameters/Ticker'
+      responses:
+        '200':
+          description: Fundamentals response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FundamentalsResponse'
+        '401':
+          $ref: '#/components/responses/PublicAuthError'
+        '404':
+          $ref: '#/components/responses/PublicTickerError'
+        '429':
+          $ref: '#/components/responses/PublicRateLimitError'
+        '503':
+          $ref: '#/components/responses/PublicUpstreamError'
+  /api/public/v1/macro/overview:
+    get:
+      tags: [Macro]
+      summary: Get macro indicator overview
+      responses:
+        '200':
+          description: Macro overview response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MacroOverviewResponse'
+        '401':
+          $ref: '#/components/responses/PublicAuthError'
+        '429':
+          $ref: '#/components/responses/PublicRateLimitError'
+        '503':
+          $ref: '#/components/responses/PublicUpstreamError'
+components:
+  securitySchemes:
+    MarketMindDeveloperKey:
+      type: http
+      scheme: bearer
+      bearerFormat: MarketMind developer API key
+      description: Use `Authorization: Bearer <marketmind_developer_api_key>`.
+  parameters:
+    Ticker:
+      in: path
+      name: ticker
+      required: true
+      schema:
+        type: string
+      description: Uppercase equity ticker symbol.
+  responses:
+    PublicAuthError:
+      description: Missing, invalid, revoked, or expired API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublicErrorEnvelope'
+    PublicRateLimitError:
+      description: Request exceeded a rate limit or quota
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublicErrorEnvelope'
+    PublicTickerError:
+      description: Invalid or unknown ticker
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublicErrorEnvelope'
+    PublicInvalidQueryError:
+      description: Invalid query parameter value
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublicErrorEnvelope'
+    PublicUpstreamError:
+      description: Upstream provider unavailable or failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublicErrorEnvelope'
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        api:
+          type: string
+          example: marketmind-public
+        version:
+          type: string
+          example: v1
+        beta:
+          type: boolean
+          example: true
+      required: [status, api, version, beta]
+    PublicErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: invalid_ticker
+            message:
+              type: string
+              example: Ticker is invalid.
+            request_id:
+              type: string
+              example: 0d69c0e9dcb147b0892bb9afdbd1eb8a
+          required: [code, message, request_id]
+      required: [error]
+    StockResponse:
+      type: object
+      properties:
+        symbol: {type: string, example: AAPL}
+        company_name: {type: string, example: Apple Inc.}
+        price: {type: number, example: 213.45}
+        change: {type: number, example: 1.92}
+        change_percent: {type: number, example: 0.91}
+        market_cap: {type: string, example: 3.10T}
+        sparkline:
+          type: array
+          items: {type: number}
+      required: [symbol, company_name, price, change, change_percent, market_cap, sparkline]
+    Candle:
+      type: object
+      properties:
+        date: {type: string, example: '2026-03-27 00:00:00'}
+        open: {type: number, example: 210.2}
+        high: {type: number, example: 214.1}
+        low: {type: number, example: 209.8}
+        close: {type: number, example: 213.4}
+        volume: {type: number, example: 41234567}
+      required: [date, open, high, low, close, volume]
+    ChartResponse:
+      type: object
+      properties:
+        symbol: {type: string, example: AAPL}
+        period: {type: string, example: 6mo}
+        candles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Candle'
+      required: [symbol, period, candles]
+    NewsArticle:
+      type: object
+      properties:
+        title: {type: string}
+        publisher: {type: string}
+        url: {type: string}
+        published_at: {type: string}
+        thumbnail_url: {type: string, nullable: true}
+        summary: {type: string, nullable: true}
+      required: [title, publisher, url, published_at]
+    NewsResponse:
+      type: object
+      properties:
+        query:
+          type: string
+          nullable: true
+        articles:
+          type: array
+          items:
+            $ref: '#/components/schemas/NewsArticle'
+      required: [query, articles]
+    SearchMatch:
+      type: object
+      properties:
+        symbol: {type: string, example: AAPL}
+        name: {type: string, example: Apple Inc.}
+      required: [symbol, name]
+    SearchSymbolsResponse:
+      type: object
+      properties:
+        query: {type: string, example: appl}
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchMatch'
+      required: [query, matches]
+    PredictionPoint:
+      type: object
+      properties:
+        date: {type: string, example: '2026-03-31'}
+        predictedClose: {type: number, example: 214.12}
+      required: [date, predictedClose]
+    EnsemblePredictionResponse:
+      type: object
+      properties:
+        symbol: {type: string, example: AAPL}
+        company_name: {type: string, example: Apple Inc.}
+        recent_date: {type: string, example: '2026-03-30'}
+        recent_close: {type: number, example: 213.44}
+        recent_predicted: {type: number, example: 214.12}
+        predictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PredictionPoint'
+        models_used:
+          type: array
+          items: {type: string}
+        ensemble_method: {type: string, example: weighted_average}
+        confidence: {type: number, example: 87.2}
+      required: [symbol, company_name, recent_date, recent_close, recent_predicted, predictions, models_used, ensemble_method, confidence]
+    FundamentalsResponse:
+      type: object
+      additionalProperties: true
+      description: Company fundamentals object. Fields are normalized to snake_case.
+    MacroIndicator:
+      type: object
+      properties:
+        symbol: {type: string, example: URATE}
+        name: {type: string, example: Unemployment Rate}
+        unit: {type: string, example: '%'}
+        value: {type: number, example: 4.1}
+        previous_value: {type: number, example: 4.0}
+        date: {type: string, example: '2026-02-01'}
+        sparkline:
+          type: array
+          items:
+            type: object
+            properties:
+              date: {type: string}
+              value: {type: number}
+      required: [symbol, name, unit, value, previous_value, date, sparkline]
+    MacroOverviewResponse:
+      type: object
+      properties:
+        indicators:
+          type: array
+          items:
+            $ref: '#/components/schemas/MacroIndicator'
+      required: [indicators]

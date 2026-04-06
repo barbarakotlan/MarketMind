@@ -1,14 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Minus, Globe, RefreshCw } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { TrendingUp, TrendingDown, Minus, Globe, RefreshCw, Calendar, Clock, Mic } from 'lucide-react';
 import { Sparklines, SparklinesLine, SparklinesReferenceLine } from 'react-sparklines';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const INDICATOR_META = {
-    URATE: { desc: 'U.S. jobless rate — lower is healthier for the economy.', invert: true  },
-    CPI:   { desc: 'Broad consumer price level. Rising = inflation pressure.',  invert: false },
-    IP:    { desc: 'Factory & utility output index. Rising = economic expansion.', invert: false },
-    TNX:   { desc: '10-year U.S. government bond yield. Benchmark for borrowing costs.', invert: false },
+    URATE: { desc: 'U.S. jobless rate — lower is healthier for the economy.', invert: true },
+    CPI: { desc: 'Broad consumer price level. Rising = inflation pressure.', invert: false },
+    IP: { desc: 'Factory & utility output index. Rising = economic expansion.', invert: false },
+    TNX: { desc: '10-year U.S. government bond yield. Benchmark for borrowing costs.', invert: false },
+    CN_CPI: { desc: 'Mainland China consumer inflation on a year-over-year basis.', invert: false },
+    CN_GDP: { desc: 'Mainland China annual GDP growth rate.', invert: false },
+    CN_PMI: { desc: 'Official manufacturing PMI. Readings above 50 imply expansion.', invert: false },
+    HK_CPI: { desc: 'Hong Kong annual inflation rate.', invert: false },
+    HK_URATE: { desc: 'Hong Kong labor-market slack. Lower is healthier.', invert: true },
 };
+
+const REGION_OPTIONS = [
+    { value: 'us', label: 'United States' },
+    { value: 'asia', label: 'Asia' },
+];
 
 const fmt = (val, unit) => {
     if (val === null || val === undefined) return '—';
@@ -17,72 +27,147 @@ const fmt = (val, unit) => {
     return val.toFixed(3);
 };
 
+const fmtSignalValue = (signal) => {
+    const value = signal?.value;
+    if (value === null || value === undefined) return '—';
+    if (signal?.category === 'FX') return value.toFixed(4);
+    return value.toLocaleString('en-US', {
+        minimumFractionDigits: value < 10 ? 2 : 0,
+        maximumFractionDigits: 2,
+    });
+};
+
+const fmtSignalChange = (signal) => {
+    const changePercent = signal?.changePercent;
+    if (changePercent === null || changePercent === undefined) return '—';
+    return `${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
+};
+
+const formatEventDate = (dateString) => {
+    const date = new Date(`${dateString}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return dateString || 'TBD';
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+};
+
+const getFeaturedEvents = (events) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const upcoming = (events || []).filter((event) => {
+        if (!event.date) return true;
+        const eventDate = new Date(`${event.date}T12:00:00`);
+        return Number.isNaN(eventDate.getTime()) || eventDate >= today;
+    });
+
+    const impactFirst = upcoming.filter((event) => event.impact === 'High' || event.impact === 'Medium');
+    return (impactFirst.length ? impactFirst : upcoming).slice(0, 4);
+};
+
 const TrendIcon = ({ value, prev, invert }) => {
-    if (value === null || prev === null) return <Minus className="w-4 h-4 text-gray-400" />;
+    if (value === null || prev === null) return <Minus className="h-4 w-4 text-mm-text-tertiary" />;
     const up = value > prev;
     const good = invert ? !up : up;
-    if (Math.abs(value - prev) < 0.001) return <Minus className="w-4 h-4 text-gray-400" />;
+    if (Math.abs(value - prev) < 0.001) return <Minus className="h-4 w-4 text-mm-text-tertiary" />;
     return up
-        ? <TrendingUp  className={`w-4 h-4 ${good ? 'text-green-500' : 'text-red-500'}`} />
-        : <TrendingDown className={`w-4 h-4 ${good ? 'text-green-500' : 'text-red-500'}`} />;
+        ? <TrendingUp className={`h-4 w-4 ${good ? 'text-mm-positive' : 'text-mm-negative'}`} />
+        : <TrendingDown className={`h-4 w-4 ${good ? 'text-mm-positive' : 'text-mm-negative'}`} />;
 };
 
 const IndicatorCard = ({ ind }) => {
     const meta = INDICATOR_META[ind.symbol] || {};
-    const sparkValues = (ind.sparkline || []).map(d => d.value);
+    const invert = ind.invert ?? meta.invert;
+    const sparkValues = (ind.sparkline || []).map((d) => d.value);
     const trend = ind.value !== null && ind.prev !== null ? ind.value - ind.prev : 0;
     const trendColor = (() => {
-        if (Math.abs(trend) < 0.001) return 'text-gray-500';
+        if (Math.abs(trend) < 0.001) return 'text-mm-text-secondary';
         const up = trend > 0;
-        return meta.invert
-            ? (up ? 'text-red-500' : 'text-green-500')
-            : (up ? 'text-green-500' : 'text-red-500');
+        return invert ? (up ? 'text-mm-negative' : 'text-mm-positive') : (up ? 'text-mm-positive' : 'text-mm-negative');
     })();
     const sparkColor = (() => {
-        if (sparkValues.length < 2) return '#6b7280';
+        if (sparkValues.length < 2) return '#64748b';
         const up = sparkValues[sparkValues.length - 1] > sparkValues[sparkValues.length - 2];
-        return meta.invert ? (up ? '#ef4444' : '#10b981') : (up ? '#10b981' : '#ef4444');
+        return invert ? (up ? '#ef4444' : '#16a34a') : (up ? '#16a34a' : '#ef4444');
     })();
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
-            <div className="flex items-start justify-between mb-3">
+        <div className="ui-panel p-5">
+            <div className="mb-3 flex items-start justify-between">
                 <div>
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{ind.symbol}</p>
-                    <p className="text-base font-bold text-gray-900 dark:text-white mt-0.5">{ind.name}</p>
+                    <p className="ui-section-label mb-1">{ind.symbol}</p>
+                    <p className="text-base font-semibold text-mm-text-primary">{ind.name}</p>
                 </div>
-                <TrendIcon value={ind.value} prev={ind.prev} invert={meta.invert} />
+                <TrendIcon value={ind.value} prev={ind.prev} invert={invert} />
             </div>
 
-            <div className="flex items-end justify-between">
+            <div className="flex items-end justify-between gap-4">
                 <div>
-                    <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                        {fmt(ind.value, ind.unit)}
-                    </p>
+                    <p className="text-3xl font-semibold text-mm-text-primary">{fmt(ind.value, ind.unit)}</p>
                     {ind.prev !== null && (
-                        <p className={`text-xs font-medium mt-1 ${trendColor}`}>
-                            {trend > 0 ? '+' : ''}{(trend).toFixed(ind.unit === '%' ? 2 : 2)} from prior
+                        <p className={`mt-1 text-xs font-medium ${trendColor}`}>
+                            {trend > 0 ? '+' : ''}{trend.toFixed(2)} from prior
                         </p>
                     )}
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    <p className="mt-1 text-xs text-mm-text-tertiary">
                         As of {ind.date ? new Date(ind.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}
                     </p>
                 </div>
                 {sparkValues.length > 2 && (
-                    <div className="w-28 h-12">
+                    <div className="h-12 w-28">
                         <Sparklines data={sparkValues} margin={4}>
                             <SparklinesLine color={sparkColor} style={{ strokeWidth: 2 }} />
-                            <SparklinesReferenceLine type="avg" style={{ stroke: 'rgba(150,150,150,0.3)', strokeDasharray: '3,3' }} />
+                            <SparklinesReferenceLine type="avg" style={{ stroke: 'rgba(100,116,139,0.3)', strokeDasharray: '3,3' }} />
                         </Sparklines>
                     </div>
                 )}
             </div>
 
-            {meta.desc && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed border-t border-gray-100 dark:border-gray-700 pt-3">
-                    {meta.desc}
+            {(ind.description || meta.desc) && (
+                <p className="mt-3 border-t border-mm-border pt-3 text-xs leading-relaxed text-mm-text-secondary">
+                    {ind.description || meta.desc}
                 </p>
             )}
+        </div>
+    );
+};
+
+const MarketSignalsPanel = ({ signals }) => {
+    if (!signals.length) return null;
+
+    return (
+        <div className="ui-panel p-5">
+            <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                    <h2 className="text-sm font-semibold text-mm-text-primary">Asia Market Signals</h2>
+                    <p className="mt-1 text-xs text-mm-text-secondary">
+                        Selected FX and commodity pulse points alongside the macro indicators.
+                    </p>
+                </div>
+                <p className="text-xs text-mm-text-tertiary">Data via Akshare</p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {signals.map((signal) => {
+                    const positive = (signal.changePercent || 0) >= 0;
+                    return (
+                        <div key={signal.symbol} className="rounded-control border border-mm-border bg-mm-surface-subtle p-4">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-mm-accent-primary">
+                                        {signal.category}
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-mm-text-primary">{signal.name}</p>
+                                </div>
+                                <span className={`text-xs font-semibold ${positive ? 'text-mm-positive' : 'text-mm-negative'}`}>
+                                    {fmtSignalChange(signal)}
+                                </span>
+                            </div>
+                            <p className="mt-4 text-2xl font-semibold text-mm-text-primary">{fmtSignalValue(signal)}</p>
+                            <p className="mt-2 text-xs text-mm-text-tertiary">
+                                {signal.date || 'Latest session'} · {signal.symbol}
+                            </p>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 };
@@ -91,33 +176,33 @@ const HistoryTable = ({ ind }) => {
     const rows = [...(ind.sparkline || [])].reverse().slice(0, 12);
     if (!rows.length) return null;
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{ind.name} — Recent History</h3>
+        <div className="ui-panel overflow-hidden">
+            <div className="border-b border-mm-border px-5 py-4">
+                <h3 className="text-sm font-semibold text-mm-text-primary">{ind.name} — Recent History</h3>
             </div>
             <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+                    <thead className="bg-mm-surface-subtle">
                         <tr>
-                            <th className="px-5 py-2 text-left text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Date</th>
-                            <th className="px-5 py-2 text-right text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Value</th>
-                            <th className="px-5 py-2 text-right text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase">Change</th>
+                            <th className="px-5 py-2 text-left text-xs font-semibold uppercase text-mm-text-secondary">Date</th>
+                            <th className="px-5 py-2 text-right text-xs font-semibold uppercase text-mm-text-secondary">Value</th>
+                            <th className="px-5 py-2 text-right text-xs font-semibold uppercase text-mm-text-secondary">Change</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    <tbody>
                         {rows.map((row, i) => {
                             const prev = rows[i + 1];
                             const delta = prev ? row.value - prev.value : null;
                             const pos = delta !== null && delta > 0;
                             return (
-                                <tr key={row.date} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                                    <td className="px-5 py-2 text-gray-700 dark:text-gray-300">
+                                <tr key={row.date} className="border-t border-mm-border hover:bg-mm-surface-subtle">
+                                    <td className="px-5 py-2 text-mm-text-secondary">
                                         {new Date(row.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
                                     </td>
-                                    <td className="px-5 py-2 text-right font-medium text-gray-900 dark:text-white">
+                                    <td className="px-5 py-2 text-right font-medium text-mm-text-primary">
                                         {fmt(row.value, ind.unit)}
                                     </td>
-                                    <td className={`px-5 py-2 text-right text-xs font-medium ${delta === null ? 'text-gray-400' : pos ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    <td className={`px-5 py-2 text-right text-xs font-medium ${delta === null ? 'text-mm-text-tertiary' : pos ? 'text-mm-positive' : 'text-mm-negative'}`}>
                                         {delta === null ? '—' : `${pos ? '+' : ''}${delta.toFixed(2)}`}
                                     </td>
                                 </tr>
@@ -130,67 +215,225 @@ const HistoryTable = ({ ind }) => {
     );
 };
 
-const MacroPage = () => {
-    const [indicators, setIndicators] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [expanded, setExpanded] = useState(null);
+const UpcomingEventsPanel = ({ events, error }) => {
+    const featuredEvents = getFeaturedEvents(events);
 
-    const load = () => {
-        setLoading(true);
-        setError('');
-        apiRequest(API_ENDPOINTS.MACRO_OVERVIEW)
-            .then(d => {
-                if (d.error) throw new Error(d.error);
-                setIndicators(d);
-                setLoading(false);
-            })
-            .catch(e => { setError(e.message); setLoading(false); });
-    };
-
-    useEffect(() => { load(); }, []);
+    if (!featuredEvents.length && !error) {
+        return null;
+    }
 
     return (
-        <div className="p-6 animate-fade-in">
-            {/* Header */}
-            <div className="flex items-start justify-between mb-6">
+        <div className="ui-panel p-5">
+            <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <Globe className="w-6 h-6 text-blue-500" />
-                        Macro Dashboard
-                    </h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Key U.S. economic indicators — updated monthly
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-mm-text-primary">
+                        <Calendar className="h-4 w-4 text-mm-accent-primary" />
+                        Next Macro Events
+                    </h2>
+                    <p className="mt-1 text-xs text-mm-text-secondary">
+                        The highest-signal U.S. reports and Fed appearances coming up this week.
                     </p>
                 </div>
-                <button
-                    onClick={load}
-                    disabled={loading}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                >
-                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                <p className="text-xs text-mm-text-tertiary">Data via Fair Economy</p>
+            </div>
+
+            {error ? (
+                <div className="rounded-control border border-mm-border bg-mm-surface-subtle px-4 py-3 text-sm text-mm-text-secondary">
+                    {error}
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    {featuredEvents.map((event) => {
+                        const isSpeaker = event.type === 'speaker';
+                        return (
+                            <div key={event.id} className="rounded-control border border-mm-border bg-mm-surface-subtle p-4">
+                                <div className="mb-2 flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-mm-accent-primary">
+                                            {formatEventDate(event.date)}
+                                        </p>
+                                        <p className="mt-1 text-sm font-semibold text-mm-text-primary">
+                                            {event.event}
+                                        </p>
+                                    </div>
+                                    <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider ${
+                                        event.impact === 'High' ? 'ui-status-chip ui-status-chip--negative' :
+                                        event.impact === 'Medium' ? 'ui-status-chip ui-status-chip--warning' :
+                                        'ui-status-chip'
+                                    }`}>
+                                        {event.impact}
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-4 text-xs text-mm-text-secondary">
+                                    <span className="flex items-center gap-1">
+                                        <Clock className="h-3.5 w-3.5" />
+                                        {event.time || 'TBD'}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        {isSpeaker ? <Mic className="h-3.5 w-3.5" /> : <TrendingUp className="h-3.5 w-3.5" />}
+                                        {isSpeaker ? 'Fed speaker' : 'Report'}
+                                    </span>
+                                </div>
+
+                                <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                                    <div>
+                                        <p className="text-mm-text-tertiary">Actual</p>
+                                        <p className="mt-1 font-medium text-mm-text-primary">{event.actual || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-mm-text-tertiary">Forecast</p>
+                                        <p className="mt-1 font-medium text-mm-text-primary">{event.forecast || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-mm-text-tertiary">Previous</p>
+                                        <p className="mt-1 font-medium text-mm-text-primary">{event.previous || '-'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const MacroPage = () => {
+    const [region, setRegion] = useState('us');
+    const [indicators, setIndicators] = useState([]);
+    const [marketSignals, setMarketSignals] = useState([]);
+    const [events, setEvents] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [eventsError, setEventsError] = useState('');
+    const [expanded, setExpanded] = useState(null);
+    const [regionSummary, setRegionSummary] = useState(null);
+
+    const load = useCallback(() => {
+        setLoading(true);
+        setError('');
+        setEventsError('');
+        apiRequest(API_ENDPOINTS.MACRO_OVERVIEW(region))
+            .then((macroPayload) => {
+                if (macroPayload?.error) {
+                    throw new Error(macroPayload.error);
+                }
+
+                const nextIndicators = Array.isArray(macroPayload)
+                    ? macroPayload
+                    : Array.isArray(macroPayload?.indicators)
+                        ? macroPayload.indicators
+                        : [];
+                setIndicators(nextIndicators);
+                setMarketSignals(Array.isArray(macroPayload?.marketSignals) ? macroPayload.marketSignals : []);
+                setRegionSummary(Array.isArray(macroPayload) ? null : macroPayload);
+                setExpanded((current) => nextIndicators.some((ind) => ind.symbol === current) ? current : null);
+            })
+            .catch((e) => {
+                setIndicators([]);
+                setMarketSignals([]);
+                setRegionSummary(null);
+                setError(e.message || 'Failed to fetch macro data.');
+            })
+            .finally(() => {
+                setLoading(false);
+            });
+
+        if (region !== 'us') {
+            setEvents([]);
+            setEventsError('');
+            return;
+        }
+
+        apiRequest(API_ENDPOINTS.ECONOMIC_CALENDAR)
+            .then((calendarPayload) => {
+                if (calendarPayload?.error) {
+                    setEvents([]);
+                    setEventsError(calendarPayload.error);
+                    return;
+                }
+                setEvents(Array.isArray(calendarPayload) ? calendarPayload : []);
+            })
+            .catch(() => {
+                setEvents([]);
+                setEventsError('Economic calendar is temporarily unavailable.');
+            });
+    }, [region]);
+
+    useEffect(() => {
+        load();
+    }, [load]);
+
+    return (
+        <div className="ui-page animate-fade-in space-y-8">
+            <div className="ui-page-header flex items-start justify-between gap-4">
+                <div>
+                    <h1 className="ui-page-title flex items-center gap-2">
+                        <Globe className="h-6 w-6 text-mm-accent-primary" />
+                        Macro Dashboard
+                    </h1>
+                    <p className="ui-page-subtitle">
+                        {region === 'asia'
+                            ? 'China and Hong Kong macro indicators with selected FX and commodity signals.'
+                            : 'Key U.S. economic indicators updated on a monthly cadence.'}
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                        {REGION_OPTIONS.map((option) => (
+                            <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => setRegion(option.value)}
+                                className={region === option.value
+                                    ? 'rounded-control bg-mm-accent-primary px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-white shadow-card'
+                                    : 'rounded-control border border-mm-border bg-mm-surface px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-mm-text-secondary transition hover:bg-mm-surface-subtle hover:text-mm-text-primary'}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <button onClick={load} disabled={loading} className="ui-button-secondary gap-2">
+                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                     Refresh
                 </button>
             </div>
 
             {loading && (
-                <div className="text-center py-20">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
-                    <p className="text-gray-500 dark:text-gray-400">Fetching macro data…</p>
+                <div className="py-20 text-center">
+                    <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-mm-accent-primary border-t-transparent"></div>
+                    <p className="text-mm-text-secondary">Fetching macro data…</p>
                 </div>
             )}
 
             {error && !loading && (
-                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-6 py-4 rounded-xl">
-                    {error}
-                </div>
+                <div className="ui-banner ui-banner-error">{error}</div>
             )}
 
             {!loading && !error && (
                 <>
-                    {/* Indicator cards grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-                        {indicators.map(ind => (
+                    {region === 'us' ? (
+                        <UpcomingEventsPanel events={events} error={eventsError} />
+                    ) : (
+                        <div className="ui-panel p-5">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <h2 className="text-sm font-semibold text-mm-text-primary">
+                                        {regionSummary?.title || 'Asia Macro Dashboard'}
+                                    </h2>
+                                    <p className="mt-1 text-xs text-mm-text-secondary">
+                                        {regionSummary?.description || 'Read-only Asia macro research lane powered by Akshare.'}
+                                    </p>
+                                </div>
+                                <p className="text-xs text-mm-text-tertiary">{regionSummary?.sourceNote || 'Data via Akshare'}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {region === 'asia' && <MarketSignalsPanel signals={marketSignals} />}
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        {indicators.map((ind) => (
                             <div
                                 key={ind.symbol}
                                 onClick={() => setExpanded(expanded === ind.symbol ? null : ind.symbol)}
@@ -201,9 +444,8 @@ const MacroPage = () => {
                         ))}
                     </div>
 
-                    {/* Expanded history table */}
                     {expanded && (() => {
-                        const ind = indicators.find(i => i.symbol === expanded);
+                        const ind = indicators.find((i) => i.symbol === expanded);
                         return ind ? (
                             <div className="animate-fade-in">
                                 <HistoryTable ind={ind} />
@@ -212,8 +454,10 @@ const MacroPage = () => {
                     })()}
 
                     {!expanded && (
-                        <p className="text-xs text-center text-gray-400 dark:text-gray-600">
-                            Click any card to see 12-month history · Data via EconDB & Yahoo Finance
+                        <p className="text-center text-xs text-mm-text-tertiary">
+                            {region === 'asia'
+                                ? 'Click any card to see recent history · Read-only Asia macro lane via Akshare'
+                                : 'Click any card to see 12-month history · Data via FRED and Yahoo Finance'}
                         </p>
                     )}
                 </>

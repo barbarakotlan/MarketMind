@@ -8,8 +8,13 @@
  *   - .env.production (for production builds)
  */
 
+const resolveApiBaseUrl = () => {
+    const configuredBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+    return configuredBase.replace(/\/$/, '');
+};
+
 // API Base URL from environment variable or default to localhost
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+const API_BASE_URL = resolveApiBaseUrl();
 
 const buildApiUrl = (path, params = {}) => {
     const query = new URLSearchParams();
@@ -24,6 +29,42 @@ const buildApiUrl = (path, params = {}) => {
     return `${API_BASE_URL}${path}${queryString ? `?${queryString}` : ''}`;
 };
 
+const withOptionalMarket = (params = {}, market) => (
+    market && String(market).toLowerCase() !== 'us'
+        ? { ...params, market: String(market).toLowerCase() }
+        : params
+);
+
+const upgradeSuggestion = 'Upgrade to Pro to unlock higher limits.';
+
+const isSubscriptionLimitPayload = (payload) => (
+    payload && payload.code === 'subscription_limit_reached'
+);
+
+const buildSubscriptionLimitMessage = (payload) => {
+    const baseMessage = String(payload?.error || 'Free limit reached.').trim();
+    if (baseMessage.toLowerCase().includes('upgrade to pro')) {
+        return baseMessage;
+    }
+    return `${baseMessage} ${upgradeSuggestion}`;
+};
+
+const dispatchSubscriptionLimitNotice = (payload) => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    window.dispatchEvent(new CustomEvent('marketmind:subscription-limit', {
+        detail: {
+            message: buildSubscriptionLimitMessage(payload),
+            code: payload.code,
+            plan: payload.plan,
+            limitKey: payload.limitKey,
+            limit: payload.limit,
+        },
+    }));
+};
+
 /**
  * API Endpoints Configuration
  * All API endpoints are defined here for consistency
@@ -32,10 +73,17 @@ export const API_ENDPOINTS = {
     // Authentication
     AUTH_ME: `${API_BASE_URL}/auth/me`,
 
+    // Checkout
+    CHECKOUT_CREATE_SUBSCRIPTION: `${API_BASE_URL}/checkout/create-subscription`,
+    CHECKOUT_CANCEL_SUBSCRIPTION: `${API_BASE_URL}/checkout/cancel-subscription`,
+    CHECKOUT_PLAN_STATUS: `${API_BASE_URL}/checkout/plan-status`,
     // Stock & Market Data
-    STOCK: (ticker) => `${API_BASE_URL}/stock/${ticker}`,
-    CHART: (ticker, period = '6mo') => `${API_BASE_URL}/chart/${ticker}?period=${period}`,
-    SEARCH_SYMBOLS: (query) => `${API_BASE_URL}/search-symbols?q=${encodeURIComponent(query)}`,
+    STOCK: (ticker, market = 'us') =>
+        buildApiUrl(`/stock/${encodeURIComponent(ticker)}`, withOptionalMarket({}, market)),
+    CHART: (ticker, period = '6mo', market = 'us') =>
+        buildApiUrl(`/chart/${encodeURIComponent(ticker)}`, withOptionalMarket({ period }, market)),
+    SEARCH_SYMBOLS: (query, market = 'us') =>
+        buildApiUrl('/search-symbols', withOptionalMarket({ q: query }, market)),
     
     // News
     NEWS: (query) => query 
@@ -59,6 +107,7 @@ export const API_ENDPOINTS = {
     
     // Paper Trading
     PORTFOLIO: `${API_BASE_URL}/paper/portfolio`,
+    PORTFOLIO_OPTIMIZE: `${API_BASE_URL}/paper/portfolio/optimize`,
     PORTFOLIO_HISTORY: (period) => `${API_BASE_URL}/paper/history?period=${period}`,
     PORTFOLIO_TRANSACTIONS: `${API_BASE_URL}/paper/transactions`,
     PORTFOLIO_RESET: `${API_BASE_URL}/paper/reset`,
@@ -70,6 +119,22 @@ export const API_ENDPOINTS = {
     // Watchlist
     WATCHLIST: `${API_BASE_URL}/watchlist`,
     WATCHLIST_ITEM: (ticker) => `${API_BASE_URL}/watchlist/${ticker}`,
+
+    // MarketMindAI
+    MARKETMIND_AI_BOOTSTRAP: `${API_BASE_URL}/marketmind-ai/bootstrap`,
+    MARKETMIND_AI_CHATS: `${API_BASE_URL}/marketmind-ai/chats`,
+    MARKETMIND_AI_CHAT_DETAIL: (chatId) => `${API_BASE_URL}/marketmind-ai/chats/${chatId}`,
+    MARKETMIND_AI_CHAT_DELETE: (chatId) => `${API_BASE_URL}/marketmind-ai/chats/${chatId}`,
+    MARKETMIND_AI_CONTEXT: (ticker, market = 'us') =>
+        buildApiUrl('/marketmind-ai/context', withOptionalMarket({ ticker }, market)),
+    MARKETMIND_AI_RETRIEVAL_STATUS: (ticker, market = 'us') =>
+        buildApiUrl('/marketmind-ai/retrieval-status', withOptionalMarket({ ticker }, market)),
+    MARKETMIND_AI_CHAT: `${API_BASE_URL}/marketmind-ai/chat`,
+    MARKETMIND_AI_ARTIFACT_PREFLIGHT: `${API_BASE_URL}/marketmind-ai/artifacts/preflight`,
+    MARKETMIND_AI_ARTIFACTS: `${API_BASE_URL}/marketmind-ai/artifacts`,
+    MARKETMIND_AI_ARTIFACT: (artifactId) => `${API_BASE_URL}/marketmind-ai/artifacts/${artifactId}`,
+    MARKETMIND_AI_ARTIFACT_DOWNLOAD: (artifactId, versionId) =>
+        `${API_BASE_URL}/marketmind-ai/artifacts/${artifactId}/versions/${versionId}/download`,
     
     // Notifications
     NOTIFICATIONS: `${API_BASE_URL}/notifications`,
@@ -101,6 +166,7 @@ export const API_ENDPOINTS = {
     PREDICTION_MARKET: (marketId, exchange = 'polymarket') =>
         buildApiUrl(`/prediction-markets/${encodeURIComponent(marketId)}`, { exchange }),
     PREDICTION_EXCHANGES: `${API_BASE_URL}/prediction-markets/exchanges`,
+    PREDICTION_ANALYZE: `${API_BASE_URL}/prediction-markets/analyze`,
     PREDICTION_PORTFOLIO: `${API_BASE_URL}/prediction-markets/portfolio`,
     PREDICTION_HISTORY: `${API_BASE_URL}/prediction-markets/history`,
     PREDICTION_BUY: `${API_BASE_URL}/prediction-markets/buy`,
@@ -108,16 +174,25 @@ export const API_ENDPOINTS = {
     PREDICTION_RESET: `${API_BASE_URL}/prediction-markets/reset`,
     
     // Macro & Calendar
-    MACRO_OVERVIEW: `${API_BASE_URL}/macro/overview`,
+    MACRO_OVERVIEW: (region = 'us') =>
+        buildApiUrl('/macro/overview', region && String(region).toLowerCase() !== 'us' ? { region } : {}),
     ECONOMIC_CALENDAR: `${API_BASE_URL}/calendar/economic`,
+    MARKET_SESSIONS_CALENDAR: (market = 'us', days = 14) =>
+        buildApiUrl('/calendar/market-sessions', { market: String(market || 'us').toLowerCase(), days }),
     
     // Screener
     SCREENER: (category = 'day_gainers') => `${API_BASE_URL}/screener?category=${category}`,
     
     // Fundamentals
-    FUNDAMENTALS: (ticker) => `${API_BASE_URL}/fundamentals/${ticker}`,
+    FUNDAMENTALS: (ticker, market = 'us') =>
+        buildApiUrl(`/fundamentals/${encodeURIComponent(ticker)}`, withOptionalMarket({}, market)),
     FUNDAMENTALS_FINANCIALS: (ticker) => `${API_BASE_URL}/fundamentals/financials/${ticker}`,
-    FUNDAMENTALS_FILINGS: (ticker) => `${API_BASE_URL}/fundamentals/filings/${ticker}`,
+    FUNDAMENTALS_FILINGS: (ticker, market = 'us') =>
+        buildApiUrl(`/fundamentals/filings/${encodeURIComponent(ticker)}`, withOptionalMarket({}, market)),
+    FUNDAMENTALS_SEC_INTELLIGENCE: (ticker, market = 'us') =>
+        buildApiUrl(`/fundamentals/sec-intelligence/${encodeURIComponent(ticker)}`, withOptionalMarket({}, market)),
+    FUNDAMENTALS_FILING_DETAIL: (ticker, accessionNumber) =>
+        `${API_BASE_URL}/fundamentals/filings/${ticker}/${encodeURIComponent(accessionNumber)}`,
 };
 
 /**
@@ -138,7 +213,23 @@ export const apiRequest = async (url, options = {}) => {
         
         if (!response.ok) {
             const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-            throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
+            const resolvedMessage = isSubscriptionLimitPayload(error)
+                ? buildSubscriptionLimitMessage(error)
+                : (error.error || `HTTP ${response.status}: ${response.statusText}`);
+
+            const apiError = new Error(resolvedMessage);
+            apiError.status = response.status;
+            apiError.code = error.code;
+            apiError.plan = error.plan;
+            apiError.limitKey = error.limitKey;
+            apiError.limit = error.limit;
+            apiError.rawMessage = error.error || resolvedMessage;
+
+            if (isSubscriptionLimitPayload(error)) {
+                dispatchSubscriptionLimitNotice(error);
+            }
+
+            throw apiError;
         }
         
         return await response.json();

@@ -81,4 +81,11 @@ backend/marketmind.db
 paper_portfolio.json
 backend/paper_portfolio.json
 backend/notifications.json
+backend/prediction_portfolio.json
 backend/user_data/
+
+# ML artifacts (generated at runtime)
+backend/model_artifacts/
+
+# Memory profiling captures / reports
+backend/profiling/memray/output/

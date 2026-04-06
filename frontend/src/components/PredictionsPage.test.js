@@ -31,6 +31,8 @@ describe('PredictionsPage', () => {
     test('uses the ensemble endpoint by default', async () => {
         render(<PredictionsPage />);
 
+        expect(screen.getByText(/7 trading-session price predictions/i)).toBeInTheDocument();
+
         fireEvent.change(screen.getByPlaceholderText(/enter stock ticker/i), {
             target: { value: 'AAPL' },
         });

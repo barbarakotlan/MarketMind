@@ -1,5 +1,11 @@
 import React from 'react';
 import { TrendingUpIcon, TrendingDownIcon } from '../Icons';
+import {
+    getMarketSessionLabel,
+    getMarketSessionSummary,
+    getMarketSessionToneClasses,
+    getTimezoneLabel,
+} from './marketSessionUtils';
 
 // --- Helper to safely format numbers to 2 decimal places ---
 const formatNum = (num, isPercent = false) => {
@@ -9,35 +15,77 @@ const formatNum = (num, isPercent = false) => {
     return val.toFixed(2);
 };
 
-const StockDataCard = ({ data, onAddToWatchlist }) => {
+const currencySymbol = (currency) => {
+    switch (String(currency || '').toUpperCase()) {
+    case 'HKD':
+        return 'HK$';
+    case 'CNY':
+        return 'CN¥';
+    case 'USD':
+    default:
+        return '$';
+    }
+};
+
+const StockDataCard = ({ data, onAddToWatchlist, canAddToWatchlist = true }) => {
     // Check if data or fundamentals exist, provide a fallback
     const fundamentals = data.fundamentals || {};
+    const pricePrefix = currencySymbol(data.currency);
     
-    const isPositive = (data.change || 0) >= 0; 
-    const changeColor = isPositive ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400';
+    const isPositive = (data.change || 0) >= 0;
+    const changeColor = isPositive ? 'text-mm-positive' : 'text-mm-negative';
+    const marketSession = data.marketSession;
 
     const DataRow = ({ label, value }) => (
-        <div className="flex justify-between py-3 border-b border-gray-200 dark:border-gray-700 last:border-b-0">
-            <span className="text-sm text-gray-500 dark:text-gray-400">{label}</span>
-            <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{String(value)}</span>
+        <div className="flex justify-between border-b border-mm-border py-3 last:border-b-0">
+            <span className="text-sm text-mm-text-secondary">{label}</span>
+            <span className="text-sm font-medium text-mm-text-primary">{String(value)}</span>
         </div>
     );
 
     return (
-        <div className="mt-8 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg animate-fade-in">
+        <div className="ui-panel mt-8 animate-fade-in p-6">
             <div className="flex justify-between items-start">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{data.companyName} ({data.symbol})</h2>
-                    <p className="text-3xl font-bold text-gray-800 dark:text-gray-100 mt-2">${formatNum(data.price)}</p>
+                    <p className="ui-section-label mb-2">Asset Snapshot</p>
+                    <h2 className="text-2xl font-semibold text-mm-text-primary">{data.companyName} ({data.symbol})</h2>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-mm-text-secondary">
+                        <span className="rounded-full border border-mm-border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em]">
+                            {data.market || 'US'}
+                        </span>
+                        {data.exchange ? <span>{data.exchange}</span> : null}
+                        {data.currency ? <span>• {data.currency}</span> : null}
+                    </div>
+                    {marketSession ? (
+                        <div className="mt-3">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-mm-text-secondary">
+                                <span className={`rounded-pill border px-2.5 py-1 font-semibold uppercase tracking-[0.12em] ${getMarketSessionToneClasses(marketSession)}`}>
+                                    {getMarketSessionLabel(marketSession)}
+                                </span>
+                                <span>{marketSession.exchange || data.exchange}</span>
+                                {marketSession.timezone ? <span>• {getTimezoneLabel(marketSession.timezone)}</span> : null}
+                            </div>
+                            <p className="mt-2 text-sm text-mm-text-secondary">
+                                {getMarketSessionSummary(marketSession)}
+                            </p>
+                        </div>
+                    ) : null}
+                    <p className="mt-2 text-3xl font-bold text-mm-text-primary">{pricePrefix}{formatNum(data.price)}</p>
                 </div>
                 <div className="text-right">
                     <div className={`flex items-center justify-end text-lg font-semibold ${changeColor}`}>
                          {isPositive ? <TrendingUpIcon className="h-6 w-6 mr-1" /> : <TrendingDownIcon className="h-6 w-6 mr-1" />}
                         <span>{formatNum(data.change)} ({formatNum(data.changePercent)}%)</span>
                     </div>
-                    <button onClick={() => onAddToWatchlist(data.symbol)} className="mt-4 bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
-                        + Add to Watchlist
-                    </button>
+                    {canAddToWatchlist ? (
+                        <button onClick={() => onAddToWatchlist(data.symbol)} className="ui-button-primary mt-4">
+                            + Add to Watchlist
+                        </button>
+                    ) : (
+                        <p className="mt-4 max-w-[220px] text-xs leading-5 text-mm-text-secondary">
+                            International Akshare assets are read-only in phase 1, so watchlist actions stay US-only.
+                        </p>
+                    )}
                 </div>
             </div>
             <div className="mt-6">

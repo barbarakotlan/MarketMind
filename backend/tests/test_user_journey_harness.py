@@ -47,6 +47,12 @@ class UserJourneyHarnessTests(unittest.TestCase):
             },
             "prediction_market_positions": [],
             "prediction_market_trades": [],
+            "deliverables": [],
+            "deliverable_assumptions": [],
+            "deliverable_reviews": [],
+            "deliverable_preflights": [],
+            "deliverable_memos": [],
+            "deliverable_links": [],
         }
 
         with session_scope(self.database_url) as session:

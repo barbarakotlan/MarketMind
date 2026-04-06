@@ -2,20 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { Bell, Plus, Trash2, BellRing, X, Sparkles, TrendingUp } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
-// Reusable Notification Component
 const FormNotification = ({ message, onDismiss }) => {
     if (!message) return null;
 
-    const baseStyle = "px-4 py-3 rounded-lg text-white font-semibold animate-fade-in text-center flex justify-between items-center text-sm";
-    const successStyle = "bg-green-500 shadow-lg shadow-green-500/20";
-    const errorStyle = "bg-red-500 shadow-lg shadow-red-500/20";
+    const toneClass = message.type === 'success' ? 'ui-banner ui-banner-success' : 'ui-banner ui-banner-error';
 
     return (
-        <div className={`mt-4 ${baseStyle} ${message.type === 'success' ? successStyle : errorStyle}`}>
-            <span>{message.text}</span>
-            <button onClick={onDismiss} className="text-white hover:bg-black/10 p-1 rounded-full transition-colors">
-                <X size={16} />
-            </button>
+        <div className={`mt-4 ${toneClass}`}>
+            <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold">{message.text}</span>
+                <button onClick={onDismiss} className="rounded-pill p-1 transition hover:bg-black/5 dark:hover:bg-white/5">
+                    <X size={16} />
+                </button>
+            </div>
         </div>
     );
 };
@@ -25,27 +24,19 @@ const NotificationsPage = ({ onClearAlerts }) => {
     const [triggeredAlerts, setTriggeredAlerts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState(null);
-
-    // UI State
-    const [activeTab, setActiveTab] = useState('price'); // 'price' or 'ai'
-
-    // Standard Form State
+    const [activeTab, setActiveTab] = useState('price');
     const [ticker, setTicker] = useState('');
     const [condition, setCondition] = useState('below');
     const [price, setPrice] = useState('');
-
-    // AI Form State
     const [aiPrompt, setAiPrompt] = useState('');
     const [isAiLoading, setIsAiLoading] = useState(false);
 
     const fetchAllAlerts = async () => {
         setLoading(true);
         try {
-            // Fetch both active and triggered alerts
-            // Note: Ensure your backend supports these endpoints
             const [activeData, triggeredDataRaw] = await Promise.all([
                 apiRequest(API_ENDPOINTS.NOTIFICATIONS),
-                apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true)).catch(() => [])
+                apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true)).catch(() => []),
             ]);
             const triggeredData = Array.isArray(triggeredDataRaw) ? triggeredDataRaw : [];
 
@@ -55,11 +46,8 @@ const NotificationsPage = ({ onClearAlerts }) => {
             if (onClearAlerts) {
                 onClearAlerts();
             }
-
         } catch (err) {
             console.error(err);
-            // Don't block the UI on error, just show empty states
-            setLoading(false);
         } finally {
             setLoading(false);
         }
@@ -80,10 +68,10 @@ const NotificationsPage = ({ onClearAlerts }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ticker: ticker.toUpperCase(),
-                    condition: condition,
+                    condition,
                     target_price: parseFloat(price),
-                    type: 'price' // Tag as standard price alert
-                })
+                    type: 'price',
+                }),
             });
 
             setMessage({ type: 'success', text: `Alert set for ${ticker.toUpperCase()}` });
@@ -106,8 +94,8 @@ const NotificationsPage = ({ onClearAlerts }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: aiPrompt,
-                    type: 'ai'
-                })
+                    type: 'ai',
+                }),
             });
 
             setMessage({ type: 'success', text: response.message || 'Smart alert created successfully.' });
@@ -148,70 +136,69 @@ const NotificationsPage = ({ onClearAlerts }) => {
         }
     };
 
+    const tabClass = (tab) => (
+        activeTab === tab
+            ? 'ui-tab ui-tab-active flex-1 justify-center gap-2'
+            : 'ui-tab flex-1 justify-center gap-2'
+    );
+
     return (
-        <div className="container mx-auto px-4 py-8 max-w-5xl animate-fade-in">
-            {/* Header */}
-            <div className="flex flex-col items-center justify-center mb-10">
-                <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-2xl mb-4">
-                    <Bell className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+        <div className="ui-page animate-fade-in space-y-8">
+            <div className="ui-page-header text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-pill border border-mm-border bg-mm-surface shadow-card">
+                    <Bell className="h-8 w-8 text-mm-accent-primary" />
                 </div>
-                <h1 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight">
-                    Alert Center
-                </h1>
-                <p className="text-gray-500 dark:text-gray-400 mt-2">Monitor markets and get notified instantly.</p>
+                <h1 className="ui-page-title mb-2">Alert Center</h1>
+                <p className="ui-page-subtitle">Monitor markets and get notified instantly.</p>
             </div>
 
-            {/* --- Creation Card --- */}
-            <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-12">
-                {/* Tabs */}
-                <div className="flex border-b border-gray-100 dark:border-gray-700">
-                    <button
-                        onClick={() => setActiveTab('price')}
-                        className={`flex-1 py-4 text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'price' ? 'bg-gray-50 dark:bg-gray-700/50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}
-                    >
-                        <TrendingUp className="w-4 h-4" /> Price Target
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('ai')}
-                        className={`flex-1 py-4 text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'ai' ? 'bg-blue-50 dark:bg-blue-900/20 text-purple-600 border-b-2 border-purple-600' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}
-                    >
-                        <Sparkles className="w-4 h-4" /> AI Smart Alert
-                    </button>
+            <div className="ui-panel overflow-hidden">
+                <div className="border-b border-mm-border px-6 pt-6">
+                    <div className="ui-tab-group flex w-full">
+                        <button onClick={() => setActiveTab('price')} className={tabClass('price')}>
+                            <TrendingUp className="h-4 w-4" />
+                            Price Target
+                        </button>
+                        <button onClick={() => setActiveTab('ai')} className={tabClass('ai')}>
+                            <Sparkles className="h-4 w-4" />
+                            AI Smart Alert
+                        </button>
+                    </div>
                 </div>
 
-                <div className="p-8">
+                <div className="p-6">
                     {activeTab === 'price' ? (
-                        <form onSubmit={handleCreateNotification} className="animate-in fade-in slide-in-from-left-4 duration-300">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <form onSubmit={handleCreateNotification} className="space-y-6 animate-fade-in">
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ticker</label>
+                                    <label className="ui-form-label">Ticker</label>
                                     <input
                                         type="text"
                                         value={ticker}
                                         onChange={(e) => setTicker(e.target.value)}
-                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="ui-input"
                                         placeholder="e.g. TSLA"
                                         required
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Condition</label>
+                                    <label className="ui-form-label">Condition</label>
                                     <select
                                         value={condition}
                                         onChange={(e) => setCondition(e.target.value)}
-                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="ui-input"
                                     >
                                         <option value="below">Falls Below</option>
                                         <option value="above">Rises Above</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Target Price</label>
+                                    <label className="ui-form-label">Target Price</label>
                                     <input
                                         type="number"
                                         value={price}
                                         onChange={(e) => setPrice(e.target.value)}
-                                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl font-bold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="ui-input"
                                         placeholder="0.00"
                                         min="0.01"
                                         step="0.01"
@@ -219,36 +206,34 @@ const NotificationsPage = ({ onClearAlerts }) => {
                                     />
                                 </div>
                             </div>
-                            <button
-                                type="submit"
-                                className="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-[0.98] flex items-center justify-center gap-2"
-                            >
-                                <Plus className="w-5 h-5" />
+                            <button type="submit" className="ui-button-primary w-full gap-2 py-3">
+                                <Plus className="h-5 w-5" />
                                 Create Alert
                             </button>
                         </form>
                     ) : (
-                        <form onSubmit={handleCreateSmartNotification} className="animate-in fade-in slide-in-from-right-4 duration-300">
-                            <div className="mb-6">
-                                <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <Sparkles className="w-3 h-3" /> AI Assistant
+                        <form onSubmit={handleCreateSmartNotification} className="space-y-6 animate-fade-in">
+                            <div>
+                                <label className="ui-form-label flex items-center gap-2">
+                                    <Sparkles className="h-3 w-3" />
+                                    AI Assistant
                                 </label>
                                 <textarea
                                     value={aiPrompt}
                                     onChange={(e) => setAiPrompt(e.target.value)}
-                                    className="w-full h-32 px-5 py-4 bg-purple-50 dark:bg-gray-900 border border-purple-100 dark:border-gray-700 rounded-xl font-medium text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-purple-500 outline-none resize-none"
-                                    placeholder="Examples:&#10;- Notify me when Apple releases earnings&#10;- Alert me if Tesla drops 5% in a day&#10;- Tell me when there is breaking news about NVDA"
+                                    className="ui-input min-h-[140px] resize-none"
+                                    placeholder={`Examples:\n- Notify me when Apple releases earnings\n- Alert me if Tesla drops 5% in a day\n- Tell me when there is breaking news about NVDA`}
                                     required
                                 />
                             </div>
 
-                            <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-                                {["AAPL Earnings", "TSLA News", "BTC > 100k"].map(tag => (
+                            <div className="flex gap-2 overflow-x-auto pb-2">
+                                {['AAPL Earnings', 'TSLA News', 'BTC > 100k'].map((tag) => (
                                     <button
                                         key={tag}
                                         type="button"
-                                        onClick={() => setAiPrompt(prev => prev + (prev ? " " : "") + `Notify me when ${tag}`)}
-                                        className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-xs font-bold text-gray-600 dark:text-gray-300 whitespace-nowrap hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/30 dark:hover:text-purple-300 transition-colors"
+                                        onClick={() => setAiPrompt((prev) => prev + (prev ? ' ' : '') + `Notify me when ${tag}`)}
+                                        className="ui-chip whitespace-nowrap"
                                     >
                                         + {tag}
                                     </button>
@@ -258,96 +243,111 @@ const NotificationsPage = ({ onClearAlerts }) => {
                             <button
                                 type="submit"
                                 disabled={isAiLoading}
-                                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-purple-600/20 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70"
+                                className="ui-button-primary w-full gap-2 py-3 disabled:cursor-not-allowed disabled:opacity-70"
                             >
                                 {isAiLoading ? (
                                     <>
-                                        <Sparkles className="w-5 h-5 animate-spin" /> Analyzing Request...
+                                        <Sparkles className="h-5 w-5 animate-spin" />
+                                        Analyzing Request...
                                     </>
                                 ) : (
                                     <>
-                                        <Sparkles className="w-5 h-5" /> Generate Smart Alert
+                                        <Sparkles className="h-5 w-5" />
+                                        Generate Smart Alert
                                     </>
                                 )}
                             </button>
                         </form>
                     )}
+
                     <FormNotification message={message} onDismiss={() => setMessage(null)} />
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* --- Active Alerts --- */}
-                <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-green-500"></div> Active Monitors
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+                <div className="ui-panel p-6">
+                    <h2 className="mb-6 flex items-center gap-2 text-xl font-semibold text-mm-text-primary">
+                        <span className="h-2 w-2 rounded-pill bg-mm-positive"></span>
+                        Active Monitors
                     </h2>
 
-                    {loading && <p className="text-center py-8 text-gray-500 dark:text-gray-400 font-medium">Loading...</p>}
+                    {loading && <p className="py-8 text-center font-medium text-mm-text-secondary">Loading...</p>}
+
                     {!loading && activeAlerts.length === 0 && (
-                        <div className="text-center py-12 border-2 border-dashed border-gray-100 dark:border-gray-700 rounded-2xl">
-                            <Bell className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                            <p className="text-gray-500 dark:text-gray-400 font-medium">No alerts running</p>
+                        <div className="ui-empty-state border-dashed py-12">
+                            <Bell className="mb-2 h-8 w-8 text-mm-text-tertiary" />
+                            <p className="font-medium">No alerts running</p>
                         </div>
                     )}
 
                     <div className="space-y-3">
                         {activeAlerts.map((alert) => (
-                            <div key={alert.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl group hover:bg-white dark:hover:bg-gray-800 hover:shadow-md transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-700">
+                            <div key={alert.id} className="ui-panel-subtle flex items-center justify-between gap-4 p-4">
                                 <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 font-black text-xs">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-pill border border-mm-border bg-mm-surface text-xs font-semibold text-mm-accent-primary">
                                         {alert.ticker.substring(0, 4)}
                                     </div>
                                     <div>
-                                        <p className="font-bold text-gray-900 dark:text-white">{alert.ticker}</p>
-                                        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+                                        <p className="font-semibold text-mm-text-primary">{alert.ticker}</p>
+                                        <p className="text-xs uppercase tracking-wide text-mm-text-tertiary">
                                             {alert.condition === 'below' ? 'Drop Below' : 'Rise Above'} ${alert.target_price.toFixed(2)}
                                         </p>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => handleDelete(alert.id, 'active')}
-                                    className="p-2 text-gray-500 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+                                    className="rounded-control p-2 text-mm-text-secondary transition hover:bg-mm-surface hover:text-mm-negative"
                                 >
-                                    <Trash2 className="w-4 h-4" />
+                                    <Trash2 className="h-4 w-4" />
                                 </button>
                             </div>
                         ))}
                     </div>
                 </div>
 
-                {/* --- Triggered History --- */}
-                <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-red-500"></div> Recent Notifications
+                <div className="ui-panel p-6">
+                    <div className="mb-6 flex items-center justify-between">
+                        <h2 className="flex items-center gap-2 text-xl font-semibold text-mm-text-primary">
+                            <span className="h-2 w-2 rounded-pill bg-mm-negative"></span>
+                            Recent Notifications
                         </h2>
                         {triggeredAlerts.length > 0 && (
-                            <button onClick={handleClearTriggeredAlerts} className="text-xs font-bold text-blue-600 hover:underline">Clear All</button>
+                            <button onClick={handleClearTriggeredAlerts} className="text-xs font-semibold text-mm-accent-primary hover:underline">
+                                Clear All
+                            </button>
                         )}
                     </div>
 
                     {!loading && triggeredAlerts.length === 0 && (
-                        <div className="text-center py-12 border-2 border-dashed border-gray-100 dark:border-gray-700 rounded-2xl">
-                            <p className="text-gray-500 dark:text-gray-400 font-medium">No recent notifications</p>
+                        <div className="ui-empty-state border-dashed py-12">
+                            <p className="font-medium">No recent notifications</p>
                         </div>
                     )}
 
                     <div className="space-y-3">
                         {triggeredAlerts.map((alert) => (
-                            <div key={alert.id} className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/20">
+                            <div
+                                key={alert.id}
+                                className="flex items-start gap-3 rounded-card border px-4 py-4"
+                                style={{
+                                    backgroundColor: 'rgb(var(--mm-negative) / 0.06)',
+                                    borderColor: 'rgb(var(--mm-negative) / 0.18)',
+                                }}
+                            >
                                 <div className="mt-1">
-                                    <BellRing className="w-4 h-4 text-red-500" />
+                                    <BellRing className="h-4 w-4 text-mm-negative" />
                                 </div>
                                 <div className="flex-1">
-                                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200 leading-tight">{alert.message}</p>
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-bold uppercase">{new Date(alert.timestamp).toLocaleTimeString()}</p>
+                                    <p className="text-sm font-semibold leading-tight text-mm-text-primary">{alert.message}</p>
+                                    <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-mm-text-tertiary">
+                                        {new Date(alert.timestamp).toLocaleTimeString()}
+                                    </p>
                                 </div>
                                 <button
                                     onClick={() => handleDelete(alert.id, 'triggered')}
-                                    className="text-gray-500 dark:text-gray-400 hover:text-red-500"
+                                    className="rounded-control p-1 text-mm-text-secondary transition hover:bg-mm-surface hover:text-mm-negative"
                                 >
-                                    <X className="w-4 h-4" />
+                                    <X className="h-4 w-4" />
                                 </button>
                             </div>
                         ))}

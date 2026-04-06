@@ -1,6 +1,7 @@
 import os
 import finnhub
 from dotenv import load_dotenv
+import sentiment_service
 
 # Load environment variables from .env file
 load_dotenv()
@@ -23,9 +24,10 @@ def get_general_news(category='general', count=15):
 
         finnhub_client = finnhub.Client(api_key=api_key)
         news = finnhub_client.general_news(category, min_id=0)
+        enriched_news = sentiment_service.annotate_news_items(news)
         
         # Return the specified number of articles
-        return news[:count]
+        return enriched_news[:count]
 
     except Exception as e:
         print(f"Error fetching news from Finnhub: {e}")

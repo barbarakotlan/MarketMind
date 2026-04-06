@@ -8,8 +8,8 @@ const AuthPage = ({ onBack }) => {
     const [mode, setMode] = useState('sign-in');
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white flex items-center justify-center px-4 py-10">
-            <div className="w-full max-w-5xl grid lg:grid-cols-2 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl">
+        <div className="app-shell min-h-screen flex items-center justify-center px-4 py-10">
+            <div className="ui-panel-elevated w-full max-w-5xl overflow-hidden lg:grid lg:grid-cols-2">
                 <div className="hidden lg:flex flex-col justify-between p-10 bg-gradient-to-br from-blue-600 to-indigo-700 text-white">
                     <div>
                         <img
@@ -34,28 +34,28 @@ const AuthPage = ({ onBack }) => {
                     <div className="flex items-center justify-between mb-5">
                         <button
                             onClick={onBack}
-                            className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                            className="inline-flex items-center gap-2 text-sm text-mm-text-secondary hover:text-mm-text-primary"
                         >
                             <ArrowLeft className="w-4 h-4" />
                             Back
                         </button>
-                        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-1">
+                        <div className="ui-tab-group">
                             <button
                                 onClick={() => setMode('sign-in')}
-                                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                                className={`px-3 py-1.5 text-sm ${
                                     mode === 'sign-in'
-                                        ? 'bg-blue-600 text-white'
-                                        : 'text-gray-600 dark:text-gray-300'
+                                        ? 'ui-tab ui-tab-active'
+                                        : 'ui-tab'
                                 }`}
                             >
                                 Sign in
                             </button>
                             <button
                                 onClick={() => setMode('sign-up')}
-                                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                                className={`px-3 py-1.5 text-sm ${
                                     mode === 'sign-up'
-                                        ? 'bg-blue-600 text-white'
-                                        : 'text-gray-600 dark:text-gray-300'
+                                        ? 'ui-tab ui-tab-active'
+                                        : 'ui-tab'
                                 }`}
                             >
                                 Sign up
@@ -70,7 +70,7 @@ const AuthPage = ({ onBack }) => {
                                 signUpUrl="#sign-up"
                                 appearance={{
                                     elements: {
-                                        card: 'shadow-none border border-gray-200 dark:border-gray-700',
+                                        card: 'shadow-none border border-mm-border bg-mm-surface',
                                     },
                                 }}
                             />
@@ -80,7 +80,7 @@ const AuthPage = ({ onBack }) => {
                                 signInUrl="#sign-in"
                                 appearance={{
                                     elements: {
-                                        card: 'shadow-none border border-gray-200 dark:border-gray-700',
+                                        card: 'shadow-none border border-mm-border bg-mm-surface',
                                     },
                                 }}
                             />
@@ -93,4 +93,3 @@ const AuthPage = ({ onBack }) => {
 };
 
 export default AuthPage;
-

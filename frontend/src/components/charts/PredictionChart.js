@@ -25,7 +25,12 @@ ChartJS.register(
 
 const PredictionChart = ({ predictionData }) => {
     if (!predictionData || !predictionData.predictions) return null;
-    
+    const isDarkMode = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    const chartTextColor = isDarkMode ? '#CBD5E1' : '#64748B';
+    const chartTitleColor = isDarkMode ? '#F1F5F9' : '#0F172A';
+    const chartGridColor = isDarkMode ? 'rgba(148, 163, 184, 0.18)' : 'rgba(148, 163, 184, 0.14)';
+    const tooltipBackground = isDarkMode ? '#020617' : '#0F172A';
+
     const formatDate = (dateStr) => {
         const [year, month, day] = dateStr.split('-');
         return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -43,14 +48,14 @@ const PredictionChart = ({ predictionData }) => {
             {
                 label: 'Predicted Price',
                 data: allPrices,
-                borderColor: 'rgb(147, 51, 234)', // Purple
-                backgroundColor: 'rgba(147, 51, 234, 0.1)',
+                borderColor: '#2563EB',
+                backgroundColor: 'rgba(37, 99, 235, 0.12)',
                 borderWidth: 3,
                 fill: true,
                 tension: 0.4,
                 pointRadius: 6,
                 pointHoverRadius: 8,
-                pointBackgroundColor: 'rgb(147, 51, 234)',
+                pointBackgroundColor: '#2563EB',
                 pointBorderColor: '#fff',
                 pointBorderWidth: 2,
             },
@@ -84,7 +89,7 @@ const PredictionChart = ({ predictionData }) => {
                         size: 12,
                         weight: 'bold'
                     },
-                    color: '#6b7280'
+                    color: chartTextColor
                 }
             },
             title: {
@@ -94,14 +99,14 @@ const PredictionChart = ({ predictionData }) => {
                     size: 18,
                     weight: 'bold'
                 },
-                color: '#1f2937',
+                color: chartTitleColor,
                 padding: {
                     top: 10,
                     bottom: 20
                 }
             },
             tooltip: {
-                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                backgroundColor: tooltipBackground,
                 padding: 12,
                 cornerRadius: 8,
                 titleFont: {
@@ -129,7 +134,7 @@ const PredictionChart = ({ predictionData }) => {
             y: {
                 beginAtZero: false,
                 grid: {
-                    color: 'rgba(0, 0, 0, 0.05)',
+                    color: chartGridColor,
                     drawBorder: false
                 },
                 ticks: {
@@ -139,7 +144,7 @@ const PredictionChart = ({ predictionData }) => {
                     font: {
                         size: 11
                     },
-                    color: '#6b7280'
+                    color: chartTextColor
                 }
             },
             x: {
@@ -151,7 +156,7 @@ const PredictionChart = ({ predictionData }) => {
                     font: {
                         size: 11
                     },
-                    color: '#6b7280',
+                    color: chartTextColor,
                     maxRotation: 45,
                     minRotation: 45
                 }
@@ -163,35 +168,26 @@ const PredictionChart = ({ predictionData }) => {
         }
     };
 
-    // Dark mode adjustments
-    if (document.documentElement.classList.contains('dark')) {
-        options.plugins.title.color = '#f9fafb';
-        options.plugins.legend.labels.color = '#d1d5db';
-        options.scales.y.ticks.color = '#d1d5db';
-        options.scales.x.ticks.color = '#d1d5db';
-        options.scales.y.grid.color = 'rgba(255, 255, 255, 0.1)';
-    }
-
     return (
-        <div className="mt-8 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg animate-fade-in transition-colors duration-200">
+        <div className="ui-panel mt-8 animate-fade-in p-6">
             <div style={{ height: '400px' }}>
                 <Line data={data} options={options} />
             </div>
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="mt-4 pt-4 border-t border-mm-border">
                 <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center space-x-4">
                         <div className="flex items-center">
                             <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
-                            <span className="text-gray-600 dark:text-gray-400">Current: ${predictionData.recentClose}</span>
+                            <span className="text-mm-text-secondary">Current: ${predictionData.recentClose}</span>
                         </div>
                         <div className="flex items-center">
-                            <div className="w-3 h-3 rounded-full bg-purple-600 mr-2"></div>
-                            <span className="text-gray-600 dark:text-gray-400">
+                            <div className="w-3 h-3 rounded-full bg-mm-accent-primary mr-2"></div>
+                            <span className="text-mm-text-secondary">
                                 7-Day Target: ${predictedPrices[predictedPrices.length - 1].toFixed(2)}
                             </span>
                         </div>
                     </div>
-                    <div className="text-gray-500 dark:text-gray-400">
+                    <div className="text-mm-text-tertiary">
                         Change: {((predictedPrices[predictedPrices.length - 1] - predictionData.recentClose) / predictionData.recentClose * 100).toFixed(2)}%
                     </div>
                 </div>

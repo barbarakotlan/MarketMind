@@ -48,6 +48,31 @@ const buildStock = (symbol, companyName) => ({
     financials: {},
 });
 
+const buildInternationalStock = (symbol, companyName, market = 'HK') => ({
+    symbol,
+    assetId: `${market}:${symbol}`,
+    market,
+    exchange: market === 'HK' ? 'HKEX' : 'SSE',
+    currency: market === 'HK' ? 'HKD' : 'CNY',
+    companyName,
+    price: 320,
+    change: 4.8,
+    changePercent: 1.52,
+    marketCap: 'N/A',
+    fundamentals: {
+        overview: `${companyName} international overview`,
+        market,
+        industry: 'Internet Services',
+        week52High: 350,
+        week52Low: 240,
+        day50MovingAverage: 310,
+        day200MovingAverage: 290,
+    },
+    financials: {},
+    relatedNews: buildNews(`${companyName} announcement`),
+    readOnlyResearchOnly: true,
+});
+
 const buildNews = (title) => ([
     {
         title,
@@ -203,7 +228,7 @@ describe('SearchPage', () => {
 
         render(<SearchPage />);
 
-        fireEvent.change(screen.getByPlaceholderText('e.g., AAPL or Apple'), { target: { value: 'nv' } });
+        fireEvent.change(screen.getByPlaceholderText('e.g., AAPL, HK:00700, CN:600519'), { target: { value: 'nv' } });
         fireEvent.mouseDown(await screen.findByText('NVDA'));
 
         expect(await screen.findByTestId('stock-data')).toHaveTextContent('NVIDIA (NVDA)');
@@ -257,5 +282,79 @@ describe('SearchPage', () => {
         fireEvent.click(screen.getByRole('button', { name: /MSFT/i }));
         expect(await screen.findByTestId('stock-data')).toHaveTextContent('Microsoft (MSFT)');
         expect(await screen.findByText('Microsoft latest')).toBeInTheDocument();
+    });
+
+    test('adds a side-by-side comparison bundle on the search page', async () => {
+        apiRequest.mockImplementation((url) => {
+            switch (url) {
+                case API_ENDPOINTS.SCREENER():
+                    return Promise.resolve({ gainers: [], losers: [], active: [] });
+                case API_ENDPOINTS.STOCK('NVDA'):
+                    return Promise.resolve(buildStock('NVDA', 'NVIDIA'));
+                case API_ENDPOINTS.CHART('NVDA', '14d'):
+                    return Promise.resolve({ label: 'NVDA chart' });
+                case API_ENDPOINTS.PREDICT_ENSEMBLE('NVDA'):
+                    return Promise.resolve({ label: 'NVDA prediction', recentClose: 100, recentPredicted: 110, predictions: [] });
+                case API_ENDPOINTS.NEWS('NVIDIA'):
+                    return Promise.resolve(buildNews('NVIDIA news'));
+                case API_ENDPOINTS.STOCK('AMD'):
+                    return Promise.resolve(buildStock('AMD', 'Advanced Micro Devices'));
+                case API_ENDPOINTS.CHART('AMD', '14d'):
+                    return Promise.resolve({ label: 'AMD chart' });
+                case API_ENDPOINTS.PREDICT_ENSEMBLE('AMD'):
+                    return Promise.resolve({ label: 'AMD prediction', recentClose: 100, recentPredicted: 108, predictions: [] });
+                case API_ENDPOINTS.NEWS('Advanced Micro Devices'):
+                    return Promise.resolve(buildNews('AMD news'));
+                default:
+                    if (url === API_ENDPOINTS.SEARCH_SYMBOLS('NV') || url === API_ENDPOINTS.SEARCH_SYMBOLS('NVD') || url === API_ENDPOINTS.SEARCH_SYMBOLS('NVDA') || url === API_ENDPOINTS.SEARCH_SYMBOLS('AM') || url === API_ENDPOINTS.SEARCH_SYMBOLS('AMD')) {
+                        return Promise.resolve([]);
+                    }
+                    throw new Error(`Unhandled API request: ${url}`);
+            }
+        });
+
+        render(<SearchPage />);
+
+        fireEvent.change(screen.getByPlaceholderText('e.g., AAPL, HK:00700, CN:600519'), { target: { value: 'NVDA' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+        expect(await screen.findByTestId('stock-data')).toHaveTextContent('NVIDIA (NVDA)');
+
+        fireEvent.change(screen.getByPlaceholderText('Compare (e.g., MSFT)'), { target: { value: 'AMD' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+        expect(await screen.findByText(/NVDA vs AMD/i)).toBeInTheDocument();
+        expect(await screen.findByText(/Advanced Micro Devices/i)).toBeInTheDocument();
+        expect(screen.getByTestId('stock-chart')).toHaveTextContent('AMD');
+    });
+
+    test('supports HK international search without triggering US-only prediction or comparison flows', async () => {
+        apiRequest.mockImplementation((url) => {
+            switch (url) {
+                case API_ENDPOINTS.SCREENER():
+                    return Promise.resolve({ gainers: [], losers: [], active: [] });
+                case API_ENDPOINTS.SEARCH_SYMBOLS('70', 'all'):
+                    return Promise.resolve([{ symbol: '00700', market: 'HK', assetId: 'HK:00700', name: 'Tencent Holdings', exchange: 'HKEX' }]);
+                case API_ENDPOINTS.STOCK('00700', 'HK'):
+                    return Promise.resolve(buildInternationalStock('00700', 'Tencent Holdings', 'HK'));
+                case API_ENDPOINTS.CHART('00700', '14d', 'HK'):
+                    return Promise.resolve({ label: 'Tencent chart' });
+                default:
+                    throw new Error(`Unhandled API request: ${url}`);
+            }
+        });
+
+        render(<SearchPage />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'All' }));
+        fireEvent.change(screen.getByPlaceholderText('e.g., AAPL, HK:00700, CN:600519'), { target: { value: '70' } });
+        fireEvent.mouseDown(await screen.findByText('Tencent Holdings'));
+
+        expect(await screen.findByTestId('stock-data')).toHaveTextContent('Tencent Holdings (00700)');
+        expect(screen.getByTestId('stock-chart')).toHaveTextContent('Tencent chart');
+        expect(await screen.findByText(/International research mode is read-only/i)).toBeInTheDocument();
+        expect(await screen.findByText('Tencent Holdings announcement')).toBeInTheDocument();
+        expect(screen.queryByTestId('prediction-preview')).not.toBeInTheDocument();
+        expect(apiRequest).not.toHaveBeenCalledWith(expect.stringContaining('/predict/ensemble/00700'));
     });
 });
