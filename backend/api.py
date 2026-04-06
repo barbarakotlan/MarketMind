@@ -41,6 +41,10 @@ except ImportError:
 # --- Imports ---
 from news_fetcher import get_general_news
 from models import create_dataset, ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict, gru_train, gru_predict, transformer_train, transformer_predict
+
+# In-memory cache for deep learning models: key = "MODEL:TICKER", value = (model, scaler_X, scaler_y, device, trained_at)
+_DL_MODEL_CACHE = {}
+_DL_CACHE_TTL_HOURS = 24
 from professional_evaluation import rolling_window_backtest
 try:
     from selective_prediction import (
@@ -1659,13 +1663,31 @@ def predict_stock(model, ticker):
         elif model == "XGBoost":
             preds = xgboost_predict(df, days_ahead=7)
         elif model == "LSTM":
-            lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+            cache_key = f"LSTM:{sanitized_ticker.upper()}"
+            cached = _DL_MODEL_CACHE.get(cache_key)
+            if cached and (datetime.now(timezone.utc) - cached[4]).total_seconds() < _DL_CACHE_TTL_HOURS * 3600:
+                lstm_model, scaler_X, scaler_y, device = cached[0], cached[1], cached[2], cached[3]
+            else:
+                lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+                _DL_MODEL_CACHE[cache_key] = (lstm_model, scaler_X, scaler_y, device, datetime.now(timezone.utc))
             preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device, days_ahead=7)
         elif model == "GRU":
-            gru_model, scaler_X, scaler_y, device = gru_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+            cache_key = f"GRU:{sanitized_ticker.upper()}"
+            cached = _DL_MODEL_CACHE.get(cache_key)
+            if cached and (datetime.now(timezone.utc) - cached[4]).total_seconds() < _DL_CACHE_TTL_HOURS * 3600:
+                gru_model, scaler_X, scaler_y, device = cached[0], cached[1], cached[2], cached[3]
+            else:
+                gru_model, scaler_X, scaler_y, device = gru_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+                _DL_MODEL_CACHE[cache_key] = (gru_model, scaler_X, scaler_y, device, datetime.now(timezone.utc))
             preds = gru_predict(df, gru_model, scaler_X, scaler_y, device, days_ahead=7)
         elif model == "Transformer":
-            trans_model, scaler_X, scaler_y, device = transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
+            cache_key = f"Transformer:{sanitized_ticker.upper()}"
+            cached = _DL_MODEL_CACHE.get(cache_key)
+            if cached and (datetime.now(timezone.utc) - cached[4]).total_seconds() < _DL_CACHE_TTL_HOURS * 3600:
+                trans_model, scaler_X, scaler_y, device = cached[0], cached[1], cached[2], cached[3]
+            else:
+                trans_model, scaler_X, scaler_y, device = transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
+                _DL_MODEL_CACHE[cache_key] = (trans_model, scaler_X, scaler_y, device, datetime.now(timezone.utc))
             preds = transformer_predict(df, trans_model, scaler_X, scaler_y, device)
         else:
             return jsonify({"error": "Unknown model"}), 400
