@@ -1,0 +1,102 @@
+symbol,name,sector,index_membership
+AAPL,Apple Inc.,Technology,SP500|NASDAQ100
+MSFT,Microsoft Corporation,Technology,SP500|NASDAQ100|DOW30
+NVDA,NVIDIA Corporation,Technology,SP500|NASDAQ100
+AMZN,Amazon.com Inc.,Consumer Discretionary,SP500|NASDAQ100
+GOOGL,Alphabet Inc. Class A,Communication Services,SP500|NASDAQ100
+GOOG,Alphabet Inc. Class C,Communication Services,SP500|NASDAQ100
+META,Meta Platforms Inc.,Communication Services,SP500|NASDAQ100
+TSLA,Tesla Inc.,Consumer Discretionary,SP500|NASDAQ100
+AVGO,Broadcom Inc.,Technology,SP500|NASDAQ100
+NFLX,Netflix Inc.,Communication Services,SP500|NASDAQ100
+ADBE,Adobe Inc.,Technology,SP500|NASDAQ100
+AMD,Advanced Micro Devices Inc.,Technology,SP500|NASDAQ100
+CSCO,Cisco Systems Inc.,Technology,SP500|NASDAQ100|DOW30
+PEP,PepsiCo Inc.,Consumer Staples,SP500|NASDAQ100
+COST,Costco Wholesale Corporation,Consumer Staples,SP500|NASDAQ100
+TMUS,T-Mobile US Inc.,Communication Services,SP500|NASDAQ100
+QCOM,QUALCOMM Incorporated,Technology,SP500|NASDAQ100
+TXN,Texas Instruments Incorporated,Technology,SP500|NASDAQ100
+AMGN,Amgen Inc.,Health Care,SP500|NASDAQ100|DOW30
+INTU,Intuit Inc.,Technology,SP500|NASDAQ100
+INTC,Intel Corporation,Technology,SP500|NASDAQ100|DOW30
+HON,Honeywell International Inc.,Industrials,SP500|NASDAQ100|DOW30
+AMAT,Applied Materials Inc.,Technology,SP500|NASDAQ100
+BKNG,Booking Holdings Inc.,Consumer Discretionary,SP500|NASDAQ100
+CMCSA,Comcast Corporation,Communication Services,SP500|NASDAQ100
+GILD,Gilead Sciences Inc.,Health Care,SP500|NASDAQ100
+ADP,Automatic Data Processing Inc.,Industrials,SP500|NASDAQ100
+SBUX,Starbucks Corporation,Consumer Discretionary,SP500|NASDAQ100
+MDLZ,Mondelez International Inc.,Consumer Staples,SP500|NASDAQ100
+ISRG,Intuitive Surgical Inc.,Health Care,SP500|NASDAQ100
+ADI,Analog Devices Inc.,Technology,SP500|NASDAQ100
+PANW,Palo Alto Networks Inc.,Technology,SP500|NASDAQ100
+MU,Micron Technology Inc.,Technology,SP500|NASDAQ100
+LRCX,Lam Research Corporation,Technology,SP500|NASDAQ100
+KLAC,KLA Corporation,Technology,SP500|NASDAQ100
+SNPS,Synopsys Inc.,Technology,SP500|NASDAQ100
+CRWD,CrowdStrike Holdings Inc.,Technology,NASDAQ100
+MAR,Marriott International Inc.,Consumer Discretionary,SP500|NASDAQ100
+MELI,MercadoLibre Inc.,Consumer Discretionary,NASDAQ100
+ABNB,Airbnb Inc.,Consumer Discretionary,NASDAQ100
+REGN,Regeneron Pharmaceuticals Inc.,Health Care,SP500|NASDAQ100
+PYPL,PayPal Holdings Inc.,Financials,SP500|NASDAQ100
+CDNS,Cadence Design Systems Inc.,Technology,SP500|NASDAQ100
+CEG,Constellation Energy Corporation,Utilities,SP500|NASDAQ100
+ORLY,O'Reilly Automotive Inc.,Consumer Discretionary,SP500|NASDAQ100
+CSX,CSX Corporation,Industrials,SP500|NASDAQ100
+MNST,Monster Beverage Corporation,Consumer Staples,SP500|NASDAQ100
+AEP,American Electric Power Company Inc.,Utilities,SP500|NASDAQ100
+VRTX,Vertex Pharmaceuticals Incorporated,Health Care,SP500|NASDAQ100
+DXCM,DexCom Inc.,Health Care,NASDAQ100
+CTAS,Cintas Corporation,Industrials,SP500|NASDAQ100
+FTNT,Fortinet Inc.,Technology,SP500|NASDAQ100
+MSTR,MicroStrategy Incorporated,Technology,NASDAQ100
+ROP,Roper Technologies Inc.,Industrials,SP500
+DE,Deere & Company,Industrials,SP500
+XOM,Exxon Mobil Corporation,Energy,SP500
+CVX,Chevron Corporation,Energy,SP500|DOW30
+BRK.B,Berkshire Hathaway Inc. Class B,Financials,SP500
+JPM,JPMorgan Chase & Co.,Financials,SP500|DOW30
+BAC,Bank of America Corporation,Financials,SP500
+WFC,Wells Fargo & Company,Financials,SP500
+GS,Goldman Sachs Group Inc.,Financials,SP500|DOW30
+AXP,American Express Company,Financials,SP500|DOW30
+V,Visa Inc.,Financials,SP500|DOW30
+MA,Mastercard Incorporated,Financials,SP500
+UNH,UnitedHealth Group Incorporated,Health Care,SP500|DOW30
+JNJ,Johnson & Johnson,Health Care,SP500|DOW30
+MRK,Merck & Co. Inc.,Health Care,SP500|DOW30
+LLY,Eli Lilly and Company,Health Care,SP500
+PFE,Pfizer Inc.,Health Care,SP500
+ABBV,AbbVie Inc.,Health Care,SP500
+PG,Procter & Gamble Company,Consumer Staples,SP500|DOW30
+KO,Coca-Cola Company,Consumer Staples,SP500|DOW30
+WMT,Walmart Inc.,Consumer Staples,SP500|DOW30
+HD,Home Depot Inc.,Consumer Discretionary,SP500|DOW30
+MCD,McDonald's Corporation,Consumer Discretionary,SP500|DOW30
+NKE,NIKE Inc. Class B,Consumer Discretionary,SP500|DOW30
+DIS,Walt Disney Company,Communication Services,SP500|DOW30
+IBM,International Business Machines Corporation,Technology,SP500|DOW30
+CRM,Salesforce Inc.,Technology,SP500|DOW30
+CAT,Caterpillar Inc.,Industrials,SP500|DOW30
+BA,Boeing Company,Industrials,SP500|DOW30
+GE,GE Aerospace,Industrials,SP500
+RTX,RTX Corporation,Industrials,SP500
+UPS,United Parcel Service Inc. Class B,Industrials,SP500
+LOW,Lowe's Companies Inc.,Consumer Discretionary,SP500
+T,AT&T Inc.,Communication Services,SP500
+VZ,Verizon Communications Inc.,Communication Services,SP500
+PLTR,Palantir Technologies Inc.,Technology,NASDAQ100
+SHOP,Shopify Inc. Class A,Technology,NASDAQ100
+DDOG,Datadog Inc.,Technology,NASDAQ100
+TEAM,Atlassian Corporation Class A,Technology,NASDAQ100
+ANET,Arista Networks Inc.,Technology,SP500
+NOW,ServiceNow Inc.,Technology,SP500
+UBER,Uber Technologies Inc.,Industrials,SP500
+PGR,Progressive Corporation,Financials,SP500
+C,Citigroup Inc.,Financials,SP500
+TMO,Thermo Fisher Scientific Inc.,Health Care,SP500
+DHR,Danaher Corporation,Health Care,SP500
+BLK,BlackRock Inc.,Financials,SP500
+SCHW,Charles Schwab Corporation,Financials,SP500
