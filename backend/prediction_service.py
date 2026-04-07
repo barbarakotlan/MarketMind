@@ -12,6 +12,7 @@ import shap
 from mlforecast import MLForecast
 from mlforecast.lag_transforms import RollingMean, RollingStd
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import (
     mean_absolute_error,
@@ -240,6 +241,12 @@ def _build_ml_models() -> Dict[str, Any]:
             random_state=42,
             n_jobs=-1,
         ),
+        "gradient_boosting": GradientBoostingRegressor(
+            n_estimators=200,
+            max_depth=4,
+            learning_rate=0.05,
+            random_state=42
+        )
     }
     if XGBOOST_AVAILABLE:
         models["xgboost"] = xgb.XGBRegressor(
@@ -465,6 +472,18 @@ def xgboost_predict(df: pd.DataFrame, days_ahead: int = PREDICTION_HORIZON, look
     )
     return result["predictions"].get("xgboost")
 
+def gradient_boosting_predict(df: pd.DataFrame, days_ahead: int = PREDICTION_HORIZON, lookback: int = 14) -> Optional[np.ndarray]:
+    _ = lookback
+    ohlcv = _coerce_ohlcv_from_input(df)
+    if ohlcv.empty or len(ohlcv) < MIN_HISTORY_ROWS:
+        return None
+    result = _forecast_ml_models(
+        ohlcv,
+        model_names=("gradient_boosting",),
+        horizon=days_ahead,
+        ticker=str(df.attrs.get("ticker") or "AAPL"),
+    )
+    return result["predictions"].get("gradient_boosting")
 
 def ensemble_predict(df: pd.DataFrame, days_ahead: int = PREDICTION_HORIZON) -> Tuple[Optional[np.ndarray], Dict[str, np.ndarray]]:
     ohlcv = _coerce_ohlcv_from_input(df)
