@@ -667,7 +667,7 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
             });
             alert(result.message || `${tickerToAdd} added to watchlist.`);
         } catch (err) {
-            alert('Failed to add stock to watchlist. Is the server running?');
+            alert(err.message || 'Failed to add stock to watchlist. Is the server running?');
         }
     };
 
