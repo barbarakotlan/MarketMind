@@ -121,27 +121,33 @@ def deterministic_data_shim():
                 ],
             }
 
-    def fake_download(tickers, period: str = "1mo", interval: Optional[str] = None):
+    def fake_download(tickers, period: str = "1mo", interval: Optional[str] = None, **_kwargs):
         tickers_list = tickers if isinstance(tickers, list) else [tickers]
-        dates = pd.date_range("2026-03-01", periods=2, freq="D")
+        periods = 180
+        dates = pd.date_range("2025-01-01", periods=periods, freq="D")
 
         if len(tickers_list) == 1:
+            close_values = np.linspace(99.0, 99.0 + periods - 1, periods)
             return pd.DataFrame(
                 {
-                    "Close": [99.0, 100.0],
-                    "Open": [98.0, 99.0],
-                    "High": [100.0, 101.0],
-                    "Low": [97.5, 98.5],
-                    "Volume": [1000, 1200],
+                    "Close": close_values,
+                    "Open": close_values - 1.0,
+                    "High": close_values + 1.0,
+                    "Low": close_values - 1.5,
+                    "Volume": np.linspace(1000, 1000 + (periods - 1) * 10, periods),
                 },
                 index=dates,
             )
 
-        close_values = {
-            ticker: [99.0 + idx, 100.0 + idx]
-            for idx, ticker in enumerate(tickers_list)
-        }
-        return pd.concat({"Close": pd.DataFrame(close_values, index=dates)}, axis=1)
+        columns = {}
+        for idx, ticker in enumerate(tickers_list):
+            close_values = np.linspace(99.0 + idx, 99.0 + idx + periods - 1, periods)
+            columns[("Open", ticker)] = close_values - 1.0
+            columns[("High", ticker)] = close_values + 1.0
+            columns[("Low", ticker)] = close_values - 1.5
+            columns[("Close", ticker)] = close_values
+            columns[("Volume", ticker)] = np.linspace(1000 + idx * 20, 1000 + idx * 20 + (periods - 1) * 10, periods)
+        return pd.DataFrame(columns, index=dates)
 
     def fake_predict_stock(ticker: str):
         predictions = [
@@ -259,6 +265,44 @@ def _run_journey(client, *, results: List[Dict[str, Any]]) -> None:
 
     news_resp = client.get("/news?q=Apple")
     _expect_success(results, phase="week_1_research", name="news_query", response=news_resp, provider_dependent=True)
+
+    screener_resp = client.get("/screener")
+    screener_ok, screener_payload = _expect_success(
+        results,
+        phase="week_1_research",
+        name="screener_movers",
+        response=screener_resp,
+        provider_dependent=True,
+    )
+    if screener_ok and isinstance(screener_payload, dict):
+        has_movers = all(isinstance(screener_payload.get(key), list) for key in ("gainers", "losers", "active"))
+        _record_result(
+            results,
+            phase="week_1_research",
+            name="screener_movers_verify",
+            status="passed" if has_movers else "failed",
+            classification="pass" if has_movers else "product_bug",
+            details={"counts": {key: len(screener_payload.get(key, [])) for key in ("gainers", "losers", "active")}},
+        )
+
+    screener_scan_resp = client.get("/screener/scan?preset=momentum_leaders&limit=5")
+    screener_scan_ok, screener_scan_payload = _expect_success(
+        results,
+        phase="week_1_research",
+        name="screener_scan",
+        response=screener_scan_resp,
+        provider_dependent=True,
+    )
+    if screener_scan_ok and isinstance(screener_scan_payload, dict):
+        has_scan_shape = isinstance(screener_scan_payload.get("rows"), list) and isinstance(screener_scan_payload.get("meta"), dict)
+        _record_result(
+            results,
+            phase="week_1_research",
+            name="screener_scan_verify",
+            status="passed" if has_scan_shape else "failed",
+            classification="pass" if has_scan_shape else "product_bug",
+            details={"rowCount": len(screener_scan_payload.get("rows", []))},
+        )
 
     add_watchlist = client.post("/watchlist/MSFT", headers=_auth_headers())
     watchlist_ok, watchlist_payload = _expect_success(

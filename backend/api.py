@@ -94,6 +94,7 @@ from prediction_market_analysis import (
 import akshare_service
 import exchange_session_service
 import portfolio_optimization_service
+import screener_query_service
 import sec_filings_service
 import prediction_service
 from asset_identity import parse_asset_reference
@@ -2130,11 +2131,34 @@ def get_sec_filing_detail(ticker, accession_number):
 @app.route('/screener')
 def get_screener():
     return reference_data_handlers.get_screener_handler(
-        openbb_available=OPENBB_AVAILABLE,
-        obb_module=obb if OPENBB_AVAILABLE else None,
+        base_dir=BASE_DIR,
+        yf_module=yf,
         jsonify_fn=jsonify,
         logger=logger,
-        obb_to_float_fn=_obb_to_float,
+        screener_query_service_module=screener_query_service,
+    )
+
+
+@app.route('/screener/presets')
+def get_screener_presets():
+    return reference_data_handlers.get_screener_presets_handler(
+        base_dir=BASE_DIR,
+        yf_module=yf,
+        jsonify_fn=jsonify,
+        logger=logger,
+        screener_query_service_module=screener_query_service,
+    )
+
+
+@app.route('/screener/scan')
+def get_screener_scan():
+    return reference_data_handlers.get_screener_scan_handler(
+        base_dir=BASE_DIR,
+        yf_module=yf,
+        request_obj=request,
+        jsonify_fn=jsonify,
+        logger=logger,
+        screener_query_service_module=screener_query_service,
     )
 
 
