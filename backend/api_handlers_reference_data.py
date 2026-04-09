@@ -450,42 +450,83 @@ def get_sec_intelligence_handler(
 
 def get_screener_handler(
     *,
-    openbb_available,
-    obb_module,
+    base_dir,
+    yf_module,
     jsonify_fn,
     logger,
-    obb_to_float_fn,
+    screener_query_service_module,
 ):
-    if not openbb_available:
-        return jsonify_fn({"error": "OpenBB not installed on this server."}), 503
-
-    def fmt(results):
-        formatted = []
-        for result in results:
-            formatted.append(
-                {
-                    "symbol": result.symbol,
-                    "name": result.name or "",
-                    "price": obb_to_float_fn(result.price),
-                    "change": obb_to_float_fn(result.change),
-                    "percent_change": obb_to_float_fn(result.percent_change),
-                    "market_cap": obb_to_float_fn(result.market_cap),
-                    "volume": int(result.volume) if result.volume else None,
-                    "pe_forward": obb_to_float_fn(result.pe_forward),
-                    "year_high": obb_to_float_fn(result.year_high),
-                    "year_low": obb_to_float_fn(result.year_low),
-                    "eps_ttm": obb_to_float_fn(result.eps_ttm),
-                }
-            )
-        return formatted
-
     try:
-        gainers = fmt(obb_module.equity.discovery.gainers(provider="yfinance").results)
-        losers = fmt(obb_module.equity.discovery.losers(provider="yfinance").results)
-        active = fmt(obb_module.equity.discovery.active(provider="yfinance").results)
-        return jsonify_fn({"gainers": gainers, "losers": losers, "active": active})
+        payload = screener_query_service_module.movers_payload(
+            base_dir=base_dir,
+            yf_module=yf_module,
+            logger=logger,
+            limit=8,
+        )
+        return jsonify_fn(payload)
+    except screener_query_service_module.screener_snapshot_service.ScreenerSnapshotError as exc:
+        return jsonify_fn({"error": str(exc)}), 503
     except Exception as exc:
         logger.error(f"Screener error: {exc}")
+        return jsonify_fn({"error": str(exc)}), 500
+
+
+def get_screener_presets_handler(
+    *,
+    base_dir,
+    yf_module,
+    jsonify_fn,
+    logger,
+    screener_query_service_module,
+):
+    try:
+        screener_query_service_module.screener_snapshot_service.ensure_snapshot(
+            base_dir=base_dir,
+            yf_module=yf_module,
+            logger=logger,
+        )
+        sectors = screener_query_service_module.screener_snapshot_service.available_sectors(base_dir=base_dir)
+        return jsonify_fn(screener_query_service_module.list_presets(sectors=sectors))
+    except screener_query_service_module.screener_snapshot_service.ScreenerSnapshotError as exc:
+        return jsonify_fn({"error": str(exc)}), 503
+    except Exception as exc:
+        logger.error(f"Screener presets error: {exc}")
+        return jsonify_fn({"error": str(exc)}), 500
+
+
+def get_screener_scan_handler(
+    *,
+    base_dir,
+    yf_module,
+    request_obj,
+    jsonify_fn,
+    logger,
+    screener_query_service_module,
+):
+    try:
+        payload = screener_query_service_module.scan(
+            base_dir=base_dir,
+            yf_module=yf_module,
+            logger=logger,
+            preset=request_obj.args.get("preset", "gainers"),
+            filters={
+                "query": request_obj.args.get("query", ""),
+                "price_min": request_obj.args.get("price_min"),
+                "price_max": request_obj.args.get("price_max"),
+                "market_cap_min": request_obj.args.get("market_cap_min"),
+                "avg_dollar_volume_min": request_obj.args.get("avg_dollar_volume_min"),
+                "sector": request_obj.args.get("sector", ""),
+            },
+            sort=request_obj.args.get("sort"),
+            direction=request_obj.args.get("dir"),
+            limit=request_obj.args.get("limit", 50),
+            offset=request_obj.args.get("offset", 0),
+        )
+        return jsonify_fn(payload)
+    except screener_query_service_module.screener_snapshot_service.ScreenerSnapshotError as exc:
+        return jsonify_fn({"error": str(exc)}), 503
+    except Exception as exc:
+        logger.error(f"Screener scan error: {exc}")
         return jsonify_fn({"error": str(exc)}), 500
 
 
