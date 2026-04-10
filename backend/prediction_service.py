@@ -58,11 +58,12 @@ PRODUCTION_ENSEMBLE_MODELS = (
     "random_forest",
     "xgboost",
     "lstm",
-    "transformer"
+    "transformer",
+    "gradient_boosting",
 )
 
 BENCHMARK_MODELS = ("naive", "seasonal_naive_5", "auto_arima")
-ML_MODELS = ("linear_regression", "random_forest", "xgboost", "lstm", "transformer")
+ML_MODELS = ("linear_regression", "random_forest", "xgboost", "lstm", "transformer", "gradient_boosting")
 
 _CACHE: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
 

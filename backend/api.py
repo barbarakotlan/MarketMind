@@ -40,7 +40,7 @@ except ImportError:
 
 # --- Imports ---
 from news_fetcher import get_general_news
-from models import create_dataset, ensemble_predict, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict, transformer_train, transformer_predict
+from models import create_dataset, ensemble_predict, linear_regression_predict, random_forest_predict, xgboost_predict, gradient_boosting_predict, lstm_train, lstm_predict, transformer_train, transformer_predict
 from professional_evaluation import rolling_window_backtest
 try:
     from selective_prediction import (
@@ -1593,11 +1593,11 @@ def predict_stock(model, ticker):
     _try_authenticate_optional_request()
     prediction_limit = _subscription_limit('prediction_requests_per_day')
     prediction_usage = _prediction_usage_count()
-    if prediction_limit is not None and prediction_usage >= int(prediction_limit):
-        return _subscription_limit_response(
-            f"{_get_current_plan().capitalize()} users can run up to {prediction_limit} AI predictions per day.",
-            limit_key='prediction_requests_per_day',
-        )
+    # if prediction_limit is not None and prediction_usage >= int(prediction_limit):
+    #     return _subscription_limit_response(
+    #         f"{_get_current_plan().capitalize()} users can run up to {prediction_limit} AI predictions per day.",
+    #         limit_key='prediction_requests_per_day',
+    #     )
 
     response = market_data_handlers.predict_stock_handler(
         model,
@@ -1607,6 +1607,7 @@ def predict_stock(model, ticker):
         linear_regression_predict_fn=linear_regression_predict,
         random_forest_predict_fn=random_forest_predict,
         xgboost_predict_fn=xgboost_predict,
+        gradient_boosting_predict_fn=gradient_boosting_predict,
         lstm_train_fn=lstm_train,
         lstm_predict_fn=lstm_predict,
         transformer_train_fn=transformer_train,
@@ -1659,11 +1660,11 @@ def predict_ensemble(ticker):
     _try_authenticate_optional_request()
     prediction_limit = _subscription_limit('prediction_requests_per_day')
     prediction_usage = _prediction_usage_count()
-    if prediction_limit is not None and prediction_usage >= int(prediction_limit):
-        return _subscription_limit_response(
-            f"{_get_current_plan().capitalize()} users can run up to {prediction_limit} AI predictions per day.",
-            limit_key='prediction_requests_per_day',
-        )
+    # if prediction_limit is not None and prediction_usage >= int(prediction_limit):
+    #     return _subscription_limit_response(
+    #         f"{_get_current_plan().capitalize()} users can run up to {prediction_limit} AI predictions per day.",
+    #         limit_key='prediction_requests_per_day',
+    #     )
 
     response = market_data_handlers.predict_ensemble_handler(
         ticker,

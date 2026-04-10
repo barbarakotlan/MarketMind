@@ -167,6 +167,9 @@ const PredictionsPage = ({ initialTicker }) => {
                                 <button type="button" onClick={() => setUseModel('Transformer')} className={modelButtonClass(useModel === 'Transformer')}>
                                     Transformer
                                 </button>
+                                <button type="button" onClick={() => setUseModel('GradientBoosting')} className={modelButtonClass(useModel === 'GradientBoosting')}>
+                                    Gradient Boosting
+                                </button>
                             </div>
                         )}
                     </div>

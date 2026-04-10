@@ -219,7 +219,8 @@ def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_
             total_loss += loss.item()
 
         if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f}")
+            # print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f}")
+            pass
 
     return model, scaler_X, scaler_y, device
 
@@ -360,7 +361,8 @@ def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhe
             total_loss += loss.item()
 
         if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f}")
+            # print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f}")
+            pass
 
     return model, scaler_X, scaler_y, device
 
