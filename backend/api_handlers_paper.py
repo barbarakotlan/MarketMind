@@ -180,13 +180,8 @@ def buy_stock_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
-    selector_gate_fn,
     jsonify_fn,
     yf_module,
-    to_bool_fn,
-    selective_modes,
-    selector_source_requestable,
-    selective_disabled_statuses,
     log_api_error_fn,
     logger,
     datetime_cls,
@@ -199,22 +194,6 @@ def buy_stock_handler(
         shares = float(data.get('shares', 0))
         if shares <= 0:
             return jsonify_fn({'error': 'Shares must be positive'}), 400
-        enforce_selector = to_bool_fn(data.get('enforce_selector', False))
-        requested_mode = str(data.get('abstain_mode', 'conservative')).strip().lower() if enforce_selector else 'none'
-        if requested_mode not in selective_modes:
-            requested_mode = 'conservative' if enforce_selector else 'none'
-        selector_source_requested = str(data.get('selector_source', 'auto')).strip().lower() if enforce_selector else 'auto'
-        if selector_source_requested not in selector_source_requestable:
-            selector_source_requested = 'auto'
-        if enforce_selector:
-            selector_gate = selector_gate_fn(ticker, requested_mode, selector_source_requested)
-            mode_disabled = selector_gate.get('selector_status') in selective_disabled_statuses
-            if selector_gate.get('abstain') or mode_disabled:
-                return jsonify_fn({
-                    'error': 'Trade blocked by selective prediction gate',
-                    'reason': selector_gate.get('abstain_reason') or selector_gate.get('selector_status'),
-                    'selector_gate': selector_gate,
-                }), 409
         stock = yf_module.Ticker(ticker)
         info = stock.info
         price = info.get('regularMarketPrice')
@@ -260,13 +239,8 @@ def sell_stock_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
-    selector_gate_fn,
     jsonify_fn,
     yf_module,
-    to_bool_fn,
-    selective_modes,
-    selector_source_requestable,
-    selective_disabled_statuses,
     log_api_error_fn,
     logger,
     datetime_cls,
@@ -279,22 +253,6 @@ def sell_stock_handler(
         shares = float(data.get('shares', 0))
         if shares <= 0:
             return jsonify_fn({'error': 'Shares must be positive'}), 400
-        enforce_selector = to_bool_fn(data.get('enforce_selector', False))
-        requested_mode = str(data.get('abstain_mode', 'conservative')).strip().lower() if enforce_selector else 'none'
-        if requested_mode not in selective_modes:
-            requested_mode = 'conservative' if enforce_selector else 'none'
-        selector_source_requested = str(data.get('selector_source', 'auto')).strip().lower() if enforce_selector else 'auto'
-        if selector_source_requested not in selector_source_requestable:
-            selector_source_requested = 'auto'
-        if enforce_selector:
-            selector_gate = selector_gate_fn(ticker, requested_mode, selector_source_requested)
-            mode_disabled = selector_gate.get('selector_status') in selective_disabled_statuses
-            if selector_gate.get('abstain') or mode_disabled:
-                return jsonify_fn({
-                    'error': 'Trade blocked by selective prediction gate',
-                    'reason': selector_gate.get('abstain_reason') or selector_gate.get('selector_status'),
-                    'selector_gate': selector_gate,
-                }), 409
         pos = portfolio['positions'].get(ticker)
         if not pos or pos['shares'] < shares:
             return jsonify_fn({'error': f'Not enough shares. You have {pos.get("shares", 0)}, trying to sell {shares}'}), 400
