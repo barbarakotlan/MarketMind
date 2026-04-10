@@ -1558,11 +1558,11 @@ def predict_stock(model, ticker):
     _try_authenticate_optional_request()
     prediction_limit = _subscription_limit('prediction_requests_per_day')
     prediction_usage = _prediction_usage_count()
-    # if prediction_limit is not None and prediction_usage >= int(prediction_limit):
-    #     return _subscription_limit_response(
-    #         f"{_get_current_plan().capitalize()} users can run up to {prediction_limit} AI predictions per day.",
-    #         limit_key='prediction_requests_per_day',
-    #     )
+    if prediction_limit is not None and prediction_usage >= int(prediction_limit):
+        return _subscription_limit_response(
+            f"{_get_current_plan().capitalize()} users can run up to {prediction_limit} AI predictions per day.",
+            limit_key='prediction_requests_per_day',
+        )
 
     response = market_data_handlers.predict_stock_handler(
         model,
@@ -1614,11 +1614,11 @@ def predict_ensemble(ticker):
     _try_authenticate_optional_request()
     prediction_limit = _subscription_limit('prediction_requests_per_day')
     prediction_usage = _prediction_usage_count()
-    # if prediction_limit is not None and prediction_usage >= int(prediction_limit):
-    #     return _subscription_limit_response(
-    #         f"{_get_current_plan().capitalize()} users can run up to {prediction_limit} AI predictions per day.",
-    #         limit_key='prediction_requests_per_day',
-    #     )
+    if prediction_limit is not None and prediction_usage >= int(prediction_limit):
+        return _subscription_limit_response(
+            f"{_get_current_plan().capitalize()} users can run up to {prediction_limit} AI predictions per day.",
+            limit_key='prediction_requests_per_day',
+        )
 
     response = market_data_handlers.predict_ensemble_handler(
         ticker,
