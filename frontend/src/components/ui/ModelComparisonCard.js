@@ -11,7 +11,8 @@ const ModelComparisonCard = ({ modelBreakdown, modelsUsed, confidence }) => {
         'seasonal_naive_5': 'Seasonal Naive (5)',
         'xgboost': 'XGBoost',
         'lstm': 'LSTM',
-        'transformer': 'Transformer'
+        'transformer': 'Transformer',
+        'gradient_boosting': 'Gradient Boosting'
     };
 
     // Calculate average prediction for each model

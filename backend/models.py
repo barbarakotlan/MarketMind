@@ -97,9 +97,42 @@ def random_forest_predict(df, days_ahead=7, lookback=14):
 def xgboost_predict(df, days_ahead=7, lookback=14):
     return prediction_service.xgboost_predict(df, days_ahead=days_ahead, lookback=lookback)
 
+def gradient_boosting_predict(df, days_ahead=7, lookback=14):
+    return prediction_service.gradient_boosting_predict(df, days_ahead=days_ahead, lookback=lookback)
 
-def ensemble_predict(df, days_ahead=7):
-    return prediction_service.ensemble_predict(df, days_ahead=days_ahead)
+def ensemble_predict(df, days_ahead=7, lookback=14, seq_len=30):
+    """
+    Extended ensemble that includes LSTM and Transformer
+    alongside prediction_service's ensemble
+    """
+    # Get prediction_service ensemble (arima, lr, rf, xgb)
+    base_ensemble, base_breakdown = prediction_service.ensemble_predict(df, days_ahead=days_ahead)
+
+    # Train and run LSTM
+    lstm_model, scaler_X, scaler_y, device = lstm_train(
+        df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead
+    )
+    lstm_pred = lstm_predict(df, lstm_model, scaler_X, scaler_y, device,
+                             lookback=lookback, seq_len=seq_len)
+
+    # Train and run Transformer
+    tf_model, scaler_X, scaler_y, device = transformer_train(
+        df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead
+    )
+    tf_pred = transformer_predict(df, tf_model, scaler_X, scaler_y, device,
+                                  lookback=lookback, seq_len=seq_len)
+
+    # Merge all predictions
+    all_predictions = dict(base_breakdown)
+    if lstm_pred is not None:
+        all_predictions['lstm'] = lstm_pred
+    if tf_pred is not None:
+        all_predictions['transformer'] = tf_pred
+
+    # Recompute ensemble average across everything
+    full_ensemble = np.mean(list(all_predictions.values()), axis=0)
+
+    return full_ensemble, all_predictions
 
 
 def calculate_metrics(actual, predicted):
@@ -186,7 +219,8 @@ def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_
             total_loss += loss.item()
 
         if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f}")
+            # print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f}")
+            pass
 
     return model, scaler_X, scaler_y, device
 
@@ -327,7 +361,8 @@ def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhe
             total_loss += loss.item()
 
         if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f}")
+            # print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f}")
+            pass
 
     return model, scaler_X, scaler_y, device
 
@@ -358,68 +393,58 @@ def transformer_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_
         print(f"Transformer error: {e}")
         return None
 
-# Main for Testing
-if __name__ == "__main__":
-    # Test the models
-    ticker = 'AAPL'
-    print(f"Testing ensemble model for {ticker}...")
 
-    # Download data
+# Main for testing individual models and the full ensemble
+if __name__ == "__main__":
+    ticker = 'AAPL'
     df = create_dataset(ticker, period="2y")
 
-    # Get predictions
-    print("\nPredictions:")
-    print("\nIndividual models:")
-    linear_reg = linear_regression_predict(df, days_ahead=7)
-    random_forest = random_forest_predict(df, days_ahead=7)
-    xgboost = xgboost_predict(df, days_ahead=7)
-    print(f"Linear Regression: {linear_reg}")
-    print(f"Random Forest: {random_forest}")
-    if XGBOOST_AVAILABLE:
-        print(f"XGBoost: {xgboost}")
-
-
-    # LSTM Train
-    print("\nTraining LSTM model...")
+    days_ahead = 7
     lookback = 14
     seq_len = 30
-    days_ahead = 7
-    model, scaler_X, scaler_y, device = lstm_train(df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
 
-    # Predict
-    lstm_pred = lstm_predict(df, model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
+    # Individual quick models (no training needed)
+    print("\nIndividual Models:")
+    future_dates = prediction_service.get_future_prediction_dates(df, days_ahead)
 
-    # Output
+    for name, pred in [
+        ("Linear Regression", linear_regression_predict(df, days_ahead)),
+        ("Random Forest",     random_forest_predict(df, days_ahead)),
+        ("XGBoost",           xgboost_predict(df, days_ahead)),
+        ("Gradient Boosting", gradient_boosting_predict(df, days_ahead)),
+    ]:
+        if pred is not None:
+            print(f"\n{name}:")
+            for date, price in zip(future_dates, pred):
+                print(f"  {date.strftime('%Y-%m-%d')} → ${price:.2f}")
+
+    # Deep learning models
+    print("\nTraining LSTM...")
+    lstm_model, scaler_X, scaler_y, device = lstm_train(
+        df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead
+    )
+    lstm_pred = lstm_predict(df, lstm_model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
     if lstm_pred is not None:
-        print("\nPredicted prices:")
-        for i, price in enumerate(lstm_pred):
-            print(f"Day {i+1} → ${price:.2f}")
+        print("\nLSTM:")
+        for date, price in zip(future_dates, lstm_pred):
+            print(f"  {date.strftime('%Y-%m-%d')} → ${price:.2f}")
 
+    print("\nTraining Transformer...")
+    tf_model, scaler_X, scaler_y, device = transformer_train( df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead
+    )
+    tf_pred = transformer_predict(df, tf_model, scaler_X, scaler_y, device,lookback=lookback, seq_len=seq_len)
+    if tf_pred is not None:
+        print("\nTransformer:")
+        for date, price in zip(future_dates, tf_pred):
+            print(f"  {date.strftime('%Y-%m-%d')} → ${price:.2f}")
 
-    # Transformer Train
-    print("\nTraining Transformer model...")
-    model, scaler_X, scaler_y, device = transformer_train(df, lookback=lookback, seq_len=seq_len, days_ahead=days_ahead, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
+    # Full ensemble including LSTM + Transformer
+    print("\nFull Ensemble:")
+    full_ens, breakdown = ensemble_predict(df, days_ahead, lookback, seq_len)
+    if full_ens is not None:
+        for date, price in zip(future_dates, full_ens):
+            print(f"  {date.strftime('%Y-%m-%d')} → ${price:.2f}")
 
-    # Transformer Predict
-    transformer_pred = transformer_predict(df, model, scaler_X, scaler_y, device, lookback=lookback, seq_len=seq_len)
-
-    # Output 
-    if transformer_pred is not None:
-        print("\nPredicted prices:")
-        for i, price in enumerate(transformer_pred):
-            print(f"Day {i+1} → ${price:.2f}")
-
-
-    ensemble, ensemble_pred = ensemble_predict(df, days_ahead=days_ahead)
-    if ensemble is not None:
-        print(f"\nEnsemble Predictions (Next {days_ahead} Days)")
-        for i, val in enumerate(ensemble, start=1):
-            print(f"Day {i}: {val:.2f}")
-
-        print(f"\nIndividual Model Predictions")
-        for model_name, preds in ensemble_pred.items():
-            print(f"\n{model_name}:")
-            for i, val in enumerate(preds, start=1):
-                print(f"Day {i}: {val:.2f}")
-    else:
-        print("No predictions available.")
+        print("\nPer-model breakdown:")
+        for model_name, preds in breakdown.items():
+            print(f"  {model_name}: {[round(p, 2) for p in preds]}")
