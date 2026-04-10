@@ -6,8 +6,6 @@ MarketMind is a market intelligence and paper-trading platform that combines liv
 
 MarketMind brings together market data, forecasting, evaluation, and portfolio simulation in a single codebase. The application includes a React frontend for interactive workflows and a Flask backend that handles market data retrieval, analytics, model execution, evaluation, and authenticated user state.
 
-The project is designed to support both product-facing usage and ongoing backend experimentation. The root repository is best understood as a working application first, with additional research-oriented modules for selective prediction and benchmark tooling layered behind the main user experience.
-
 ## Core Capabilities
 
 - Search equities and review price charts, quote data, and recent market context.
@@ -54,7 +52,7 @@ MarketMind is structured as a browser-based frontend backed by a single Flask se
 
 Authentication is handled with Clerk on the frontend and verified on the backend. The frontend installs a fetch interceptor through [`frontend/src/config/authFetch.js`](./frontend/src/config/authFetch.js) and [`frontend/src/components/AuthFetchBridge.js`](./frontend/src/components/AuthFetchBridge.js). That layer normalizes backend URLs, adds bearer tokens for authenticated requests, and retries once on `401` responses with a refreshed token. On the backend, [`backend/api.py`](./backend/api.py) validates Clerk tokens, attaches the current user ID to the request context, and gates user-specific routes such as watchlists, paper trading, notifications, and prediction-market portfolios.
 
-The backend is centered on [`backend/api.py`](./backend/api.py), which combines route registration, auth enforcement, rate limiting, CORS, and security headers with orchestration of domain modules. Feature-specific logic is delegated to supporting modules such as [`backend/data_fetcher.py`](./backend/data_fetcher.py) for market data preparation, [`backend/ensemble_model.py`](./backend/ensemble_model.py) and [`backend/model.py`](./backend/model.py) for forecasting, [`backend/professional_evaluation.py`](./backend/professional_evaluation.py) for rolling backtests, [`backend/prediction_markets_fetcher.py`](./backend/prediction_markets_fetcher.py) for prediction-market data, and the selective prediction modules for abstention and selector experiments.
+The backend is centered on [`backend/api.py`](./backend/api.py), which combines route registration, auth enforcement, rate limiting, CORS, and security headers with orchestration of domain modules. Feature-specific logic is delegated to supporting modules such as [`backend/data_fetcher.py`](./backend/data_fetcher.py) for market data preparation, [`backend/ensemble_model.py`](./backend/ensemble_model.py) and [`backend/model.py`](./backend/model.py) for forecasting, [`backend/professional_evaluation.py`](./backend/professional_evaluation.py) for rolling backtests, and [`backend/prediction_markets_fetcher.py`](./backend/prediction_markets_fetcher.py) for prediction-market data.
 
 At runtime, the Flask service sits between the frontend and several external providers. Market and historical pricing data primarily come from yfinance, with Alpha Vantage used for selected data workflows and fallback behavior. News retrieval uses Finnhub, and some fundamentals, filings, screener, and macro functionality can use optional OpenBB integrations where available. This makes the backend the single integration layer for third-party services, rather than having the frontend call providers directly.
 
@@ -76,7 +74,7 @@ The high-level request path looks like this:
 +--------------------+                          | ensemble_model.py       |
           |                                     | professional_evaluation |
           | Bearer token via                    | prediction_markets_*    |
-          | authFetch interceptor               | selective_prediction*   |
+          | authFetch interceptor               | prediction_markets_*    |
           v                                     +-------------------------+
 +--------------------+                                      |
 | Authenticated API  |                                      |
@@ -107,8 +105,6 @@ MarketMind/
 |   |-- api.py
 |   |-- data_fetcher.py
 |   |-- professional_evaluation.py
-|   |-- selective_prediction.py
-|   |-- selective_prediction_global.py
 |   |-- prediction_markets_fetcher.py
 |   |-- requirements.txt
 |   `-- tests/
@@ -181,7 +177,7 @@ If you are new to the repository, the fastest way to get oriented is to follow o
 - Review [`frontend/src/config/api.js`](./frontend/src/config/api.js) to understand how the frontend addresses backend routes.
 - Review [`frontend/src/config/authFetch.js`](./frontend/src/config/authFetch.js) and [`frontend/src/components/AuthFetchBridge.js`](./frontend/src/components/AuthFetchBridge.js) to understand how authenticated requests are sent.
 - Use [`backend/api.py`](./backend/api.py) as the backend entrypoint for most feature work, since many routes and orchestration paths are defined there.
-- For prediction and evaluation logic, read [`backend/professional_evaluation.py`](./backend/professional_evaluation.py), [`backend/ensemble_model.py`](./backend/ensemble_model.py), and [`backend/selective_prediction.py`](./backend/selective_prediction.py).
+- For prediction and evaluation logic, read [`backend/professional_evaluation.py`](./backend/professional_evaluation.py), [`backend/ensemble_model.py`](./backend/ensemble_model.py), and [`backend/model.py`](./backend/model.py).
 
 Common development workflow:
 
@@ -222,10 +218,6 @@ The root [`.env.example`](./.env.example) and [`frontend/.env.example`](./fronte
 - `REACT_APP_STRIPE_PUBLISHABLE_KEY` for loading Stripe Elements in checkout.
 
 Keep local secrets out of version control and review provider-specific setup before deploying outside local development.
-
-## Advanced Backend Work
-
-The backend also contains ongoing work around selective prediction, pooled or global selector experiments, and benchmark tooling for model evaluation. These modules support more advanced research and validation workflows than the main README needs to cover, but they remain part of the repository for continued backend development and testing.
 
 ## Additional Documentation
 

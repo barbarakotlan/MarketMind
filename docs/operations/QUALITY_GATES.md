@@ -112,7 +112,6 @@ Before release, confirm:
 
 These checks are valuable, but they should not block ordinary product merges unless a change explicitly targets them.
 
-- selective/global benchmark and training workflows
 - experimental evaluation comparisons
 - long-running research or promotion-gate checks
 - live provider-specific investigations

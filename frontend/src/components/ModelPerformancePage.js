@@ -55,14 +55,12 @@ const ModelPerformancePage = () => {
                 ? {
                     test_days: testDays,
                     fast_mode: false,
-                    include_selective: true,
                     retrain_frequency: 5,
                     include_explanations: true,
                 }
                 : {
                     test_days: testDays,
                     fast_mode: true,
-                    include_selective: false,
                     retrain_frequency: 10,
                     max_train_rows: 450,
                     include_explanations: false,
@@ -141,7 +139,7 @@ const ModelPerformancePage = () => {
                             onChange={(e) => setDeepEvaluation(e.target.checked)}
                             className="h-4 w-4 rounded border-mm-border text-mm-accent-primary focus:ring-mm-accent-primary"
                         />
-                        Run deep evaluation (slower, includes selective-mode analysis)
+                        Run deep evaluation (slower, includes explainability)
                     </label>
 
                     <div className="ui-panel-subtle px-4 py-3 text-sm text-mm-text-secondary">

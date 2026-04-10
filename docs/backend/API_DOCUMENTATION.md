@@ -176,15 +176,13 @@ GET /predict/ensemble/<ticker>
 GET /evaluate/<ticker>?test_days=60&retrain_frequency=5
 ```
 
-**Description:** Professional rolling-window backtesting with trading-session-aware horizons, a versioned feature spec, optional selective analysis flags, and optional SHAP explainability.
+**Description:** Professional rolling-window backtesting with trading-session-aware horizons, a versioned feature spec, and optional SHAP explainability.
 
 **Parameters:**
 - `ticker` (string, path, required): Stock ticker symbol
 - `test_days` (integer, query, optional, default: 60): Number of days to backtest
 - `retrain_frequency` (integer, query, optional, default: 5): Days between model retraining
 - `fast_mode` (boolean, query, optional): Use faster evaluation settings with explanations disabled by default
-- `include_selective` (boolean, query, optional): Preserve selective-evaluation compatibility
-- `include_selector_variants` (boolean, query, optional): Include selector variant evaluation paths when supported
 - `max_train_rows` (integer, query, optional): Cap the rolling training window for faster runs
 - `include_explanations` (boolean, query, optional): Force SHAP explainability on or off
 
