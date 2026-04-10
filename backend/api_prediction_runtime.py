@@ -79,25 +79,3 @@ def chart_prediction_points(
         }
         for date, pred in zip(future_dates, ensemble_preds)
     ]
-
-
-def resolve_selector_gate_for_ticker(
-    sanitized_ticker,
-    requested_mode,
-    selector_source_requested="auto",
-    *,
-    live_ensemble_signal_components_fn,
-    infer_selective_decision_fn,
-    logger,
-):
-    signal_parts = live_ensemble_signal_components_fn(sanitized_ticker)
-    raw_signal = signal_parts["raw_signal"] if signal_parts else 0.0
-    disagreement = signal_parts["disagreement"] if signal_parts else 0.0
-    return infer_selective_decision_fn(
-        ticker=sanitized_ticker,
-        requested_mode=requested_mode,
-        selector_source_requested=selector_source_requested,
-        raw_signal=raw_signal,
-        ensemble_disagreement=disagreement,
-        logger=logger,
-    )

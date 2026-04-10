@@ -76,7 +76,6 @@ describe('ModelPerformancePage', () => {
                 expect.objectContaining({
                     fast_mode: false,
                     include_explanations: true,
-                    include_selective: true,
                 })
             );
         });

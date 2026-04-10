@@ -455,12 +455,9 @@ def predict_ensemble_handler(
     ticker,
     *,
     request_obj,
-    selective_modes,
-    selector_source_requestable,
     future_prediction_dates_fn,
     yf_module,
     live_ensemble_signal_components_fn,
-    infer_selective_decision_fn,
     jsonify_fn,
     logger,
     pd_module,
@@ -468,13 +465,6 @@ def predict_ensemble_handler(
 ):
     try:
         sanitized_ticker = ticker.split(":")[0]
-        requested_mode = str(request_obj.args.get("abstain_mode", "none")).strip().lower()
-        if requested_mode not in selective_modes:
-            requested_mode = "none"
-        selector_source_requested = str(request_obj.args.get("selector_source", "auto")).strip().lower()
-        if selector_source_requested not in selector_source_requestable:
-            selector_source_requested = "auto"
-
         stock = yf_module.Ticker(sanitized_ticker)
         info = stock.info
         signal_parts = live_ensemble_signal_components_fn(sanitized_ticker)
@@ -485,22 +475,11 @@ def predict_ensemble_handler(
         ensemble_preds = signal_parts["ensemble_preds"]
         individual_preds = signal_parts["individual_preds"]
         recent_close = signal_parts["recent_close"]
-        raw_signal = signal_parts["raw_signal"]
-        disagreement = signal_parts["disagreement"]
 
         recent_date = df.index[-1]
         future_dates = future_prediction_dates_fn(df, len(ensemble_preds))
         if not future_dates:
             future_dates = [recent_date + pd_module.Timedelta(days=i + 1) for i in range(len(ensemble_preds))]
-
-        selector = infer_selective_decision_fn(
-            ticker=sanitized_ticker,
-            requested_mode=requested_mode,
-            selector_source_requested=selector_source_requested,
-            raw_signal=raw_signal,
-            ensemble_disagreement=disagreement,
-            logger=logger,
-        )
 
         confidence = (
             round(95.0 - (np_module.std(list(individual_preds.values())) * 2), 1)
@@ -525,31 +504,7 @@ def predict_ensemble_handler(
             "modelsUsed": list(individual_preds.keys()),
             "ensembleMethod": "weighted_average",
             "confidence": confidence,
-            "abstain": bool(selector.get("abstain", False)),
-            "selector_prob": selector.get("selector_prob"),
-            "selector_threshold": selector.get("selector_threshold"),
-            "selector_mode_requested": selector.get("selector_mode_requested", requested_mode),
-            "selector_mode_effective": selector.get("selector_mode_effective", "none"),
-            "selector_status": selector.get("selector_status", "model_unavailable"),
-            "selector_source_requested": selector.get("selector_source_requested", selector_source_requested),
-            "selector_source": selector.get("selector_source", "none"),
-            "abstain_reason": selector.get("abstain_reason"),
-            "regime_bucket": selector.get("regime_bucket", "unknown"),
         }
-
-        logger.info(
-            "selector gate ticker=%s source=%s mode_req=%s mode_eff=%s status=%s prob=%s threshold=%s abstain=%s reason=%s regime=%s",
-            sanitized_ticker,
-            response["selector_source"],
-            response["selector_mode_requested"],
-            response["selector_mode_effective"],
-            response["selector_status"],
-            response["selector_prob"],
-            response["selector_threshold"],
-            response["abstain"],
-            response["abstain_reason"],
-            response["regime_bucket"],
-        )
         return jsonify_fn(response)
     except Exception as exc:
         logger.error(f"Error in ensemble prediction for {ticker}: {exc}")
@@ -569,12 +524,6 @@ def evaluate_models_handler(
         test_days = int(request_obj.args.get("test_days", 60))
         fast_mode_raw = str(request_obj.args.get("fast_mode", "true")).strip().lower()
         fast_mode = fast_mode_raw in {"1", "true", "yes", "on"}
-        include_selective_raw = str(request_obj.args.get("include_selective", "false")).strip().lower()
-        include_selective = include_selective_raw in {"1", "true", "yes", "on"}
-        include_selector_variants_raw = str(request_obj.args.get("include_selector_variants", "false")).strip().lower()
-        include_selector_variants = include_selector_variants_raw in {"1", "true", "yes", "on"}
-        if include_selector_variants:
-            include_selective = True
         default_retrain = 10 if fast_mode else 5
         retrain_frequency = int(request_obj.args.get("retrain_frequency", default_retrain))
         max_train_rows = request_obj.args.get("max_train_rows", default=450 if fast_mode else None, type=int)
@@ -587,8 +536,6 @@ def evaluate_models_handler(
             sanitized_ticker,
             test_days=test_days,
             retrain_frequency=retrain_frequency,
-            include_selective=include_selective,
-            include_selector_variants=include_selector_variants,
             fast_mode=fast_mode,
             max_train_rows=max_train_rows,
             include_explanations=include_explanations,

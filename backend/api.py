@@ -42,41 +42,6 @@ except ImportError:
 from news_fetcher import get_general_news
 from models import create_dataset, ensemble_predict, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict, transformer_train, transformer_predict
 from professional_evaluation import rolling_window_backtest
-try:
-    from selective_prediction import (
-        infer_selective_decision,
-        SELECTIVE_MODES,
-        SELECTIVE_DISABLED_STATUSES,
-        SELECTOR_SOURCE_REQUESTABLE,
-    )
-except ImportError:
-    SELECTIVE_MODES = {"none", "conservative", "aggressive", "risk_conservative", "risk_aggressive"}
-    SELECTIVE_DISABLED_STATUSES = set()
-    SELECTOR_SOURCE_REQUESTABLE = {"auto"}
-
-    def infer_selective_decision(
-        ticker,
-        requested_mode="none",
-        selector_source_requested="auto",
-        raw_signal=0.0,
-        ensemble_disagreement=0.0,
-        config=None,
-        artifact_root=None,
-        logger=None,
-    ):
-        return {
-            "ticker": str(ticker or "").upper(),
-            "mode_requested": str(requested_mode or "none").lower(),
-            "abstain": False,
-            "abstain_reason": None,
-            "selector_prob": None,
-            "selector_threshold": None,
-            "selector_status": "unavailable",
-            "selector_source_requested": str(selector_source_requested or "auto").lower(),
-            "selector_source": "none",
-            "raw_signal": float(raw_signal or 0.0),
-            "ensemble_disagreement": float(ensemble_disagreement or 0.0),
-        }
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
 from commodities_fetcher import get_commodity_price, get_commodity_list, get_commodities_by_category
@@ -1642,17 +1607,6 @@ def _chart_prediction_points(sanitized_ticker):
     )
 
 
-def _resolve_selector_gate_for_ticker(sanitized_ticker, requested_mode, selector_source_requested="auto"):
-    return api_prediction_runtime_helpers.resolve_selector_gate_for_ticker(
-        sanitized_ticker,
-        requested_mode,
-        selector_source_requested,
-        live_ensemble_signal_components_fn=_live_ensemble_signal_components,
-        infer_selective_decision_fn=infer_selective_decision,
-        logger=logger,
-    )
-
-
 @app.route('/predict/ensemble/<string:ticker>')
 @limiter.limit(RateLimits.STANDARD)
 def predict_ensemble(ticker):
@@ -1668,12 +1622,9 @@ def predict_ensemble(ticker):
     response = market_data_handlers.predict_ensemble_handler(
         ticker,
         request_obj=request,
-        selective_modes=SELECTIVE_MODES,
-        selector_source_requestable=SELECTOR_SOURCE_REQUESTABLE,
         future_prediction_dates_fn=prediction_service.get_future_prediction_dates,
         yf_module=yf,
         live_ensemble_signal_components_fn=_live_ensemble_signal_components,
-        infer_selective_decision_fn=infer_selective_decision,
         jsonify_fn=jsonify,
         logger=logger,
         pd_module=pd,
@@ -1748,13 +1699,8 @@ def buy_stock():
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
-        selector_gate_fn=_resolve_selector_gate_for_ticker,
         jsonify_fn=jsonify,
         yf_module=yf,
-        to_bool_fn=_to_bool,
-        selective_modes=SELECTIVE_MODES,
-        selector_source_requestable=SELECTOR_SOURCE_REQUESTABLE,
-        selective_disabled_statuses=SELECTIVE_DISABLED_STATUSES,
         log_api_error_fn=log_api_error,
         logger=logger,
         datetime_cls=datetime,
@@ -1777,13 +1723,8 @@ def sell_stock():
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
-        selector_gate_fn=_resolve_selector_gate_for_ticker,
         jsonify_fn=jsonify,
         yf_module=yf,
-        to_bool_fn=_to_bool,
-        selective_modes=SELECTIVE_MODES,
-        selector_source_requestable=SELECTOR_SOURCE_REQUESTABLE,
-        selective_disabled_statuses=SELECTIVE_DISABLED_STATUSES,
         log_api_error_fn=log_api_error,
         logger=logger,
         datetime_cls=datetime,
@@ -2543,11 +2484,8 @@ def public_api_ensemble_prediction(ticker):
         cache_key=_public_cache_key('predictions/ensemble', ticker=ticker.upper()),
         cache_ttl_seconds=900,
         predict_ensemble_handler_fn=market_data_handlers.predict_ensemble_handler,
-        selective_modes=SELECTIVE_MODES,
-        selector_source_requestable=SELECTOR_SOURCE_REQUESTABLE,
         yf_module=yf,
         live_ensemble_signal_components_fn=_live_ensemble_signal_components,
-        infer_selective_decision_fn=infer_selective_decision,
         logger=logger,
         pd_module=pd,
         np_module=np,

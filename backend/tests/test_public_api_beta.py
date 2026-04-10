@@ -90,10 +90,6 @@ class PublicApiBetaTests(unittest.TestCase):
                 "modelsUsed": ["linear_regression", "random_forest"],
                 "ensembleMethod": "weighted_average",
                 "confidence": 87.2,
-                "abstain": False,
-                "selector_prob": 0.9,
-                "selector_threshold": 0.6,
-                "selector_status": "ok",
             }
         )
         backend_api.reference_data_handlers.get_fundamentals_handler = lambda *args, **kwargs: kwargs["jsonify_fn"](
@@ -198,15 +194,12 @@ class PublicApiBetaTests(unittest.TestCase):
         self.assertNotIn("financials", payload)
         self.assertEqual(response.headers["X-Cache"], "MISS")
 
-    def test_public_ensemble_contract_omits_selective_debug_fields(self):
+    def test_public_ensemble_contract_returns_prediction_summary(self):
         response = self.client.get("/api/public/v1/predictions/ensemble/AAPL", headers=self._public_headers())
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["symbol"], "AAPL")
         self.assertIn("confidence", payload)
-        self.assertNotIn("abstain", payload)
-        self.assertNotIn("selector_prob", payload)
-        self.assertNotIn("selector_status", payload)
 
     def test_public_contracts_strip_internal_sentiment_fields(self):
         news_response = self.client.get("/api/public/v1/news", headers=self._public_headers())
