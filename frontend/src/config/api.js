@@ -152,6 +152,8 @@ export const API_ENDPOINTS = {
     
     // Screener
     SCREENER: (category = 'day_gainers') => `${API_BASE_URL}/screener?category=${category}`,
+    SCREENER_PRESETS: `${API_BASE_URL}/screener/presets`,
+    SCREENER_SCAN: (params = {}) => buildApiUrl('/screener/scan', params),
     
     // Fundamentals
     FUNDAMENTALS: (ticker, market = 'us') =>

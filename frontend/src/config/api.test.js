@@ -105,4 +105,19 @@ describe('API_ENDPOINTS', () => {
             `${API_BASE_URL}/paper/portfolio/optimize`
         );
     });
+
+    test('builds screener preset and scan URLs', () => {
+        expect(API_ENDPOINTS.SCREENER_PRESETS).toBe(
+            `${API_BASE_URL}/screener/presets`
+        );
+        expect(API_ENDPOINTS.SCREENER_SCAN({
+            preset: 'momentum_leaders',
+            sector: 'Technology',
+            limit: 25,
+            sort: 'momentum_3m',
+            dir: 'desc',
+        })).toBe(
+            `${API_BASE_URL}/screener/scan?preset=momentum_leaders&sector=Technology&limit=25&sort=momentum_3m&dir=desc`
+        );
+    });
 });
