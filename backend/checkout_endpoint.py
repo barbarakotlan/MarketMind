@@ -159,8 +159,9 @@ def create_subscription():
 
     data    = request.get_json(silent=True) or {}
     billing = data.get("billing", "monthly")
-
     email = _get_authenticated_email(clerk_user_id)
+    if not email:
+        email = str(data.get("email") or "").strip()
     if not email:
         return jsonify({"error": "Authenticated email is required to create a subscription."}), 400
 
