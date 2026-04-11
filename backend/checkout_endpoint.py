@@ -14,6 +14,19 @@ from user_state_store import (
 checkout_bp = Blueprint("checkout", __name__)
 logger = logging.getLogger(__name__)
 
+
+def _payload_email(payload: dict | None) -> str | None:
+    payload = payload or {}
+    for key in ("email", "email_address", "primary_email_address"):
+        value = payload.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
 def _require_env(name: str) -> str:
     value = os.environ.get(name)
     if not value:
@@ -83,7 +96,7 @@ def _ensure_app_user(session, clerk_user_id: str, *, email: str | None) -> AppUs
 
 def _get_authenticated_email(clerk_user_id: str) -> str | None:
     auth_payload = getattr(g, "auth_payload", {}) or {}
-    auth_email = str(auth_payload.get("email") or "").strip()
+    auth_email = _payload_email(auth_payload) or ""
     if auth_email:
         return auth_email
 
@@ -160,8 +173,6 @@ def create_subscription():
     data    = request.get_json(silent=True) or {}
     billing = data.get("billing", "monthly")
     email = _get_authenticated_email(clerk_user_id)
-    if not email:
-        email = str(data.get("email") or "").strip()
     if not email:
         return jsonify({"error": "Authenticated email is required to create a subscription."}), 400
 
