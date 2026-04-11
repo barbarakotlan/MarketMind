@@ -6,7 +6,7 @@ import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 const DEFAULT_SINGLE_MODEL = 'LinReg';
 
-const PredictionsPage = ({ initialTicker }) => {
+const PredictionsPage = ({ initialTicker, onConsumeInitialTicker }) => {
     const [ticker, setTicker] = useState('');
     const [predictionData, setPredictionData] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -25,6 +25,7 @@ const PredictionsPage = ({ initialTicker }) => {
         if (initialTicker && initialTicker.trim()) {
             setTicker(initialTicker);
             fetchPredictions(initialTicker);
+            if (onConsumeInitialTicker) onConsumeInitialTicker();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialTicker, useEnsemble]);

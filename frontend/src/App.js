@@ -41,9 +41,11 @@ function App() {
     const { isLoaded, isSignedIn } = useAuth();
     const { user } = useUser();
     const [showLanding, setShowLanding] = useState(() => !shouldHideLandingByDefault());
-    const [activePage, setActivePage] = useState('dashboard');
+    const [activePage, setActivePage] = useState('screener');
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [sharedTicker, setSharedTicker] = useState(null);
+    const [sharedCompareTicker, setSharedCompareTicker] = useState(null);
+    const [sharedAiPrompt, setSharedAiPrompt] = useState('');
     const [checkoutAnnual, setCheckoutAnnual] = useState(false);
     const [subscriptionNotice, setSubscriptionNotice] = useState(null);
     useEffect(() => {
@@ -76,6 +78,42 @@ function App() {
 
     const handleScreenerNav = (ticker) => {
         setSharedTicker(ticker);
+        setSharedCompareTicker(null);
+        setActivePage('search');
+    };
+
+    const handleScreenerAction = ({ action, ticker, compareTicker }) => {
+        const normalizedTicker = String(ticker || '').trim().toUpperCase();
+        const normalizedCompareTicker = String(compareTicker || '').trim().toUpperCase();
+        if (!normalizedTicker) return;
+
+        setSharedTicker(normalizedTicker);
+        setSharedCompareTicker(null);
+        setSharedAiPrompt('');
+
+        if (action === 'predictions') {
+            setActivePage('predictions');
+            return;
+        }
+        if (action === 'fundamentals') {
+            setActivePage('fundamentals');
+            return;
+        }
+        if (action === 'paper') {
+            setActivePage('portfolio');
+            return;
+        }
+        if (action === 'ai') {
+            setSharedAiPrompt(`Analyze ${normalizedTicker} from the Screener. Summarize why it surfaced, what to validate next, and what risks to check before acting.`);
+            setActivePage('marketmindAI');
+            return;
+        }
+        if (action === 'compare' && normalizedCompareTicker) {
+            setSharedCompareTicker(normalizedCompareTicker);
+            setActivePage('search');
+            return;
+        }
+
         setActivePage('search');
     };
 
@@ -154,8 +192,22 @@ function App() {
                             </div>
                         )}
                         {activePage === 'dashboard' && <DashboardPage setActivePage={setActivePage} />}
-                        {activePage === 'search' && <SearchPage initialTicker={sharedTicker} onClearInitialTicker={() => setSharedTicker(null)} />}
-                        {activePage === 'screener' && <ScreenerPage onSearchTicker={handleScreenerNav} />}
+                        {activePage === 'search' && (
+                            <SearchPage
+                                initialTicker={sharedTicker}
+                                initialCompareTicker={sharedCompareTicker}
+                                onClearInitialTicker={() => {
+                                    setSharedTicker(null);
+                                    setSharedCompareTicker(null);
+                                }}
+                            />
+                        )}
+                        {activePage === 'screener' && (
+                            <ScreenerPage
+                                onSearchTicker={handleScreenerNav}
+                                onScreenerAction={handleScreenerAction}
+                            />
+                        )}
                         {activePage === 'plan' && (
                             <PlanPage
                                 onNavigateToCheckout={(isAnnual) => {
@@ -174,9 +226,24 @@ function App() {
                         )}
                         {activePage === 'macro' && <MacroPage />}
                         {activePage === 'watchlist' && <WatchlistPage />}
-                        {activePage === 'portfolio' && <PaperTradingPage />}
-                        {activePage === 'fundamentals' && <FundamentalsPage />}
-                        {activePage === 'predictions' && <PredictionsPage />}
+                        {activePage === 'portfolio' && (
+                            <PaperTradingPage
+                                initialTicker={sharedTicker}
+                                onConsumeInitialTicker={() => setSharedTicker(null)}
+                            />
+                        )}
+                        {activePage === 'fundamentals' && (
+                            <FundamentalsPage
+                                initialTicker={sharedTicker}
+                                onConsumeInitialTicker={() => setSharedTicker(null)}
+                            />
+                        )}
+                        {activePage === 'predictions' && (
+                            <PredictionsPage
+                                initialTicker={sharedTicker}
+                                onConsumeInitialTicker={() => setSharedTicker(null)}
+                            />
+                        )}
                         {activePage === 'performance' && <ModelPerformancePage />}
                         {activePage === 'options' && <OptionsPage />}
                         {activePage === 'forex' && <ForexPage />}
@@ -185,7 +252,12 @@ function App() {
                         {activePage === 'news' && <NewsPage />}
                         {activePage === 'notifications' && <NotificationsPage />}
                         {activePage === 'predictionMarkets' && <PredictionMarketsPage />}
-                        {activePage === 'marketmindAI' && <MarketMindAIPage />}
+                        {activePage === 'marketmindAI' && (
+                            <MarketMindAIPage
+                                initialPrompt={sharedAiPrompt}
+                                onConsumeInitialPrompt={() => setSharedAiPrompt('')}
+                            />
+                        )}
                         {activePage === 'gettingStarted' && <GettingStartedPage />}
                         {activePage === 'calendar' && <MarketCalendarPage />}
                     </main>

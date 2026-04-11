@@ -14,6 +14,7 @@ const NAV_GROUPS = [
     {
         label: 'Home',
         items: [
+            { page: 'screener', icon: SlidersHorizontal, label: 'Screener' },
             { page: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         ],
     },
@@ -21,7 +22,6 @@ const NAV_GROUPS = [
         label: 'Research',
         items: [
             { page: 'search', icon: Search, label: 'Search' },
-            { page: 'screener', icon: SlidersHorizontal, label: 'Screener' },
             { page: 'fundamentals', icon: Building2, label: 'Fundamentals' },
             { page: 'predictions', icon: TrendingUp, label: 'Predictions' },
             { page: 'performance', icon: Target, label: 'Evaluate' },

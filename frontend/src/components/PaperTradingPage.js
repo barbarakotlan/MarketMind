@@ -384,7 +384,7 @@ const holdingsEmptyClass = 'ui-panel-subtle border-dashed py-20 text-center';
 const positionCardClass = 'ui-panel p-6 transition-all';
 
 // --- MAIN APPLICATION COMPONENT ---
-export default function App() {
+export default function App({ initialTicker, onConsumeInitialTicker }) {
     const [portfolio, setPortfolio] = useState(null);
     const [stockPositions, setStockPositions] = useState([]);
     const [optionsPositions, setOptionsPositions] = useState([]);
@@ -406,6 +406,15 @@ export default function App() {
     const [optimizationData, setOptimizationData] = useState(null);
     const [optimizationLoading, setOptimizationLoading] = useState(false);
     const [optimizationError, setOptimizationError] = useState('');
+
+    useEffect(() => {
+        const normalizedTicker = String(initialTicker || '').trim().toUpperCase();
+        if (!normalizedTicker) return;
+        setBuyTicker(normalizedTicker);
+        setBuyShares('');
+        setShowBuyModal(true);
+        if (onConsumeInitialTicker) onConsumeInitialTicker();
+    }, [initialTicker, onConsumeInitialTicker]);
 
     const fetchPortfolio = async (isManualRefresh = false) => {
         if (isManualRefresh) setRefreshing(true);

@@ -4,7 +4,6 @@ import {
     ArrowUpDown,
     ChevronLeft,
     ChevronRight,
-    ExternalLink,
     RefreshCw,
     SlidersHorizontal,
     TrendingDown,
@@ -71,7 +70,7 @@ const columns = [
     { key: 'year_low', label: '52W Low', formatter: (value) => (value === null || value === undefined ? '—' : `$${Number(value).toFixed(2)}`) },
 ];
 
-const ScreenerPage = ({ onSearchTicker }) => {
+const ScreenerPage = ({ onSearchTicker, onScreenerAction }) => {
     const [presets, setPresets] = useState([]);
     const [sectors, setSectors] = useState([]);
     const [activePreset, setActivePreset] = useState('gainers');
@@ -83,6 +82,8 @@ const ScreenerPage = ({ onSearchTicker }) => {
     const [draftFilters, setDraftFilters] = useState(blankFilters);
     const [appliedFilters, setAppliedFilters] = useState(blankFilters);
     const [offset, setOffset] = useState(0);
+    const [compareAnchor, setCompareAnchor] = useState(null);
+    const [actionNotice, setActionNotice] = useState(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -191,6 +192,55 @@ const ScreenerPage = ({ onSearchTicker }) => {
         }));
     };
 
+    const rowReason = (stock) => {
+        if (activePreset === 'active') {
+            return `${stock.relative_volume_20d ? `${Number(stock.relative_volume_20d).toFixed(2)}x` : 'Elevated'} relative volume`;
+        }
+        if (activePreset === 'momentum_leaders') {
+            return `${formatPercent(stock.momentum_3m, 100)} 3M momentum near highs`;
+        }
+        if (activePreset === 'near_highs') {
+            return `${formatPercent(stock.distance_from_52w_high_pct, 1)} from 52W high`;
+        }
+        if (activePreset === 'oversold_rebounds') {
+            return `Rebounding ${formatPercent(stock.distance_from_52w_low_pct, 1)} from 52W low`;
+        }
+        return `${Number(stock.percent_change || 0) >= 0 ? '+' : ''}${formatPercent(stock.percent_change, 100)} daily move`;
+    };
+
+    const handleAction = (event, action, stock) => {
+        event.stopPropagation();
+        if (action === 'search') {
+            onSearchTicker && onSearchTicker(stock.symbol);
+            return;
+        }
+        if (action === 'compare') {
+            if (!compareAnchor || compareAnchor.symbol === stock.symbol) {
+                setCompareAnchor({ symbol: stock.symbol, name: stock.name });
+                setActionNotice({ type: 'info', text: `${stock.symbol} set as compare base. Pick another row to compare.` });
+                return;
+            }
+            onScreenerAction && onScreenerAction({
+                action: 'compare',
+                ticker: compareAnchor.symbol,
+                compareTicker: stock.symbol,
+                stock,
+            });
+            return;
+        }
+        onScreenerAction && onScreenerAction({ action, ticker: stock.symbol, stock });
+    };
+
+    const handleAddToWatchlist = async (event, stock) => {
+        event.stopPropagation();
+        try {
+            const result = await apiRequest(API_ENDPOINTS.WATCHLIST_ITEM(stock.symbol), { method: 'POST' });
+            setActionNotice({ type: 'success', text: result?.message || `${stock.symbol} added to watchlist.` });
+        } catch (requestError) {
+            setActionNotice({ type: 'error', text: requestError?.message || `Could not add ${stock.symbol} to watchlist.` });
+        }
+    };
+
     const SortTh = ({ label, sortKey, className = '' }) => {
         const active = sortConfig.key === sortKey;
         return (
@@ -209,13 +259,45 @@ const ScreenerPage = ({ onSearchTicker }) => {
     return (
         <div className="ui-page animate-fade-in">
             <div className="ui-page-header">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                     <div>
+                        <p className="ui-section-label mb-2">Find → validate → act</p>
                         <h1 className="ui-page-title">Stock Screener</h1>
                         <p className="ui-page-subtitle mt-1">
-                            Internal U.S. equity discovery with cached market movers, momentum, and liquidity screens.
+                            Start with liquid U.S. equity ideas, then jump directly into analysis, AI, watchlist, or paper trading.
                         </p>
                     </div>
+                    <div className="grid gap-2 text-sm sm:grid-cols-3 lg:min-w-[520px]">
+                        {['Find setups', 'Validate context', 'Act quickly'].map((label, index) => (
+                            <div key={label} className="ui-panel-subtle p-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-mm-text-tertiary">Step {index + 1}</p>
+                                <p className="mt-1 font-semibold text-mm-text-primary">{label}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-mm-text-secondary">
+                    {compareAnchor ? (
+                        <span>
+                            Compare base: <strong className="text-mm-text-primary">{compareAnchor.symbol}</strong>. Choose another row.
+                        </span>
+                    ) : (
+                        <span>Rows are gateways: open, validate, ask AI, track, trade, or compare.</span>
+                    )}
+                </div>
+                <div className="flex items-center gap-2">
+                    {compareAnchor && (
+                        <button
+                            type="button"
+                            className="ui-button-secondary"
+                            onClick={() => setCompareAnchor(null)}
+                        >
+                            Clear Compare
+                        </button>
+                    )}
                     <button
                         type="button"
                         className="ui-button-secondary flex items-center gap-2"
@@ -229,6 +311,27 @@ const ScreenerPage = ({ onSearchTicker }) => {
                     </button>
                 </div>
             </div>
+
+            {actionNotice && (
+                <div
+                    className={`mb-4 flex items-center justify-between gap-3 rounded-card border px-4 py-3 text-sm ${
+                        actionNotice.type === 'error'
+                            ? 'border-mm-negative/20 bg-mm-negative/10 text-mm-negative'
+                            : actionNotice.type === 'success'
+                                ? 'border-mm-positive/20 bg-mm-positive/10 text-mm-positive'
+                                : 'border-mm-accent-primary/20 bg-mm-accent-primary/10 text-mm-accent-primary'
+                    }`}
+                >
+                    <span>{actionNotice.text}</span>
+                    <button
+                        type="button"
+                        onClick={() => setActionNotice(null)}
+                        className="text-xs font-semibold opacity-70 transition hover:opacity-100"
+                    >
+                        Dismiss
+                    </button>
+                </div>
+            )}
 
             <div className="flex flex-wrap gap-2 mb-4">
                 {PRIMARY_PRESETS.map(({ key, label, icon: Icon, color }) => (
@@ -366,7 +469,7 @@ const ScreenerPage = ({ onSearchTicker }) => {
                                         <SortTh key={column.key} label={column.label} sortKey={column.key} />
                                     ))}
                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-mm-text-secondary">Sector</th>
-                                    <th className="px-4 py-3"></th>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-mm-text-secondary">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-mm-border">
@@ -381,6 +484,7 @@ const ScreenerPage = ({ onSearchTicker }) => {
                                             <td className="px-4 py-3">
                                                 <div className="font-semibold text-mm-text-primary">{stock.symbol}</div>
                                                 <div className="text-xs text-mm-text-secondary truncate max-w-[180px]">{stock.name}</div>
+                                                <div className="mt-1 text-[11px] font-medium text-mm-accent-primary">{rowReason(stock)}</div>
                                             </td>
                                             <td className="px-4 py-3 font-medium text-mm-text-primary">
                                                 {stock.price !== null && stock.price !== undefined ? `$${Number(stock.price).toFixed(2)}` : '—'}
@@ -405,7 +509,33 @@ const ScreenerPage = ({ onSearchTicker }) => {
                                             </td>
                                             <td className="px-4 py-3 text-mm-text-secondary">{stock.sector || '—'}</td>
                                             <td className="px-4 py-3">
-                                                <ExternalLink className="w-4 h-4 text-mm-accent-primary opacity-0 group-hover:opacity-100" />
+                                                <div className="flex min-w-[420px] flex-wrap items-center gap-2">
+                                                    <button type="button" className="ui-button-primary px-3 py-1.5 text-xs" onClick={(event) => handleAction(event, 'search', stock)}>
+                                                        Open
+                                                    </button>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'predictions', stock)}>
+                                                            Predict
+                                                        </button>
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'fundamentals', stock)}>
+                                                            Fundamentals
+                                                        </button>
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'ai', stock)}>
+                                                            Ask AI
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1.5 border-l border-mm-border pl-2">
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAddToWatchlist(event, stock)}>
+                                                            Watchlist
+                                                        </button>
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'paper', stock)}>
+                                                            Paper Trade
+                                                        </button>
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'compare', stock)}>
+                                                            Compare
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </td>
                                         </tr>
                                     );
