@@ -322,10 +322,7 @@ export default function CheckoutPage({
 
         apiRequest(API_ENDPOINTS.CHECKOUT_CREATE_SUBSCRIPTION, {
             method: 'POST',
-            body: JSON.stringify({
-                billing: isAnnual ? 'annual' : 'monthly',
-                email: userEmail || '',
-            }),
+            body: JSON.stringify({ billing: isAnnual ? 'annual' : 'monthly' }),
         })
             .then(data => {
                 if (cancelled) return;
