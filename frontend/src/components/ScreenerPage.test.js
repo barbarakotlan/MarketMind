@@ -87,6 +87,7 @@ describe('ScreenerPage', () => {
 
     test('renders presets, scan results, and routes row clicks into Search', async () => {
         const onSearchTicker = jest.fn();
+        const onScreenerAction = jest.fn();
         apiRequest.mockImplementation((url) => {
             if (url === API_ENDPOINTS.SCREENER_PRESETS) {
                 return Promise.resolve(presetsPayload);
@@ -97,10 +98,13 @@ describe('ScreenerPage', () => {
             if (url.includes('/screener/scan?preset=momentum_leaders')) {
                 return Promise.resolve(momentumPayload);
             }
+            if (url.includes('/watchlist/AAPL')) {
+                return Promise.resolve({ message: 'AAPL added to watchlist.' });
+            }
             throw new Error(`Unhandled request: ${url}`);
         });
 
-        render(<ScreenerPage onSearchTicker={onSearchTicker} />);
+        render(<ScreenerPage onSearchTicker={onSearchTicker} onScreenerAction={onScreenerAction} />);
 
         expect(await screen.findByText('Apple Inc.')).toBeInTheDocument();
         expect(screen.getByText('Momentum Leaders')).toBeInTheDocument();
@@ -108,10 +112,32 @@ describe('ScreenerPage', () => {
         fireEvent.click(screen.getByText('Apple Inc.'));
         expect(onSearchTicker).toHaveBeenCalledWith('AAPL');
 
+        fireEvent.click(screen.getByRole('button', { name: 'Predict' }));
+        expect(onScreenerAction).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'predictions',
+            ticker: 'AAPL',
+        }));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Watchlist' }));
+        await waitFor(() => {
+            expect(apiRequest).toHaveBeenCalledWith(expect.stringContaining('/watchlist/AAPL'), { method: 'POST' });
+        });
+        expect(await screen.findByText('AAPL added to watchlist.')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+        expect(await screen.findByText(/AAPL set as compare base/i)).toBeInTheDocument();
+
         fireEvent.click(screen.getByText('Momentum Leaders'));
 
         expect(await screen.findByText('Microsoft Corporation')).toBeInTheDocument();
         expect(screen.getAllByText('Showing the last good screener snapshot while fresh data reloads.').length).toBeGreaterThan(0);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+        expect(onScreenerAction).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'compare',
+            ticker: 'AAPL',
+            compareTicker: 'MSFT',
+        }));
     });
 
     test('applies screener filters through the scan endpoint', async () => {
