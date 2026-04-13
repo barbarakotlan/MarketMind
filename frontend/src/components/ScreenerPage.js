@@ -314,7 +314,7 @@ const ScreenerPage = ({ onSearchTicker, onScreenerAction }) => {
 
             {actionNotice && (
                 <div
-                    className={`mb-4 rounded-card border px-4 py-3 text-sm ${
+                    className={`mb-4 flex items-center justify-between gap-3 rounded-card border px-4 py-3 text-sm ${
                         actionNotice.type === 'error'
                             ? 'border-mm-negative/20 bg-mm-negative/10 text-mm-negative'
                             : actionNotice.type === 'success'
@@ -322,7 +322,14 @@ const ScreenerPage = ({ onSearchTicker, onScreenerAction }) => {
                                 : 'border-mm-accent-primary/20 bg-mm-accent-primary/10 text-mm-accent-primary'
                     }`}
                 >
-                    {actionNotice.text}
+                    <span>{actionNotice.text}</span>
+                    <button
+                        type="button"
+                        onClick={() => setActionNotice(null)}
+                        className="text-xs font-semibold opacity-70 transition hover:opacity-100"
+                    >
+                        Dismiss
+                    </button>
                 </div>
             )}
 
@@ -502,28 +509,32 @@ const ScreenerPage = ({ onSearchTicker, onScreenerAction }) => {
                                             </td>
                                             <td className="px-4 py-3 text-mm-text-secondary">{stock.sector || '—'}</td>
                                             <td className="px-4 py-3">
-                                                <div className="flex min-w-[360px] flex-wrap gap-1.5">
-                                                    <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'search', stock)}>
+                                                <div className="flex min-w-[420px] flex-wrap items-center gap-2">
+                                                    <button type="button" className="ui-button-primary px-3 py-1.5 text-xs" onClick={(event) => handleAction(event, 'search', stock)}>
                                                         Open
                                                     </button>
-                                                    <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'predictions', stock)}>
-                                                        Predict
-                                                    </button>
-                                                    <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'fundamentals', stock)}>
-                                                        Fundamentals
-                                                    </button>
-                                                    <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'ai', stock)}>
-                                                        Ask AI
-                                                    </button>
-                                                    <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAddToWatchlist(event, stock)}>
-                                                        Watchlist
-                                                    </button>
-                                                    <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'paper', stock)}>
-                                                        Paper Trade
-                                                    </button>
-                                                    <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'compare', stock)}>
-                                                        Compare
-                                                    </button>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'predictions', stock)}>
+                                                            Predict
+                                                        </button>
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'fundamentals', stock)}>
+                                                            Fundamentals
+                                                        </button>
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'ai', stock)}>
+                                                            Ask AI
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1.5 border-l border-mm-border pl-2">
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAddToWatchlist(event, stock)}>
+                                                            Watchlist
+                                                        </button>
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'paper', stock)}>
+                                                            Paper Trade
+                                                        </button>
+                                                        <button type="button" className="ui-button-secondary px-2 py-1 text-xs" onClick={(event) => handleAction(event, 'compare', stock)}>
+                                                            Compare
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
