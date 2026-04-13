@@ -97,12 +97,12 @@ describe('App', () => {
         expect(screen.getByTestId('auth-fetch-bridge')).toBeInTheDocument();
     });
 
-    test('shows the signed-in shell after entering the app when signed in', () => {
+    test('shows the signed-in shell on the screener front door when signed in', () => {
         mockIsSignedIn = true;
         render(<App />);
 
         expect(screen.getByText('Sidebar')).toBeInTheDocument();
-        expect(screen.getByText('Dashboard Page')).toBeInTheDocument();
+        expect(screen.getByText('Screener Page')).toBeInTheDocument();
     });
 
     test('routes screener selections into the search page ticker state', () => {
@@ -122,7 +122,7 @@ describe('App', () => {
 
         expect(screen.queryByText('Landing Page')).not.toBeInTheDocument();
         expect(screen.getByText('Sidebar')).toBeInTheDocument();
-        expect(screen.getByText('Dashboard Page')).toBeInTheDocument();
+        expect(screen.getByText('Screener Page')).toBeInTheDocument();
     });
 
     test('persists app entry so refresh stays in the app shell', () => {
