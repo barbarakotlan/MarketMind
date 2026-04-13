@@ -279,7 +279,7 @@ const mapScreenerSuggestion = (stock = {}) => ({
     volume: typeof stock.volume === 'number' ? stock.volume : 0,
 });
 
-const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTicker }) => {
+const SearchPage = ({ onNavigateToPredictions, initialTicker, initialCompareTicker, onClearInitialTicker }) => {
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [expandedSectors, setExpandedSectors] = useState({});
     // --- NEW: Autocomplete states ---
@@ -375,11 +375,23 @@ const SearchPage = ({ onNavigateToPredictions, initialTicker, onClearInitialTick
 
     useEffect(() => {
         if (initialTicker) {
-            runSearch(initialTicker);
+            (async () => {
+                await runSearch(initialTicker);
+                if (initialCompareTicker) {
+                    try {
+                        await fetchComparisonBundle(
+                            String(initialCompareTicker).trim().toUpperCase(),
+                            timeFrames.find(f => f.value === '14d')
+                        );
+                    } catch {
+                        setComparisonData(null);
+                    }
+                }
+            })();
             if (onClearInitialTicker) onClearInitialTicker();
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialTicker]);
+    }, [initialTicker, initialCompareTicker]);
 
     useEffect(() => {
         // Load recent searches from localStorage

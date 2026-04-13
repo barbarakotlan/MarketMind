@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Search, Star, Briefcase, Building2, TrendingUp, Target,
+    Search, Star, Briefcase, Building2, TrendingUp, Target, SlidersHorizontal,
     DollarSign, Newspaper, Bell, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
@@ -14,6 +14,7 @@ const MARKET_TICKERS = [
 ];
 
 const QUICK_ACCESS = [
+    { page: 'screener', icon: SlidersHorizontal, label: 'Screener' },
     { page: 'search', icon: Search, label: 'Search' },
     { page: 'watchlist', icon: Star, label: 'Watchlist' },
     { page: 'portfolio', icon: Briefcase, label: 'Portfolio' },

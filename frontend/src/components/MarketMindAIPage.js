@@ -283,7 +283,7 @@ const ArtifactPreview = ({ artifact, version }) => {
     );
 };
 
-const MarketMindAIPage = () => {
+const MarketMindAIPage = ({ initialPrompt, onConsumeInitialPrompt }) => {
     const { isLoaded, isSignedIn } = useAuth();
     const [bootstrap, setBootstrap] = useState({ starterPrompts: [], templates: [] });
     const [activeChatId, setActiveChatId] = useState(null);
@@ -427,6 +427,13 @@ const MarketMindAIPage = () => {
         }
         loadBootstrap();
     }, [isLoaded, isSignedIn]);
+
+    useEffect(() => {
+        const nextPrompt = String(initialPrompt || '').trim();
+        if (!nextPrompt) return;
+        setComposerValue(nextPrompt);
+        if (onConsumeInitialPrompt) onConsumeInitialPrompt();
+    }, [initialPrompt, onConsumeInitialPrompt]);
 
     const handleExternalChatSelection = useEffectEvent((chatId) => {
         if (chatId) {

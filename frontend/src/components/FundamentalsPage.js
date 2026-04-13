@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Building2,
     Search,
@@ -266,7 +266,7 @@ const AnnouncementsPanel = ({ items }) => {
     );
 };
 
-const FundamentalsPage = () => {
+const FundamentalsPage = ({ initialTicker, onConsumeInitialTicker }) => {
     const [ticker, setTicker] = useState('');
     const [selectedMarket, setSelectedMarket] = useState('us');
     const [resolvedAsset, setResolvedAsset] = useState(null);
@@ -286,11 +286,10 @@ const FundamentalsPage = () => {
     const tabs = internationalResearchMode ? INTERNATIONAL_TABS : US_TABS;
     const marketSession = fundamentals?.marketSession || null;
 
-    const handleSearch = async (e) => {
-        e.preventDefault();
-        if (!ticker.trim()) return;
+    const loadFundamentals = async (rawTicker, marketOverride = selectedMarket) => {
+        if (!String(rawTicker || '').trim()) return;
 
-        const asset = normalizeAssetInput(ticker, selectedMarket);
+        const asset = normalizeAssetInput(rawTicker, marketOverride);
         if (!asset) {
             setError('Enter a valid ticker like AAPL, HK:00700, or CN:600519.');
             return;
@@ -344,6 +343,18 @@ const FundamentalsPage = () => {
             setLoading(false);
         }
     };
+
+    const handleSearch = async (e) => {
+        e.preventDefault();
+        await loadFundamentals(ticker, selectedMarket);
+    };
+
+    useEffect(() => {
+        if (!initialTicker) return;
+        loadFundamentals(initialTicker, 'us');
+        if (onConsumeInitialTicker) onConsumeInitialTicker();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialTicker]);
 
     const formatNumber = (value, prefix = '', suffix = '') => {
         if (value === 'N/A' || value === 'None' || value === null || value === undefined || value === '') return 'N/A';
