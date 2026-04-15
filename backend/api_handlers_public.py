@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, Dict
 
 from flask import g
+from werkzeug.datastructures import MultiDict
 
 from api_public import (
     PublicApiError,
@@ -454,6 +456,7 @@ def ensemble_prediction_handler(
     cache_key: str,
     cache_ttl_seconds: int,
     predict_ensemble_handler_fn,
+    future_prediction_dates_fn,
     yf_module,
     live_ensemble_signal_components_fn,
     logger,
@@ -465,6 +468,7 @@ def ensemble_prediction_handler(
             predict_ensemble_handler_fn(
                 ticker,
                 request_obj=request_obj,
+                future_prediction_dates_fn=future_prediction_dates_fn,
                 yf_module=yf_module,
                 live_ensemble_signal_components_fn=live_ensemble_signal_components_fn,
                 jsonify_fn=lambda payload: payload,
@@ -493,6 +497,155 @@ def ensemble_prediction_handler(
             },
             200,
         )
+
+    return _cached_json_payload(
+        cache_backend=cache_backend,
+        cache_key=cache_key,
+        cache_ttl_seconds=cache_ttl_seconds,
+        producer_fn=producer,
+    )
+
+
+def _public_request_subset(request_obj, *, allowed_args):
+    filtered = {}
+    for key in allowed_args:
+        value = request_obj.args.get(key)
+        if value is not None:
+            filtered[key] = value
+    return SimpleNamespace(args=MultiDict(filtered))
+
+
+def evaluation_summary_handler(
+    ticker,
+    *,
+    request_obj,
+    cache_backend,
+    cache_key: str,
+    cache_ttl_seconds: int,
+    evaluate_models_handler_fn,
+    rolling_window_backtest_fn,
+    logger,
+):
+    def producer():
+        safe_request = _public_request_subset(request_obj, allowed_args=("test_days", "fast_mode"))
+        raw_payload, status_code = unwrap_handler_result(
+            evaluate_models_handler_fn(
+                ticker,
+                request_obj=safe_request,
+                rolling_window_backtest_fn=rolling_window_backtest_fn,
+                jsonify_fn=lambda payload: payload,
+                logger=logger,
+            )
+        )
+        if status_code == 404:
+            raise PublicApiError(404, "not_found", f"Evaluation summary is unavailable for ticker '{ticker}'.")
+        if status_code == 400:
+            raise PublicApiError(400, "invalid_query", "Evaluation query parameters are invalid.")
+        if status_code >= 500:
+            raise PublicApiError(503, "upstream_unavailable", "Evaluation summary is temporarily unavailable.")
+
+        test_period = raw_payload.get("test_period") or {}
+        models = {}
+        for model_name, model_payload in (raw_payload.get("models") or {}).items():
+            models[model_name] = {
+                "metrics": dict((model_payload or {}).get("metrics") or {}),
+            }
+
+        fast_mode_raw = str(safe_request.args.get("fast_mode", "true")).strip().lower()
+        fast_mode = fast_mode_raw in {"1", "true", "yes", "on"}
+        test_days = safe_request.args.get("test_days", default=60, type=int)
+
+        return (
+            {
+                "symbol": raw_payload.get("ticker") or ticker.split(":")[0].upper(),
+                "featureSpecVersion": raw_payload.get("featureSpecVersion"),
+                "testPeriod": {
+                    "startDate": test_period.get("start_date"),
+                    "endDate": test_period.get("end_date"),
+                    "days": test_period.get("days"),
+                },
+                "bestModel": raw_payload.get("best_model"),
+                "models": models,
+                "returns": dict(raw_payload.get("returns") or {}),
+                "evaluationOptions": {
+                    "testDays": test_days,
+                    "fastMode": fast_mode,
+                },
+            },
+            200,
+        )
+
+    return _cached_json_payload(
+        cache_backend=cache_backend,
+        cache_key=cache_key,
+        cache_ttl_seconds=cache_ttl_seconds,
+        producer_fn=producer,
+    )
+
+
+def screener_presets_public_handler(
+    *,
+    cache_backend,
+    cache_key: str,
+    cache_ttl_seconds: int,
+    get_screener_presets_handler_fn,
+    base_dir,
+    yf_module,
+    logger,
+    screener_query_service_module,
+):
+    def producer():
+        raw_payload, status_code = unwrap_handler_result(
+            get_screener_presets_handler_fn(
+                base_dir=base_dir,
+                yf_module=yf_module,
+                jsonify_fn=lambda payload: payload,
+                logger=logger,
+                screener_query_service_module=screener_query_service_module,
+            )
+        )
+        if status_code == 400:
+            raise PublicApiError(400, "invalid_query", "Screener preset query parameters are invalid.")
+        if status_code >= 500:
+            raise PublicApiError(503, "upstream_unavailable", "Screener presets are temporarily unavailable.")
+        return (dict(raw_payload or {}), 200)
+
+    return _cached_json_payload(
+        cache_backend=cache_backend,
+        cache_key=cache_key,
+        cache_ttl_seconds=cache_ttl_seconds,
+        producer_fn=producer,
+    )
+
+
+def screener_scan_public_handler(
+    *,
+    request_obj,
+    cache_backend,
+    cache_key: str,
+    cache_ttl_seconds: int,
+    get_screener_scan_handler_fn,
+    base_dir,
+    yf_module,
+    logger,
+    screener_query_service_module,
+):
+    def producer():
+        raw_payload, status_code = unwrap_handler_result(
+            get_screener_scan_handler_fn(
+                base_dir=base_dir,
+                yf_module=yf_module,
+                request_obj=request_obj,
+                jsonify_fn=lambda payload: payload,
+                logger=logger,
+                screener_query_service_module=screener_query_service_module,
+            )
+        )
+        if status_code == 400:
+            raise PublicApiError(400, "invalid_query", "Screener scan query parameters are invalid.")
+        if status_code >= 500:
+            raise PublicApiError(503, "upstream_unavailable", "Screener scan is temporarily unavailable.")
+        return (dict(raw_payload or {}), 200)
 
     return _cached_json_payload(
         cache_backend=cache_backend,
