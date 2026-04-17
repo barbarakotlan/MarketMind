@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from functools import wraps
 from urllib.parse import urlparse
 
 import jwt
 import requests
+from sqlalchemy.exc import OperationalError
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_bearer_token(auth_header: str) -> str | None:
@@ -165,12 +170,20 @@ def sync_authenticated_user(
         return
 
     ensure_user_state_storage_ready_fn()
-    with session_scope(database_url) as session:
-        touch_app_user_fn(
-            session,
-            payload["sub"],
-            email=payload.get("email"),
-            username=payload.get("username"),
+    try:
+        with session_scope(database_url) as session:
+            touch_app_user_fn(
+                session,
+                payload["sub"],
+                email=payload.get("email"),
+                username=payload.get("username"),
+            )
+    except OperationalError as exc:
+        if "database is locked" not in str(exc).lower():
+            raise
+        logger.warning(
+            "Skipping authenticated user sync for %s due to transient SQLite lock",
+            payload.get("sub"),
         )
 
 

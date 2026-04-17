@@ -76,6 +76,8 @@ backend/instance/
 *.db
 *.sqlite3
 backend/marketmind.db
+backend/marketmind.db-shm
+backend/marketmind.db-wal
 
 # User Data / JSON persistence
 paper_portfolio.json
@@ -83,6 +85,9 @@ backend/paper_portfolio.json
 backend/notifications.json
 backend/prediction_portfolio.json
 backend/user_data/
+
+# Screener Cache Data
+backend/screener_cache/
 
 # ML artifacts (generated at runtime)
 backend/model_artifacts/
