@@ -93,12 +93,14 @@ def linear_regression_predict(df, days_ahead=7):
 def random_forest_predict(df, days_ahead=7, lookback=14):
     return prediction_service.random_forest_predict(df, days_ahead=days_ahead, lookback=lookback)
 
-
 def xgboost_predict(df, days_ahead=7, lookback=14):
     return prediction_service.xgboost_predict(df, days_ahead=days_ahead, lookback=lookback)
 
 def gradient_boosting_predict(df, days_ahead=7, lookback=14):
     return prediction_service.gradient_boosting_predict(df, days_ahead=days_ahead, lookback=lookback)
+
+def lightgbm_predict(df, days_ahead=7, lookback=14):
+    return prediction_service.lightgbm_predict(df, days_ahead=days_ahead, lookback=lookback)
 
 def ensemble_predict(df, days_ahead=7, lookback=14, seq_len=30):
     """

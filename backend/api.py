@@ -40,7 +40,7 @@ except ImportError:
 
 # --- Imports ---
 from news_fetcher import get_general_news
-from models import create_dataset, ensemble_predict, linear_regression_predict, random_forest_predict, xgboost_predict, gradient_boosting_predict, lstm_train, lstm_predict, transformer_train, transformer_predict
+from models import create_dataset, ensemble_predict, linear_regression_predict, random_forest_predict, xgboost_predict, gradient_boosting_predict, lightgbm_predict, lstm_train, lstm_predict, transformer_train, transformer_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies
@@ -1573,6 +1573,7 @@ def predict_stock(model, ticker):
         random_forest_predict_fn=random_forest_predict,
         xgboost_predict_fn=xgboost_predict,
         gradient_boosting_predict_fn=gradient_boosting_predict,
+        lightgbm_predict_fn=lightgbm_predict,
         lstm_train_fn=lstm_train,
         lstm_predict_fn=lstm_predict,
         transformer_train_fn=transformer_train,
