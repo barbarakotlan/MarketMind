@@ -41,6 +41,13 @@ except Exception:
     lgb = None
     LIGHTGBM_AVAILABLE = False
 
+try:
+    from catboost import CatBoostRegressor
+    CATBOOST_AVAILABLE = True
+except Exception:
+    CatBoostRegressor = None
+    CATBOOST_AVAILABLE = False
+
 
 FEATURE_SPEC_VERSION = "prediction-stack-v2"
 PREDICTION_HORIZON = 7
@@ -66,12 +73,13 @@ PRODUCTION_ENSEMBLE_MODELS = (
     "xgboost",
     "gradient_boosting",
     "lightgbm",
+    "catboost",
     "lstm",
     "transformer"
 )
 
 BENCHMARK_MODELS = ("naive", "seasonal_naive_5", "auto_arima")
-ML_MODELS = ("linear_regression", "random_forest", "xgboost", "gradient_boosting", "lightgbm", "lstm", "transformer")
+ML_MODELS = ("linear_regression", "random_forest", "xgboost", "gradient_boosting", "lightgbm", "catboost", "lstm", "transformer")
 
 _CACHE: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
 
@@ -278,6 +286,15 @@ def _build_ml_models() -> Dict[str, Any]:
             n_jobs=1,
             verbose=-1,
         )
+    if CATBOOST_AVAILABLE:
+        models["catboost"] = CatBoostRegressor(
+            iterations=200,
+            depth=6,
+            learning_rate=0.05,
+            random_seed=42,
+            verbose=0,
+            allow_writing_files=False,
+        )
     return models
 
 
@@ -404,7 +421,7 @@ def _ensemble_weights_from_recent_cv(ohlcv: pd.DataFrame, ticker: str) -> Dict[s
         )
 
         errors: Dict[str, float] = {}
-        for model_name in ("linear_regression", "random_forest", "xgboost"):
+        for model_name in ("linear_regression", "random_forest", "xgboost", "lightgbm", "catboost"):
             if model_name in ml_cv.columns:
                 errors[model_name] = float(mean_absolute_error(ml_cv["y"], ml_cv[model_name]))
         if "auto_arima" in sf_cv.columns:
@@ -519,6 +536,21 @@ def lightgbm_predict(df: pd.DataFrame, days_ahead: int = PREDICTION_HORIZON, loo
         ticker=str(df.attrs.get("ticker") or "AAPL"),
     )
     return result["predictions"].get("lightgbm")
+
+def catboost_predict(df: pd.DataFrame, days_ahead: int = PREDICTION_HORIZON, lookback: int = 14) -> Optional[np.ndarray]:
+    _ = lookback
+    if not CATBOOST_AVAILABLE:
+        return None
+    ohlcv = _coerce_ohlcv_from_input(df)
+    if ohlcv.empty or len(ohlcv) < MIN_HISTORY_ROWS:
+        return None
+    result = _forecast_ml_models(
+        ohlcv,
+        model_names=("catboost",),
+        horizon=days_ahead,
+        ticker=str(df.attrs.get("ticker") or "AAPL"),
+    )
+    return result["predictions"].get("catboost")
 
 def ensemble_predict(df: pd.DataFrame, days_ahead: int = PREDICTION_HORIZON) -> Tuple[Optional[np.ndarray], Dict[str, np.ndarray]]:
     ohlcv = _coerce_ohlcv_from_input(df)

@@ -168,6 +168,9 @@ const PredictionsPage = ({ initialTicker, onConsumeInitialTicker }) => {
                                 <button type="button" onClick={() => setUseModel('LightGBM')} className={modelButtonClass(useModel === 'LightGBM')}>
                                     LightGBM
                                 </button>
+                                <button type="button" onClick={() => setUseModel('CatBoost')} className={modelButtonClass(useModel === 'CatBoost')}>
+                                    CatBoost
+                                </button>
                                 <button type="button" onClick={() => setUseModel('LSTM')} className={modelButtonClass(useModel === 'LSTM')}>
                                     LSTM
                                 </button>

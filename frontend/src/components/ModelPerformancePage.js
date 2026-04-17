@@ -10,6 +10,9 @@ const MODEL_LABELS = {
     linear_regression: 'Linear Regression',
     random_forest: 'Random Forest',
     xgboost: 'XGBoost',
+    gradient_boosting: 'Gradient Boosting',
+    lightgbm: 'LightGBM',
+    catboost: 'CatBoost',
     lstm: 'LSTM',
     transformer: 'Transformer',
 };
