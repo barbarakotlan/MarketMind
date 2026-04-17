@@ -2487,6 +2487,7 @@ def public_api_ensemble_prediction(ticker):
         cache_key=_public_cache_key('predictions/ensemble', ticker=ticker.upper()),
         cache_ttl_seconds=900,
         predict_ensemble_handler_fn=market_data_handlers.predict_ensemble_handler,
+        future_prediction_dates_fn=prediction_service.get_future_prediction_dates,
         yf_module=yf,
         live_ensemble_signal_components_fn=_live_ensemble_signal_components,
         logger=logger,
@@ -2669,6 +2670,91 @@ def public_api_v2_macro_overview():
         macro_indicators=MACRO_INDICATORS,
         requests_module=requests,
         akshare_service_module=akshare_service,
+    )
+
+
+@app.route('/api/public/v2/predictions/ensemble/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/predictions/ensemble')
+def public_api_v2_ensemble_prediction(ticker):
+    return _public_dispatch(
+        public_handlers.ensemble_prediction_handler,
+        ticker,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/predictions/ensemble', ticker=ticker.upper()),
+        cache_ttl_seconds=900,
+        predict_ensemble_handler_fn=market_data_handlers.predict_ensemble_handler,
+        future_prediction_dates_fn=prediction_service.get_future_prediction_dates,
+        yf_module=yf,
+        live_ensemble_signal_components_fn=_live_ensemble_signal_components,
+        logger=logger,
+        pd_module=pd,
+        np_module=np,
+    )
+
+
+@app.route('/api/public/v2/evaluations/<string:ticker>', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/evaluations')
+def public_api_v2_evaluations(ticker):
+    return _public_dispatch(
+        public_handlers.evaluation_summary_handler,
+        ticker,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/evaluations', ticker=ticker.upper()),
+        cache_ttl_seconds=900,
+        evaluate_models_handler_fn=market_data_handlers.evaluate_models_handler,
+        rolling_window_backtest_fn=rolling_window_backtest,
+        logger=logger,
+    )
+
+
+@app.route('/api/public/v2/screener/presets', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/screener/presets')
+def public_api_v2_screener_presets():
+    return _public_dispatch(
+        public_handlers.screener_presets_public_handler,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/screener/presets'),
+        cache_ttl_seconds=900,
+        get_screener_presets_handler_fn=reference_data_handlers.get_screener_presets_handler,
+        base_dir=BASE_DIR,
+        yf_module=yf,
+        logger=logger,
+        screener_query_service_module=screener_query_service,
+    )
+
+
+@app.route('/api/public/v2/screener/scan', methods=['GET'])
+@limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
+@limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
+@limiter.limit(PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT, key_func=_public_api_rate_limit_key)
+@require_public_api_auth('v2/screener/scan')
+def public_api_v2_screener_scan():
+    return _public_dispatch(
+        public_handlers.screener_scan_public_handler,
+        request_obj=request,
+        cache_backend=_public_cache(),
+        cache_key=_public_cache_key('v2/screener/scan'),
+        cache_ttl_seconds=300,
+        get_screener_scan_handler_fn=reference_data_handlers.get_screener_scan_handler,
+        base_dir=BASE_DIR,
+        yf_module=yf,
+        logger=logger,
+        screener_query_service_module=screener_query_service,
     )
 
 

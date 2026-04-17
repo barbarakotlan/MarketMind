@@ -36,7 +36,7 @@
       <p class="muted">Private Beta</p>
       <h1>MarketMind Public API</h1>
       <p>Read-only MarketMind developer API for market data and research workflows. All requests use MarketMind developer API keys.</p>
-      <p class="muted">Available contracts: MarketMind Public API v1 and MarketMind Public API v2.</p>
+      <p class="muted">Available contracts: MarketMind Public API v1 and MarketMind Public API v2. New integrations should target v2.</p>
       <p>
         <a href="/api/public/openapi/v1.yaml">OpenAPI v1</a>
         &nbsp;|&nbsp;
@@ -58,8 +58,8 @@
           <tr><th>Version</th><th>Focus</th><th>Coverage</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>v1</code></td><td>Core market data + predictions</td><td>Stock, chart, news, symbol search, ensemble predictions, fundamentals, macro overview</td></tr>
-          <tr><td><code>v2</code></td><td>Expanded research surface</td><td>Market-aware equities, macro regions, options, forex, crypto, commodities, prediction markets metadata, economic calendar</td></tr>
+          <tr><td><code>v1</code></td><td>Legacy beta compatibility</td><td>Stock, chart, news, symbol search, ensemble predictions, fundamentals, macro overview</td></tr>
+          <tr><td><code>v2</code></td><td>SDK-backed contract</td><td>Market-aware equities, predictions, evaluation summaries, screener presets/scan, macro regions, options, forex, crypto, commodities, prediction markets metadata, economic calendar</td></tr>
         </tbody>
       </table>
     </section>
@@ -67,13 +67,19 @@
     <section>
       <h2>Examples</h2>
       <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
-  "https://api.marketmind.example.com/api/public/v1/stock/AAPL"</pre>
-      <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
   "https://api.marketmind.example.com/api/public/v2/stock/00700?market=hk"</pre>
       <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
   "https://api.marketmind.example.com/api/public/v2/search-symbols?q=tencent&market=all"</pre>
       <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
+  "https://api.marketmind.example.com/api/public/v2/predictions/ensemble/AAPL"</pre>
+      <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
+  "https://api.marketmind.example.com/api/public/v2/evaluations/AAPL?test_days=30&fast_mode=false"</pre>
+      <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
+  "https://api.marketmind.example.com/api/public/v2/screener/scan?preset=momentum_leaders&sector=Technology&limit=10"</pre>
+      <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
   "https://api.marketmind.example.com/api/public/v2/macro/overview?region=asia"</pre>
+      <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
+  "https://api.marketmind.example.com/api/public/v2/screener/presets"</pre>
       <pre>curl -H "Authorization: Bearer &lt;marketmind_developer_api_key&gt;" \
   "https://api.marketmind.example.com/api/public/v2/options/chain/AAPL?date=2026-04-17"</pre>
     </section>
@@ -107,7 +113,7 @@
 
     <section>
       <h2>Versioning and Changelog</h2>
-      <p><strong>v1</strong> established the core read-only contract. <strong>v2</strong> expands the read-only research surface while keeping the same auth, quota, and error model.</p>
+      <p><strong>v1</strong> established the core read-only contract. <strong>v2</strong> is the recommended SDK-backed contract and adds predictions, evaluation summaries, and screener workflows while keeping the same auth, quota, and error model.</p>
       <p class="muted">Support: contact the MarketMind team through the beta channel used to issue your key.</p>
     </section>
   </main>

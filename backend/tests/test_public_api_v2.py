@@ -29,8 +29,12 @@ class PublicApiV2Tests(unittest.TestCase):
             "stock_handler": backend_api.market_data_handlers.get_stock_data_handler,
             "chart_handler": backend_api.market_data_handlers.get_chart_data_handler,
             "search_handler": backend_api.market_data_handlers.search_symbols_handler,
+            "predict_ensemble_handler": backend_api.market_data_handlers.predict_ensemble_handler,
+            "evaluate_models_handler": backend_api.market_data_handlers.evaluate_models_handler,
             "fundamentals_handler": backend_api.reference_data_handlers.get_fundamentals_handler,
             "macro_handler": backend_api.reference_data_handlers.get_macro_overview_handler,
+            "screener_presets_handler": backend_api.reference_data_handlers.get_screener_presets_handler,
+            "screener_scan_handler": backend_api.reference_data_handlers.get_screener_scan_handler,
             "get_symbol_suggestions": backend_api.get_symbol_suggestions,
             "akshare_search": backend_api.akshare_service.search_equities,
             "options_stock_price_handler": backend_api.market_data_handlers.get_options_stock_price_handler,
@@ -69,8 +73,12 @@ class PublicApiV2Tests(unittest.TestCase):
         backend_api.market_data_handlers.get_stock_data_handler = self._stub_stock_handler
         backend_api.market_data_handlers.get_chart_data_handler = self._stub_chart_handler
         backend_api.market_data_handlers.search_symbols_handler = self._stub_search_handler
+        backend_api.market_data_handlers.predict_ensemble_handler = self._stub_prediction_handler
+        backend_api.market_data_handlers.evaluate_models_handler = self._stub_evaluation_handler
         backend_api.reference_data_handlers.get_fundamentals_handler = self._stub_fundamentals_handler
         backend_api.reference_data_handlers.get_macro_overview_handler = self._stub_macro_handler
+        backend_api.reference_data_handlers.get_screener_presets_handler = self._stub_screener_presets_handler
+        backend_api.reference_data_handlers.get_screener_scan_handler = self._stub_screener_scan_handler
         backend_api.get_symbol_suggestions = lambda query: [
             {
                 "symbol": "AAPL",
@@ -231,8 +239,12 @@ class PublicApiV2Tests(unittest.TestCase):
         backend_api.market_data_handlers.get_stock_data_handler = self.original["stock_handler"]
         backend_api.market_data_handlers.get_chart_data_handler = self.original["chart_handler"]
         backend_api.market_data_handlers.search_symbols_handler = self.original["search_handler"]
+        backend_api.market_data_handlers.predict_ensemble_handler = self.original["predict_ensemble_handler"]
+        backend_api.market_data_handlers.evaluate_models_handler = self.original["evaluate_models_handler"]
         backend_api.reference_data_handlers.get_fundamentals_handler = self.original["fundamentals_handler"]
         backend_api.reference_data_handlers.get_macro_overview_handler = self.original["macro_handler"]
+        backend_api.reference_data_handlers.get_screener_presets_handler = self.original["screener_presets_handler"]
+        backend_api.reference_data_handlers.get_screener_scan_handler = self.original["screener_scan_handler"]
         backend_api.get_symbol_suggestions = self.original["get_symbol_suggestions"]
         backend_api.akshare_service.search_equities = self.original["akshare_search"]
         backend_api.market_data_handlers.get_options_stock_price_handler = self.original["options_stock_price_handler"]
@@ -423,6 +435,139 @@ class PublicApiV2Tests(unittest.TestCase):
             }
         )
 
+    def _stub_prediction_handler(self, ticker, **kwargs):
+        return kwargs["jsonify_fn"](
+            {
+                "symbol": "AAPL",
+                "companyName": "Apple Inc.",
+                "recentDate": "2026-04-10",
+                "recentClose": 213.45,
+                "recentPredicted": 214.2,
+                "predictions": [
+                    {"date": "2026-04-11", "predictedClose": 214.2},
+                    {"date": "2026-04-12", "predictedClose": 214.9},
+                ],
+                "modelsUsed": ["auto_arima", "random_forest", "xgboost"],
+                "ensembleMethod": "weighted_average",
+                "confidence": 87.4,
+                "abstain": False,
+                "selector_prob": 0.18,
+                "selector_status": "available",
+            }
+        )
+
+    def _stub_evaluation_handler(self, ticker, **kwargs):
+        request_obj = kwargs["request_obj"]
+        test_days = request_obj.args.get("test_days", default=60, type=int)
+        fast_mode = str(request_obj.args.get("fast_mode", "true")).strip().lower() in {"1", "true", "yes", "on"}
+        return kwargs["jsonify_fn"](
+            {
+                "ticker": ticker.split(":")[0].upper(),
+                "featureSpecVersion": "prediction-stack-v2",
+                "test_period": {
+                    "start_date": "2026-02-01",
+                    "end_date": "2026-04-01",
+                    "days": test_days,
+                },
+                "dates": ["2026-02-01", "2026-02-02"],
+                "actuals": [210.1, 211.2],
+                "models": {
+                    "ensemble": {
+                        "predictions": [211.0, 212.0],
+                        "metrics": {
+                            "mae": 1.0,
+                            "rmse": 1.2,
+                            "mape": 1.1,
+                            "r_squared": 0.8,
+                            "directional_accuracy": 50.0,
+                        },
+                    },
+                    "random_forest": {
+                        "predictions": [210.9, 211.8],
+                        "metrics": {
+                            "mae": 1.3,
+                            "rmse": 1.5,
+                            "mape": 1.4,
+                            "r_squared": 0.73,
+                            "directional_accuracy": 47.0,
+                        },
+                    },
+                },
+                "returns": {
+                    "initial_capital": 10000.0,
+                    "final_value": 10125.0,
+                    "total_return": 1.25,
+                    "buy_hold_return": 0.8,
+                    "outperformance": 0.45,
+                    "sharpe_ratio": 1.1,
+                    "max_drawdown": -1.0,
+                    "num_trades": 2,
+                },
+                "best_model": "ensemble",
+                "evaluationOptions": {
+                    "fastMode": fast_mode,
+                    "includeExplanations": True,
+                },
+            }
+        )
+
+    def _stub_screener_presets_handler(self, **kwargs):
+        return kwargs["jsonify_fn"](
+            {
+                "presets": [
+                    {
+                        "key": "gainers",
+                        "label": "Top Gainers",
+                        "description": "Largest daily winners in the liquid U.S. universe.",
+                        "defaultSort": "day_change_pct",
+                        "defaultDir": "desc",
+                    },
+                    {
+                        "key": "momentum_leaders",
+                        "label": "Momentum Leaders",
+                        "description": "Positive 1m and 3m momentum near highs.",
+                        "defaultSort": "momentum_3m",
+                        "defaultDir": "desc",
+                    },
+                ],
+                "sectors": ["Technology", "Financials"],
+            }
+        )
+
+    def _stub_screener_scan_handler(self, **kwargs):
+        request_obj = kwargs["request_obj"]
+        return kwargs["jsonify_fn"](
+            {
+                "rows": [
+                    {
+                        "symbol": "NVDA",
+                        "name": "NVIDIA Corporation",
+                        "sector": "Technology",
+                        "price": 118.4,
+                        "market_cap": 2890000000000,
+                        "momentum_3m": 0.22,
+                    }
+                ],
+                "meta": {
+                    "asOf": "2026-04-15T13:00:00Z",
+                    "lastRefresh": "2026-04-15T12:55:00Z",
+                    "snapshotStatus": "fresh",
+                    "fresh": True,
+                    "stale": False,
+                    "total": 1,
+                    "limit": request_obj.args.get("limit", default=50, type=int),
+                    "offset": request_obj.args.get("offset", default=0, type=int),
+                    "universeSize": 612,
+                    "warnings": [],
+                },
+                "filters": {
+                    "preset": request_obj.args.get("preset", "gainers"),
+                    "query": request_obj.args.get("query", ""),
+                    "sector": request_obj.args.get("sector", ""),
+                },
+            }
+        )
+
     def _stub_macro_handler(self, **kwargs):
         region = str(kwargs.get("request_obj").args.get("region", "us")).lower() if kwargs.get("request_obj") else "us"
         if region == "asia":
@@ -495,6 +640,10 @@ class PublicApiV2Tests(unittest.TestCase):
         self.assertIn("/api/public/v2/chart/{ticker}", spec_body)
         self.assertIn("/api/public/v2/fundamentals/{ticker}", spec_body)
         self.assertIn("/api/public/v2/macro/overview", spec_body)
+        self.assertIn("/api/public/v2/predictions/ensemble/{ticker}", spec_body)
+        self.assertIn("/api/public/v2/evaluations/{ticker}", spec_body)
+        self.assertIn("/api/public/v2/screener/presets", spec_body)
+        self.assertIn("/api/public/v2/screener/scan", spec_body)
 
     def test_public_v2_market_aware_search_contract(self):
         response = self.client.get(
@@ -558,6 +707,57 @@ class PublicApiV2Tests(unittest.TestCase):
         self.assertEqual(payload["source"], "akshare")
         self.assertEqual(payload["indicators"][0]["symbol"], "CN_CPI")
         self.assertEqual(payload["marketSignals"][0]["symbol"], "USDCNH")
+
+    def test_public_v2_prediction_contract_omits_selective_debug_fields(self):
+        response = self.client.get(
+            "/api/public/v2/predictions/ensemble/AAPL",
+            headers=self._public_headers(),
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["symbol"], "AAPL")
+        self.assertIn("confidence", payload)
+        self.assertNotIn("abstain", payload)
+        self.assertNotIn("selector_prob", payload)
+        self.assertNotIn("selector_status", payload)
+
+    def test_public_v2_evaluation_contract_returns_summary_only(self):
+        response = self.client.get(
+            "/api/public/v2/evaluations/AAPL?test_days=30&fast_mode=false&include_selective=true",
+            headers=self._public_headers(),
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["symbol"], "AAPL")
+        self.assertEqual(payload["featureSpecVersion"], "prediction-stack-v2")
+        self.assertEqual(payload["testPeriod"]["days"], 30)
+        self.assertFalse(payload["evaluationOptions"]["fastMode"])
+        self.assertEqual(payload["bestModel"], "ensemble")
+        self.assertIn("metrics", payload["models"]["ensemble"])
+        self.assertNotIn("predictions", payload["models"]["ensemble"])
+        self.assertNotIn("dates", payload)
+        self.assertNotIn("actuals", payload)
+
+    def test_public_v2_screener_contracts(self):
+        presets_response = self.client.get(
+            "/api/public/v2/screener/presets",
+            headers=self._public_headers(),
+        )
+        scan_response = self.client.get(
+            "/api/public/v2/screener/scan?preset=momentum_leaders&sector=Technology&limit=5&offset=0",
+            headers=self._public_headers(),
+        )
+
+        self.assertEqual(presets_response.status_code, 200)
+        presets_payload = presets_response.get_json()
+        self.assertEqual(presets_payload["presets"][0]["key"], "gainers")
+        self.assertIn("Technology", presets_payload["sectors"])
+
+        self.assertEqual(scan_response.status_code, 200)
+        scan_payload = scan_response.get_json()
+        self.assertEqual(scan_payload["filters"]["preset"], "momentum_leaders")
+        self.assertEqual(scan_payload["meta"]["limit"], 5)
+        self.assertEqual(scan_payload["rows"][0]["symbol"], "NVDA")
 
     def test_public_v2_international_provider_unavailable_maps_to_upstream_error(self):
         backend_api.market_data_handlers.get_stock_data_handler = (

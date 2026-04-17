@@ -15,8 +15,10 @@ security:
 tags:
   - name: Health
   - name: Market Data
+  - name: Predictions
   - name: Fundamentals
   - name: Macro
+  - name: Screener
   - name: Options
   - name: Forex
   - name: Crypto
@@ -135,6 +137,137 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MacroOverviewResponseV2'
+        '401': { $ref: '#/components/responses/PublicAuthError' }
+        '429': { $ref: '#/components/responses/PublicRateLimitError' }
+        '503': { $ref: '#/components/responses/PublicUpstreamError' }
+  /api/public/v2/predictions/ensemble/{ticker}:
+    get:
+      tags: [Predictions]
+      summary: Get the public-safe ensemble prediction summary for a U.S. equity ticker
+      parameters:
+        - $ref: '#/components/parameters/Ticker'
+      responses:
+        '200':
+          description: Ensemble prediction payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictionEnsembleResponseV2'
+        '400': { $ref: '#/components/responses/PublicInvalidQueryError' }
+        '401': { $ref: '#/components/responses/PublicAuthError' }
+        '404': { $ref: '#/components/responses/PublicNotFoundError' }
+        '429': { $ref: '#/components/responses/PublicRateLimitError' }
+        '503': { $ref: '#/components/responses/PublicUpstreamError' }
+  /api/public/v2/evaluations/{ticker}:
+    get:
+      tags: [Predictions]
+      summary: Get a bounded public evaluation summary for a U.S. equity ticker
+      parameters:
+        - $ref: '#/components/parameters/Ticker'
+        - in: query
+          name: test_days
+          required: false
+          schema:
+            type: integer
+            default: 60
+            minimum: 1
+        - in: query
+          name: fast_mode
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Evaluation summary payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationSummaryResponseV2'
+        '400': { $ref: '#/components/responses/PublicInvalidQueryError' }
+        '401': { $ref: '#/components/responses/PublicAuthError' }
+        '404': { $ref: '#/components/responses/PublicNotFoundError' }
+        '429': { $ref: '#/components/responses/PublicRateLimitError' }
+        '503': { $ref: '#/components/responses/PublicUpstreamError' }
+  /api/public/v2/screener/presets:
+    get:
+      tags: [Screener]
+      summary: List public screener presets and sector filters for the internal U.S. equity universe
+      responses:
+        '200':
+          description: Screener preset catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenerPresetCatalogResponseV2'
+        '401': { $ref: '#/components/responses/PublicAuthError' }
+        '429': { $ref: '#/components/responses/PublicRateLimitError' }
+        '503': { $ref: '#/components/responses/PublicUpstreamError' }
+  /api/public/v2/screener/scan:
+    get:
+      tags: [Screener]
+      summary: Run a preset or filtered screener query against the latest U.S. equity snapshot
+      parameters:
+        - in: query
+          name: preset
+          required: false
+          schema: { type: string, default: gainers }
+        - in: query
+          name: query
+          required: false
+          schema: { type: string }
+        - in: query
+          name: price_min
+          required: false
+          schema: { type: number }
+        - in: query
+          name: price_max
+          required: false
+          schema: { type: number }
+        - in: query
+          name: market_cap_min
+          required: false
+          schema: { type: number }
+        - in: query
+          name: avg_dollar_volume_min
+          required: false
+          schema: { type: number }
+        - in: query
+          name: sector
+          required: false
+          schema: { type: string }
+        - in: query
+          name: sort
+          required: false
+          schema: { type: string }
+        - in: query
+          name: dir
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Screener scan payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenerScanResponseV2'
+        '400': { $ref: '#/components/responses/PublicInvalidQueryError' }
         '401': { $ref: '#/components/responses/PublicAuthError' }
         '429': { $ref: '#/components/responses/PublicRateLimitError' }
         '503': { $ref: '#/components/responses/PublicUpstreamError' }
@@ -585,6 +718,129 @@ components:
         source: { type: string, example: akshare }
         sourceNote: { type: string, example: Data via Akshare aggregating Jin10 and Eastmoney sources. }
       required: [region, indicators]
+    PredictionPointV2:
+      type: object
+      properties:
+        date: { type: string, example: "2026-04-11" }
+        predictedClose: { type: number, example: 214.2 }
+      required: [date, predictedClose]
+    PredictionEnsembleResponseV2:
+      type: object
+      properties:
+        symbol: { type: string, example: AAPL }
+        company_name: { type: string, example: Apple Inc. }
+        recent_date: { type: string, example: "2026-04-10" }
+        recent_close: { type: number, example: 213.45 }
+        recent_predicted: { type: number, example: 214.2 }
+        predictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PredictionPointV2'
+        models_used:
+          type: array
+          items: { type: string }
+        ensemble_method: { type: string, example: weighted_average }
+        confidence: { type: number, example: 87.4 }
+      required: [symbol, company_name, recent_date, recent_close, recent_predicted, predictions, models_used, ensemble_method, confidence]
+    EvaluationTestPeriodV2:
+      type: object
+      properties:
+        startDate: { type: string, nullable: true, example: "2026-02-01" }
+        endDate: { type: string, nullable: true, example: "2026-04-01" }
+        days: { type: integer, nullable: true, example: 60 }
+    EvaluationMetricsV2:
+      type: object
+      properties:
+        mae: { type: number, nullable: true, example: 1.0 }
+        rmse: { type: number, nullable: true, example: 1.2 }
+        mape: { type: number, nullable: true, example: 1.1 }
+        r_squared: { type: number, nullable: true, example: 0.8 }
+        directional_accuracy: { type: number, nullable: true, example: 50.0 }
+      additionalProperties: true
+    EvaluationModelSummaryV2:
+      type: object
+      properties:
+        metrics:
+          $ref: '#/components/schemas/EvaluationMetricsV2'
+      required: [metrics]
+    EvaluationSummaryResponseV2:
+      type: object
+      properties:
+        symbol: { type: string, example: AAPL }
+        featureSpecVersion: { type: string, example: prediction-stack-v2 }
+        testPeriod:
+          $ref: '#/components/schemas/EvaluationTestPeriodV2'
+        bestModel: { type: string, nullable: true, example: ensemble }
+        models:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/EvaluationModelSummaryV2'
+        returns:
+          type: object
+          additionalProperties: true
+        evaluationOptions:
+          type: object
+          properties:
+            testDays: { type: integer, example: 60 }
+            fastMode: { type: boolean, example: true }
+          required: [testDays, fastMode]
+      required: [symbol, featureSpecVersion, testPeriod, bestModel, models, returns, evaluationOptions]
+    ScreenerPresetV2:
+      type: object
+      properties:
+        key: { type: string, example: momentum_leaders }
+        label: { type: string, example: Momentum Leaders }
+        description: { type: string, example: Positive 1m and 3m momentum near highs. }
+        defaultSort: { type: string, example: momentum_3m }
+        defaultDir: { type: string, example: desc }
+      required: [key, label, description, defaultSort, defaultDir]
+    ScreenerPresetCatalogResponseV2:
+      type: object
+      properties:
+        presets:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreenerPresetV2'
+        sectors:
+          type: array
+          items: { type: string }
+      required: [presets, sectors]
+    ScreenerScanMetaV2:
+      type: object
+      properties:
+        asOf: { type: string, nullable: true, example: "2026-04-15T13:00:00Z" }
+        lastRefresh: { type: string, nullable: true, example: "2026-04-15T12:55:00Z" }
+        snapshotStatus: { type: string, nullable: true, example: fresh }
+        fresh: { type: boolean, nullable: true, example: true }
+        stale: { type: boolean, nullable: true, example: false }
+        total: { type: integer, nullable: true, example: 1 }
+        limit: { type: integer, nullable: true, example: 50 }
+        offset: { type: integer, nullable: true, example: 0 }
+        universeSize: { type: integer, nullable: true, example: 612 }
+        warnings:
+          type: array
+          items: { type: string }
+      required: [warnings]
+    ScreenerScanFiltersV2:
+      type: object
+      properties:
+        preset: { type: string, nullable: true, example: momentum_leaders }
+        query: { type: string, nullable: true, example: nvda }
+        sector: { type: string, nullable: true, example: Technology }
+      additionalProperties: true
+    ScreenerScanResponseV2:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        meta:
+          $ref: '#/components/schemas/ScreenerScanMetaV2'
+        filters:
+          $ref: '#/components/schemas/ScreenerScanFiltersV2'
+      required: [rows, meta, filters]
     PublicErrorEnvelope:
       type: object
       properties:

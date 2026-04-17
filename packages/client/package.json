@@ -1,0 +1,32 @@
+{
+  "name": "@marketmind/client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Typed JavaScript/TypeScript client for the MarketMind Public API v2.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "generate:types": "openapi-typescript ../../backend/public_api_openapi_v2.yaml -o src/generated/openapi.ts",
+    "build": "npm run generate:types && tsup src/index.ts --format esm,cjs --dts --clean",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "check": "npm run test"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.10.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  }
+}

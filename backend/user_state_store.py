@@ -25,6 +25,7 @@ from sqlalchemy import (
     Uuid,
     create_engine,
     delete,
+    event,
     func,
     select,
 )
@@ -359,6 +360,20 @@ def _should_auto_create_schema(database_url: str) -> bool:
     return os.getenv("MARKETMIND_AUTO_CREATE_SCHEMA", "false").strip().lower() == "true"
 
 
+def _is_sqlite_url(database_url: str) -> bool:
+    return _normalize_database_url(database_url).startswith("sqlite")
+
+
+def _configure_sqlite_connection(dbapi_connection: Any) -> None:
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.execute("PRAGMA journal_mode=WAL")
+    finally:
+        cursor.close()
+
+
 def ensure_database_ready(database_url: str) -> None:
     url = _normalize_database_url(database_url)
     if not url:
@@ -367,7 +382,21 @@ def ensure_database_ready(database_url: str) -> None:
     if url in _SESSION_FACTORIES:
         return
 
-    engine = create_engine(url, future=True)
+    engine_kwargs: Dict[str, Any] = {"future": True}
+    if _is_sqlite_url(url):
+        engine_kwargs["connect_args"] = {
+            "check_same_thread": False,
+            "timeout": 30,
+        }
+
+    engine = create_engine(url, **engine_kwargs)
+    if _is_sqlite_url(url):
+        event.listen(
+            engine,
+            "connect",
+            lambda dbapi_connection, _connection_record: _configure_sqlite_connection(dbapi_connection),
+        )
+
     if _should_auto_create_schema(url):
         Base.metadata.create_all(engine)
 
