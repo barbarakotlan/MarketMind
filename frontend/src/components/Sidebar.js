@@ -9,7 +9,6 @@ import {
     ChevronLeft, ChevronRight, Boxes, Calendar, SlidersHorizontal, Globe, Bot, Trash2
 } from 'lucide-react';
 
-
 const NAV_GROUPS = [
     {
         label: 'Home',
@@ -58,7 +57,7 @@ const NAV_GROUPS = [
         label: 'Learn',
         items: [
             { page: 'gettingStarted', icon: BookOpen, label: 'Learn' },
-            {page: 'plan', icon: Crown, label: 'Upgrade Plan' },
+            { page: 'plan', icon: Crown, label: 'Upgrade Plan' },
         ],
     },
 ];
@@ -91,11 +90,12 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
         const interval = setInterval(checkAlerts, 15000);
         return () => clearInterval(interval);
     }, []);
+
     useEffect(() => {
-    apiRequest(API_ENDPOINTS.CHECKOUT_PLAN_STATUS)
-        .then(data => setPlan(data.plan))
-        .catch(() => {});
-}, []);
+        apiRequest(API_ENDPOINTS.CHECKOUT_PLAN_STATUS)
+            .then(data => setPlan(data.plan))
+            .catch(() => {});
+    }, []);
 
     useEffect(() => {
         loadRecentAiChats();
@@ -103,8 +103,10 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
         const handleActiveChatChanged = (event) => {
             setActiveAiChatId(event?.detail?.chatId || null);
         };
+        
         window.addEventListener('marketmindai:history-updated', handleHistoryUpdated);
         window.addEventListener('marketmindai:active-chat-changed', handleActiveChatChanged);
+        
         return () => {
             window.removeEventListener('marketmindai:history-updated', handleHistoryUpdated);
             window.removeEventListener('marketmindai:active-chat-changed', handleActiveChatChanged);
@@ -143,81 +145,6 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             console.error("Error deleting MarketMindAI chat:", err);
             window.dispatchEvent(new CustomEvent('marketmindai:notice', { detail: { message: 'Could not delete that chat.', tone: 'warn' } }));
         }
-    };
-
-    const NavItem = ({ item }) => {
-        const Icon = item.icon;
-        const isActive = activePage === item.page;
-        const isAlerts = item.page === 'notifications';
-        return (
-            <div>
-                <button
-                    onClick={() => handleNavClick(item.page)}
-                    title={isCollapsed ? item.label : undefined}
-                    className={`relative w-full flex items-center rounded-lg px-2 py-2 text-sm font-medium transition-colors duration-150 ${
-                        isCollapsed ? 'justify-center' : 'justify-start space-x-3'
-                    } ${
-                        isActive
-                            ? 'bg-mm-accent-primary text-white shadow-card'
-                            : 'text-mm-text-secondary hover:bg-mm-surface-subtle hover:text-mm-text-primary'
-                    }`}
-                >
-                    <Icon className="w-5 h-5 flex-shrink-0" />
-                    {!isCollapsed && <span>{item.label}</span>}
-                    {isAlerts && newAlertCount > 0 && (
-                        <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                            <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 animate-ping"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-mm-negative"></span>
-                        </span>
-                    )}
-                </button>
-
-                {!isCollapsed && item.page === 'marketmindAI' && recentAiChats.length > 0 ? (
-                    <div className="mt-2 ml-4 space-y-1 border-l border-mm-border pl-3">
-                        <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-mm-text-tertiary">
-                            Recent
-                        </p>
-                        {recentAiChats.map((chat) => {
-                            const isChatActive = activePage === 'marketmindAI' && chat.id === activeAiChatId;
-                            return (
-                                <div
-                                    key={chat.id}
-                                    className={`w-full rounded-lg px-2 py-2 text-left text-xs transition ${
-                                        isChatActive
-                                            ? 'border border-mm-accent-primary/20 bg-mm-accent-primary/10 text-mm-accent-primary'
-                                            : 'text-mm-text-secondary hover:bg-mm-surface-subtle hover:text-mm-text-primary'
-                                    }`}
-                                >
-                                    <div className="flex items-start gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRecentAiChatClick(chat.id)}
-                                            className="min-w-0 flex-1 text-left"
-                                        >
-                                            <div className="truncate font-medium">{chat.title}</div>
-                                            {chat.attachedTicker ? (
-                                                <div className="mt-0.5 truncate uppercase tracking-[0.16em] text-[10px] opacity-70">
-                                                    {chat.attachedTicker}
-                                                </div>
-                                            ) : null}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={(event) => handleRecentAiChatDelete(event, chat.id)}
-                                            className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-mm-text-tertiary transition hover:bg-mm-surface-subtle hover:text-mm-text-primary"
-                                            aria-label={`Delete chat ${chat.title}`}
-                                            title="Delete chat"
-                                        >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                ) : null}
-            </div>
-        );
     };
 
     return (
@@ -260,30 +187,105 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                                 ? <hr className="mx-1 my-2 border-mm-border" />
                                 : <p className="px-2 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-mm-text-tertiary">{group.label}</p>
                         )}
-                        {group.items.map(item => (
-                            <NavItem key={item.page} item={item} />
-                        ))}
+                        {group.items.map((item) => {
+                            const Icon = item.icon;
+                            const isActive = activePage === item.page;
+                            const isAlerts = item.page === 'notifications';
+                            
+                            return (
+                                <div key={item.page}>
+                                    <button
+                                        onClick={() => handleNavClick(item.page)}
+                                        title={isCollapsed ? item.label : undefined}
+                                        className={`relative w-full flex items-center rounded-lg px-2 py-2 text-sm font-medium transition-colors duration-150 ${
+                                            isCollapsed ? 'justify-center' : 'justify-start space-x-3'
+                                        } ${
+                                            isActive
+                                                ? 'bg-mm-accent-primary text-white shadow-card'
+                                                : 'text-mm-text-secondary hover:bg-mm-surface-subtle hover:text-mm-text-primary'
+                                        }`}
+                                    >
+                                        <Icon className="w-5 h-5 flex-shrink-0" />
+                                        {!isCollapsed && <span>{item.label}</span>}
+                                        {isAlerts && newAlertCount > 0 && (
+                                            <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                                                <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 animate-ping"></span>
+                                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-mm-negative"></span>
+                                            </span>
+                                        )}
+                                    </button>
+
+                                    {/* Recent AI Chats (Hidden when collapsed) */}
+                                    {!isCollapsed && item.page === 'marketmindAI' && recentAiChats.length > 0 && (
+                                        <div className="mt-2 ml-4 space-y-1 border-l border-mm-border pl-3">
+                                            <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-mm-text-tertiary">
+                                                Recent
+                                            </p>
+                                            {recentAiChats.map((chat) => {
+                                                const isChatActive = activePage === 'marketmindAI' && chat.id === activeAiChatId;
+                                                return (
+                                                    <div
+                                                        key={chat.id}
+                                                        className={`w-full rounded-lg px-2 py-2 text-left text-xs transition ${
+                                                            isChatActive
+                                                                ? 'border border-mm-accent-primary/20 bg-mm-accent-primary/10 text-mm-accent-primary'
+                                                                : 'text-mm-text-secondary hover:bg-mm-surface-subtle hover:text-mm-text-primary'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRecentAiChatClick(chat.id)}
+                                                                className="min-w-0 flex-1 text-left"
+                                                            >
+                                                                <div className="truncate font-medium">{chat.title}</div>
+                                                                {chat.attachedTicker && (
+                                                                    <div className="mt-0.5 truncate uppercase tracking-[0.16em] text-[10px] opacity-70">
+                                                                        {chat.attachedTicker}
+                                                                    </div>
+                                                                )}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(event) => handleRecentAiChatDelete(event, chat.id)}
+                                                                className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-mm-text-tertiary transition hover:bg-mm-surface-subtle hover:text-mm-text-primary"
+                                                                aria-label={`Delete chat ${chat.title}`}
+                                                                title="Delete chat"
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 ))}
             </nav>
 
             {/* Footer: profile + dark mode toggle */}
-            <div className="flex-shrink-0 border-t border-mm-border p-2">
-                <div className={`w-full flex items-center ${isCollapsed ? 'justify-center gap-2' : 'justify-between px-1'}`}>
+            <div className="flex-shrink-0 border-t border-mm-border p-3">
+                <div className={`w-full flex ${isCollapsed ? 'flex-col items-center gap-4' : 'items-center justify-between'}`}>
                     <UserButton afterSignOutUrl="/" />
                   
-{plan && (
-    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-        plan === 'pro' 
-            ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' 
-            : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-    }`}>
-        {plan === 'pro' ? '⚡ Pro' : 'Free'}
-    </span>
-)}
+                    {/* Hide plan badge when collapsed so it doesn't break layout */}
+                    {!isCollapsed && plan && (
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                            plan === 'pro' 
+                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' 
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                        }`}>
+                            {plan === 'pro' ? '⚡ Pro' : 'Free'}
+                        </span>
+                    )}
+
                     <button
                         onClick={toggleDarkMode}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-mm-text-secondary transition-colors duration-150 hover:bg-mm-surface-subtle hover:text-mm-text-primary"
+                        className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-mm-text-secondary transition-colors duration-150 hover:bg-mm-surface-subtle hover:text-mm-text-primary"
                         aria-label="Toggle dark mode"
                         title={isDarkMode ? 'Light Mode' : 'Dark Mode'}
                     >

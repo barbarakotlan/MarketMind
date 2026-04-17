@@ -1,0 +1,1012 @@
+{
+  "AAPL": {
+    "currency": "USD",
+    "eps_ttm": 7.89,
+    "exchange": "NMS",
+    "market_cap": 3828515864576,
+    "name": "Apple Inc.",
+    "pe_forward": 27.928572,
+    "sector": "Technology",
+    "target_mean_price": 296.12125
+  },
+  "ABBV": {
+    "currency": "USD",
+    "eps_ttm": 2.38,
+    "exchange": "NYQ",
+    "market_cap": 367796453376,
+    "name": "AbbVie Inc.",
+    "pe_forward": 12.932872,
+    "sector": "Healthcare",
+    "target_mean_price": 248.7931
+  },
+  "ABNB": {
+    "currency": "USD",
+    "eps_ttm": 4.03,
+    "exchange": "NMS",
+    "market_cap": 77313327104,
+    "name": "Airbnb, Inc.",
+    "pe_forward": 22.301737,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 145.68056
+  },
+  "ADBE": {
+    "currency": "USD",
+    "eps_ttm": 17.15,
+    "exchange": "NMS",
+    "market_cap": 91860983808,
+    "name": "Adobe Inc.",
+    "pe_forward": 8.550245,
+    "sector": "Technology",
+    "target_mean_price": 329.58487
+  },
+  "ADI": {
+    "currency": "USD",
+    "eps_ttm": 5.48,
+    "exchange": "NMS",
+    "market_cap": 170939809792,
+    "name": "Analog Devices, Inc.",
+    "pe_forward": 26.820356,
+    "sector": "Technology",
+    "target_mean_price": 386.59375
+  },
+  "ADP": {
+    "currency": "USD",
+    "eps_ttm": 10.41,
+    "exchange": "NMS",
+    "market_cap": 76355870720,
+    "name": "Automatic Data Processing, Inc.",
+    "pe_forward": 15.774565,
+    "sector": "Technology",
+    "target_mean_price": 261.26666
+  },
+  "AEP": {
+    "currency": "USD",
+    "eps_ttm": 6.67,
+    "exchange": "NMS",
+    "market_cap": 74087702528,
+    "name": "American Electric Power Company, Inc.",
+    "pe_forward": 19.86504,
+    "sector": "Utilities",
+    "target_mean_price": 137.47368
+  },
+  "AMAT": {
+    "currency": "USD",
+    "eps_ttm": 9.75,
+    "exchange": "NMS",
+    "market_cap": 317039181824,
+    "name": "Applied Materials, Inc.",
+    "pe_forward": 28.704376,
+    "sector": "Technology",
+    "target_mean_price": 420.3125
+  },
+  "AMD": {
+    "currency": "USD",
+    "eps_ttm": 2.6,
+    "exchange": "NMS",
+    "market_cap": 399515877376,
+    "name": "Advanced Micro Devices, Inc.",
+    "pe_forward": 22.668024,
+    "sector": "Technology",
+    "target_mean_price": 289.34784
+  },
+  "AMGN": {
+    "currency": "USD",
+    "eps_ttm": 14.22,
+    "exchange": "NMS",
+    "market_cap": 189223518208,
+    "name": "Amgen Inc.",
+    "pe_forward": 15.092693,
+    "sector": "Healthcare",
+    "target_mean_price": 351.10345
+  },
+  "AMZN": {
+    "currency": "USD",
+    "eps_ttm": 7.17,
+    "exchange": "NMS",
+    "market_cap": 2563598712832,
+    "name": "Amazon.com, Inc.",
+    "pe_forward": 25.378717,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 281.27344
+  },
+  "ANET": {
+    "currency": "USD",
+    "eps_ttm": 2.75,
+    "exchange": "NYQ",
+    "market_cap": 185555664896,
+    "name": "Arista Networks, Inc.",
+    "pe_forward": 34.470497,
+    "sector": "Technology",
+    "target_mean_price": 177.01932
+  },
+  "AVGO": {
+    "currency": "USD",
+    "eps_ttm": 5.15,
+    "exchange": "NMS",
+    "market_cap": 1761620131840,
+    "name": "Broadcom Inc.",
+    "pe_forward": 20.827295,
+    "sector": "Technology",
+    "target_mean_price": 472.51944
+  },
+  "AXP": {
+    "currency": "USD",
+    "eps_ttm": 15.38,
+    "exchange": "NYQ",
+    "market_cap": 215253499904,
+    "name": "American Express Company",
+    "pe_forward": 15.560359,
+    "sector": "Financial Services",
+    "target_mean_price": 357.02347
+  },
+  "BA": {
+    "currency": "USD",
+    "eps_ttm": 2.49,
+    "exchange": "NYQ",
+    "market_cap": 171023269888,
+    "name": "The Boeing Company",
+    "pe_forward": 47.272434,
+    "sector": "Industrials",
+    "target_mean_price": 267.24
+  },
+  "BAC": {
+    "currency": "USD",
+    "eps_ttm": 3.81,
+    "exchange": "NYQ",
+    "market_cap": 377062883328,
+    "name": "Bank of America Corporation",
+    "pe_forward": 10.536195,
+    "sector": "Financial Services",
+    "target_mean_price": 60.42
+  },
+  "BKNG": {
+    "currency": "USD",
+    "eps_ttm": 6.62,
+    "exchange": "NMS",
+    "market_cap": 137351471104,
+    "name": "Booking Holdings Inc.",
+    "pe_forward": 13.861098,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 231.984
+  },
+  "BLK": {
+    "currency": "USD",
+    "eps_ttm": 35.36,
+    "exchange": "NYQ",
+    "market_cap": 155434205184,
+    "name": "BlackRock, Inc.",
+    "pe_forward": 16.535492,
+    "sector": "Financial Services",
+    "target_mean_price": 1254.6875
+  },
+  "BRK.B": {
+    "currency": "USD",
+    "eps_ttm": null,
+    "exchange": "XNYS",
+    "market_cap": null,
+    "name": "Berkshire Hathaway Inc. Class B",
+    "pe_forward": null,
+    "sector": "Financials",
+    "target_mean_price": null
+  },
+  "C": {
+    "currency": "USD",
+    "eps_ttm": 7.0,
+    "exchange": "NYQ",
+    "market_cap": 217597788160,
+    "name": "Citigroup Inc.",
+    "pe_forward": 10.196504,
+    "sector": "Financial Services",
+    "target_mean_price": 132.08696
+  },
+  "CAT": {
+    "currency": "USD",
+    "eps_ttm": 18.81,
+    "exchange": "NYQ",
+    "market_cap": 370012717056,
+    "name": "Caterpillar Inc.",
+    "pe_forward": 28.481813,
+    "sector": "Industrials",
+    "target_mean_price": 742.56
+  },
+  "CDNS": {
+    "currency": "USD",
+    "eps_ttm": 4.05,
+    "exchange": "NMS",
+    "market_cap": 73346621440,
+    "name": "Cadence Design Systems, Inc.",
+    "pe_forward": 28.218803,
+    "sector": "Technology",
+    "target_mean_price": 371.67776
+  },
+  "CEG": {
+    "currency": "USD",
+    "eps_ttm": 7.4,
+    "exchange": "NMS",
+    "market_cap": 103797415936,
+    "name": "Constellation Energy Corporation",
+    "pe_forward": 20.854397,
+    "sector": "Utilities",
+    "target_mean_price": 373.29633
+  },
+  "CMCSA": {
+    "currency": "USD",
+    "eps_ttm": 5.39,
+    "exchange": "NMS",
+    "market_cap": 101773975552,
+    "name": "Comcast Corporation",
+    "pe_forward": 7.2444034,
+    "sector": "Communication Services",
+    "target_mean_price": 32.68182
+  },
+  "COST": {
+    "currency": "USD",
+    "eps_ttm": 19.2,
+    "exchange": "NMS",
+    "market_cap": 443190280192,
+    "name": "Costco Wholesale Corporation",
+    "pe_forward": 44.443348,
+    "sector": "Consumer Defensive",
+    "target_mean_price": 1067.9375
+  },
+  "CRM": {
+    "currency": "USD",
+    "eps_ttm": 7.81,
+    "exchange": "NYQ",
+    "market_cap": 154567524352,
+    "name": "Salesforce, Inc.",
+    "pe_forward": 11.076011,
+    "sector": "Technology",
+    "target_mean_price": 273.8517
+  },
+  "CRWD": {
+    "currency": "USD",
+    "eps_ttm": -0.63,
+    "exchange": "NMS",
+    "market_cap": 96124813312,
+    "name": "CrowdStrike Holdings, Inc.",
+    "pe_forward": 61.40541,
+    "sector": "Technology",
+    "target_mean_price": 489.8584
+  },
+  "CSCO": {
+    "currency": "USD",
+    "eps_ttm": 2.78,
+    "exchange": "NMS",
+    "market_cap": 324859002880,
+    "name": "Cisco Systems, Inc.",
+    "pe_forward": 18.214485,
+    "sector": "Technology",
+    "target_mean_price": 89.04455
+  },
+  "CSX": {
+    "currency": "USD",
+    "eps_ttm": 1.54,
+    "exchange": "NMS",
+    "market_cap": 78566105088,
+    "name": "CSX Corporation",
+    "pe_forward": 20.188986,
+    "sector": "Industrials",
+    "target_mean_price": 41.6875
+  },
+  "CTAS": {
+    "currency": "USD",
+    "eps_ttm": 4.74,
+    "exchange": "NMS",
+    "market_cap": 69987237888,
+    "name": "Cintas Corporation",
+    "pe_forward": 32.245934,
+    "sector": "Industrials",
+    "target_mean_price": 212.41176
+  },
+  "CVX": {
+    "currency": "USD",
+    "eps_ttm": 6.62,
+    "exchange": "NYQ",
+    "market_cap": 375572529152,
+    "name": "Chevron Corporation",
+    "pe_forward": 17.830412,
+    "sector": "Energy",
+    "target_mean_price": 203.54167
+  },
+  "DDOG": {
+    "currency": "USD",
+    "eps_ttm": 0.31,
+    "exchange": "NMS",
+    "market_cap": 37285314560,
+    "name": "Datadog, Inc.",
+    "pe_forward": 39.965565,
+    "sector": "Technology",
+    "target_mean_price": 181.37222
+  },
+  "DE": {
+    "currency": "USD",
+    "eps_ttm": 17.74,
+    "exchange": "NYQ",
+    "market_cap": 163414917120,
+    "name": "Deere & Company",
+    "pe_forward": 26.0668,
+    "sector": "Industrials",
+    "target_mean_price": 664.01263
+  },
+  "DHR": {
+    "currency": "USD",
+    "eps_ttm": 5.04,
+    "exchange": "NYQ",
+    "market_cap": 134186885120,
+    "name": "Danaher Corporation",
+    "pe_forward": 20.814375,
+    "sector": "Healthcare",
+    "target_mean_price": 262.5
+  },
+  "DIS": {
+    "currency": "USD",
+    "eps_ttm": 6.79,
+    "exchange": "NYQ",
+    "market_cap": 175866789888,
+    "name": "The Walt Disney Company",
+    "pe_forward": 13.507256,
+    "sector": "Communication Services",
+    "target_mean_price": 128.38966
+  },
+  "DXCM": {
+    "currency": "USD",
+    "eps_ttm": 2.09,
+    "exchange": "NMS",
+    "market_cap": 24968839168,
+    "name": "DexCom, Inc.",
+    "pe_forward": 21.394054,
+    "sector": "Healthcare",
+    "target_mean_price": 87.08333
+  },
+  "FTNT": {
+    "currency": "USD",
+    "eps_ttm": 2.42,
+    "exchange": "NMS",
+    "market_cap": 57037807616,
+    "name": "Fortinet, Inc.",
+    "pe_forward": 23.169405,
+    "sector": "Technology",
+    "target_mean_price": 89.11765
+  },
+  "GE": {
+    "currency": "USD",
+    "eps_ttm": 8.04,
+    "exchange": "NYQ",
+    "market_cap": 325251858432,
+    "name": "GE Aerospace",
+    "pe_forward": 35.805565,
+    "sector": "Industrials",
+    "target_mean_price": 353.65
+  },
+  "GILD": {
+    "currency": "USD",
+    "eps_ttm": 6.78,
+    "exchange": "NMS",
+    "market_cap": 172514918400,
+    "name": "Gilead Sciences, Inc.",
+    "pe_forward": 14.453089,
+    "sector": "Healthcare",
+    "target_mean_price": 157.7143
+  },
+  "GOOG": {
+    "currency": "USD",
+    "eps_ttm": 10.82,
+    "exchange": "NMS",
+    "market_cap": 3819265064960,
+    "name": "Alphabet Inc.",
+    "pe_forward": 23.509123,
+    "sector": "Communication Services",
+    "target_mean_price": 359.52942
+  },
+  "GOOGL": {
+    "currency": "USD",
+    "eps_ttm": 10.8,
+    "exchange": "NMS",
+    "market_cap": 3837652369408,
+    "name": "Alphabet Inc.",
+    "pe_forward": 23.622305,
+    "sector": "Communication Services",
+    "target_mean_price": 376.28964
+  },
+  "GS": {
+    "currency": "USD",
+    "eps_ttm": 51.33,
+    "exchange": "NYQ",
+    "market_cap": 269392297984,
+    "name": "The Goldman Sachs Group, Inc.",
+    "pe_forward": 13.916807,
+    "sector": "Financial Services",
+    "target_mean_price": 933.75
+  },
+  "HD": {
+    "currency": "USD",
+    "eps_ttm": 14.23,
+    "exchange": "NYQ",
+    "market_cap": 335999959040,
+    "name": "The Home Depot, Inc.",
+    "pe_forward": 20.683725,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 408.18182
+  },
+  "HON": {
+    "currency": "USD",
+    "eps_ttm": 6.94,
+    "exchange": "NMS",
+    "market_cap": 149409218560,
+    "name": "Honeywell International Inc.",
+    "pe_forward": 20.489645,
+    "sector": "Industrials",
+    "target_mean_price": 251.97792
+  },
+  "IBM": {
+    "currency": "USD",
+    "eps_ttm": 11.15,
+    "exchange": "NYQ",
+    "market_cap": 216547278848,
+    "name": "International Business Machines Corporation",
+    "pe_forward": 17.224558,
+    "sector": "Technology",
+    "target_mean_price": 310.76474
+  },
+  "INTC": {
+    "currency": "USD",
+    "eps_ttm": -0.06,
+    "exchange": "NMS",
+    "market_cap": 313210634240,
+    "name": "Intel Corporation",
+    "pe_forward": 62.142,
+    "sector": "Technology",
+    "target_mean_price": 47.23293
+  },
+  "INTU": {
+    "currency": "USD",
+    "eps_ttm": 15.37,
+    "exchange": "NMS",
+    "market_cap": 97657503744,
+    "name": "Intuit Inc.",
+    "pe_forward": 13.254408,
+    "sector": "Technology",
+    "target_mean_price": 603.49
+  },
+  "ISRG": {
+    "currency": "USD",
+    "eps_ttm": 7.87,
+    "exchange": "NMS",
+    "market_cap": 160046563328,
+    "name": "Intuitive Surgical, Inc.",
+    "pe_forward": 39.432117,
+    "sector": "Healthcare",
+    "target_mean_price": 599.2427
+  },
+  "JNJ": {
+    "currency": "USD",
+    "eps_ttm": 11.03,
+    "exchange": "NYQ",
+    "market_cap": 574664540160,
+    "name": "Johnson & Johnson",
+    "pe_forward": 18.957172,
+    "sector": "Healthcare",
+    "target_mean_price": 241.70833
+  },
+  "JPM": {
+    "currency": "USD",
+    "eps_ttm": 20.02,
+    "exchange": "NYQ",
+    "market_cap": 835729424384,
+    "name": "JPMorgan Chase & Co.",
+    "pe_forward": 13.315503,
+    "sector": "Financial Services",
+    "target_mean_price": 336.54166
+  },
+  "KLAC": {
+    "currency": "USD",
+    "eps_ttm": 34.37,
+    "exchange": "NMS",
+    "market_cap": 228265279488,
+    "name": "KLA Corporation",
+    "pe_forward": 36.334637,
+    "sector": "Technology",
+    "target_mean_price": 1681.3667
+  },
+  "KO": {
+    "currency": "USD",
+    "eps_ttm": 3.04,
+    "exchange": "NYQ",
+    "market_cap": 333442744320,
+    "name": "The Coca-Cola Company",
+    "pe_forward": 22.432251,
+    "sector": "Consumer Defensive",
+    "target_mean_price": 83.6687
+  },
+  "LLY": {
+    "currency": "USD",
+    "eps_ttm": 22.92,
+    "exchange": "NYQ",
+    "market_cap": 840843264000,
+    "name": "Eli Lilly and Company",
+    "pe_forward": 22.330074,
+    "sector": "Healthcare",
+    "target_mean_price": 1209.2069
+  },
+  "LOW": {
+    "currency": "USD",
+    "eps_ttm": 11.85,
+    "exchange": "NYQ",
+    "market_cap": 136995569664,
+    "name": "Lowe's Companies, Inc.",
+    "pe_forward": 17.871204,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 285.57578
+  },
+  "LRCX": {
+    "currency": "USD",
+    "eps_ttm": 4.86,
+    "exchange": "NMS",
+    "market_cap": 331164876800,
+    "name": "Lam Research Corporation",
+    "pe_forward": 38.32134,
+    "sector": "Technology",
+    "target_mean_price": 278.32257
+  },
+  "MA": {
+    "currency": "USD",
+    "eps_ttm": 16.52,
+    "exchange": "NYQ",
+    "market_cap": 445022994432,
+    "name": "Mastercard Incorporated",
+    "pe_forward": 22.003014,
+    "sector": "Financial Services",
+    "target_mean_price": 657.1143
+  },
+  "MAR": {
+    "currency": "USD",
+    "eps_ttm": 9.49,
+    "exchange": "NMS",
+    "market_cap": 93831036928,
+    "name": "Marriott International, Inc.",
+    "pe_forward": 27.323523,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 356.16
+  },
+  "MCD": {
+    "currency": "USD",
+    "eps_ttm": 11.95,
+    "exchange": "NYQ",
+    "market_cap": 217285787648,
+    "name": "McDonald's Corporation",
+    "pe_forward": 21.27738,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 344.84848
+  },
+  "MDLZ": {
+    "currency": "USD",
+    "eps_ttm": 1.89,
+    "exchange": "NMS",
+    "market_cap": 75723939840,
+    "name": "Mondelez International, Inc.",
+    "pe_forward": 17.51251,
+    "sector": "Consumer Defensive",
+    "target_mean_price": 66.04167
+  },
+  "MELI": {
+    "currency": "USD",
+    "eps_ttm": 39.45,
+    "exchange": "NMS",
+    "market_cap": 89934774272,
+    "name": "MercadoLibre, Inc.",
+    "pe_forward": 24.642004,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 2505.6538
+  },
+  "META": {
+    "currency": "USD",
+    "eps_ttm": null,
+    "exchange": "NMS",
+    "market_cap": 1593265750016,
+    "name": "Meta Platforms, Inc.",
+    "pe_forward": 17.512753,
+    "sector": "Communication Services",
+    "target_mean_price": null
+  },
+  "MNST": {
+    "currency": "USD",
+    "eps_ttm": 1.94,
+    "exchange": "NMS",
+    "market_cap": 74074660864,
+    "name": "Monster Beverage Corporation",
+    "pe_forward": 29.692606,
+    "sector": "Consumer Defensive",
+    "target_mean_price": 86.37565
+  },
+  "MRK": {
+    "currency": "USD",
+    "eps_ttm": 7.27,
+    "exchange": "NYQ",
+    "market_cap": 300197838848,
+    "name": "Merck & Co., Inc.",
+    "pe_forward": 12.396386,
+    "sector": "Healthcare",
+    "target_mean_price": 129.25926
+  },
+  "MSFT": {
+    "currency": "USD",
+    "eps_ttm": 15.97,
+    "exchange": "NMS",
+    "market_cap": 2756445995008,
+    "name": "Microsoft Corporation",
+    "pe_forward": 19.68536,
+    "sector": "Technology",
+    "target_mean_price": 587.3139
+  },
+  "MSTR": {
+    "currency": "USD",
+    "eps_ttm": -15.23,
+    "exchange": "NMS",
+    "market_cap": 44608524288,
+    "name": "Strategy Inc",
+    "pe_forward": 3.5355716,
+    "sector": "Technology",
+    "target_mean_price": 374.07144
+  },
+  "MU": {
+    "currency": "USD",
+    "eps_ttm": 21.2,
+    "exchange": "NMS",
+    "market_cap": 474313654272,
+    "name": "Micron Technology, Inc.",
+    "pe_forward": 4.2942247,
+    "sector": "Technology",
+    "target_mean_price": 526.1
+  },
+  "NFLX": {
+    "currency": "USD",
+    "eps_ttm": 2.53,
+    "exchange": "NMS",
+    "market_cap": 436957052928,
+    "name": "Netflix, Inc.",
+    "pe_forward": 26.640358,
+    "sector": "Communication Services",
+    "target_mean_price": 113.78689
+  },
+  "NKE": {
+    "currency": "USD",
+    "eps_ttm": 1.52,
+    "exchange": "NYQ",
+    "market_cap": 63115403264,
+    "name": "NIKE, Inc.",
+    "pe_forward": 22.095953,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 64.09394
+  },
+  "NOW": {
+    "currency": "USD",
+    "eps_ttm": 1.67,
+    "exchange": "NYQ",
+    "market_cap": 87576870912,
+    "name": "ServiceNow, Inc.",
+    "pe_forward": 16.540356,
+    "sector": "Technology",
+    "target_mean_price": 183.99463
+  },
+  "NVDA": {
+    "currency": "USD",
+    "eps_ttm": 4.89,
+    "exchange": "NMS",
+    "market_cap": 4584652144640,
+    "name": "NVIDIA Corporation",
+    "pe_forward": 16.968699,
+    "sector": "Technology",
+    "target_mean_price": 268.22195
+  },
+  "ORLY": {
+    "currency": "USD",
+    "eps_ttm": 2.97,
+    "exchange": "NMS",
+    "market_cap": 77987684352,
+    "name": "O'Reilly Automotive, Inc.",
+    "pe_forward": 26.07952,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 105.66667
+  },
+  "PANW": {
+    "currency": "USD",
+    "eps_ttm": 1.8,
+    "exchange": "NMS",
+    "market_cap": 127075680256,
+    "name": "Palo Alto Networks, Inc.",
+    "pe_forward": 39.243404,
+    "sector": "Technology",
+    "target_mean_price": 205.96
+  },
+  "PEP": {
+    "currency": "USD",
+    "eps_ttm": 6.0,
+    "exchange": "NMS",
+    "market_cap": 214691741696,
+    "name": "PepsiCo, Inc.",
+    "pe_forward": 17.177832,
+    "sector": "Consumer Defensive",
+    "target_mean_price": 170.15572
+  },
+  "PFE": {
+    "currency": "USD",
+    "eps_ttm": 1.36,
+    "exchange": "NYQ",
+    "market_cap": 153130549248,
+    "name": "Pfizer Inc.",
+    "pe_forward": 9.561357,
+    "sector": "Healthcare",
+    "target_mean_price": 28.57962
+  },
+  "PG": {
+    "currency": "USD",
+    "eps_ttm": 6.75,
+    "exchange": "NYQ",
+    "market_cap": 339744849920,
+    "name": "The Procter & Gamble Company",
+    "pe_forward": 19.895344,
+    "sector": "Consumer Defensive",
+    "target_mean_price": 166.22726
+  },
+  "PGR": {
+    "currency": "USD",
+    "eps_ttm": 19.23,
+    "exchange": "NYQ",
+    "market_cap": 113742004224,
+    "name": "The Progressive Corporation",
+    "pe_forward": 12.043738,
+    "sector": "Financial Services",
+    "target_mean_price": 229.90475
+  },
+  "PLTR": {
+    "currency": "USD",
+    "eps_ttm": 0.63,
+    "exchange": "NMS",
+    "market_cap": 306277974016,
+    "name": "Palantir Technologies Inc.",
+    "pe_forward": 68.79731,
+    "sector": "Technology",
+    "target_mean_price": 185.2474
+  },
+  "PYPL": {
+    "currency": "USD",
+    "eps_ttm": 5.41,
+    "exchange": "NMS",
+    "market_cap": 41650864128,
+    "name": "PayPal Holdings, Inc.",
+    "pe_forward": 7.804427,
+    "sector": "Financial Services",
+    "target_mean_price": 52.92091
+  },
+  "QCOM": {
+    "currency": "USD",
+    "eps_ttm": 4.96,
+    "exchange": "NMS",
+    "market_cap": 136773853184,
+    "name": "QUALCOMM Incorporated",
+    "pe_forward": 11.554195,
+    "sector": "Technology",
+    "target_mean_price": 154.92857
+  },
+  "REGN": {
+    "currency": "USD",
+    "eps_ttm": 41.46,
+    "exchange": "NMS",
+    "market_cap": 79170396160,
+    "name": "Regeneron Pharmaceuticals, Inc.",
+    "pe_forward": 14.242141,
+    "sector": "Healthcare",
+    "target_mean_price": 874.4846
+  },
+  "ROP": {
+    "currency": "USD",
+    "eps_ttm": 14.21,
+    "exchange": "NMS",
+    "market_cap": 35319574528,
+    "name": "Roper Technologies, Inc.",
+    "pe_forward": 14.678061,
+    "sector": "Technology",
+    "target_mean_price": 461.2544
+  },
+  "RTX": {
+    "currency": "USD",
+    "eps_ttm": 4.96,
+    "exchange": "NYQ",
+    "market_cap": 271294578688,
+    "name": "RTX Corporation",
+    "pe_forward": 26.77229,
+    "sector": "Industrials",
+    "target_mean_price": 216.33682
+  },
+  "SBUX": {
+    "currency": "USD",
+    "eps_ttm": 1.2,
+    "exchange": "NMS",
+    "market_cap": 110056374272,
+    "name": "Starbucks Corporation",
+    "pe_forward": 32.74976,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 99.36364
+  },
+  "SCHW": {
+    "currency": "USD",
+    "eps_ttm": 4.65,
+    "exchange": "NYQ",
+    "market_cap": 166109560832,
+    "name": "The Charles Schwab Corporation",
+    "pe_forward": 13.708714,
+    "sector": "Financial Services",
+    "target_mean_price": 118.0
+  },
+  "SHOP": {
+    "currency": "USD",
+    "eps_ttm": 0.94,
+    "exchange": "NMS",
+    "market_cap": 144590225408,
+    "name": "Shopify Inc.",
+    "pe_forward": 47.52508,
+    "sector": "Technology",
+    "target_mean_price": 159.6087
+  },
+  "SNPS": {
+    "currency": "USD",
+    "eps_ttm": 6.52,
+    "exchange": "NMS",
+    "market_cap": 75138285568,
+    "name": "Synopsys, Inc.",
+    "pe_forward": 22.9984,
+    "sector": "Technology",
+    "target_mean_price": 537.75
+  },
+  "T": {
+    "currency": "USD",
+    "eps_ttm": 3.04,
+    "exchange": "NYQ",
+    "market_cap": 185235259392,
+    "name": "AT&T Inc.",
+    "pe_forward": 10.39988,
+    "sector": "Communication Services",
+    "target_mean_price": 30.3913
+  },
+  "TEAM": {
+    "currency": "USD",
+    "eps_ttm": -0.72,
+    "exchange": "NMS",
+    "market_cap": 15072974848,
+    "name": "Atlassian Corporation",
+    "pe_forward": 10.35193,
+    "sector": "Technology",
+    "target_mean_price": 167.15097
+  },
+  "TMO": {
+    "currency": "USD",
+    "eps_ttm": 17.72,
+    "exchange": "NYQ",
+    "market_cap": 184365072384,
+    "name": "Thermo Fisher Scientific Inc.",
+    "pe_forward": 18.14373,
+    "sector": "Healthcare",
+    "target_mean_price": 658.4
+  },
+  "TMUS": {
+    "currency": "USD",
+    "eps_ttm": 9.72,
+    "exchange": "NMS",
+    "market_cap": 218902937600,
+    "name": "T-Mobile US, Inc.",
+    "pe_forward": 14.054023,
+    "sector": "Communication Services",
+    "target_mean_price": 268.68
+  },
+  "TSLA": {
+    "currency": "USD",
+    "eps_ttm": 1.07,
+    "exchange": "NMS",
+    "market_cap": 1309411115008,
+    "name": "Tesla, Inc.",
+    "pe_forward": 127.808815,
+    "sector": "Consumer Cyclical",
+    "target_mean_price": 416.15024
+  },
+  "TXN": {
+    "currency": "USD",
+    "eps_ttm": 5.46,
+    "exchange": "NMS",
+    "market_cap": 195503800320,
+    "name": "Texas Instruments Incorporated",
+    "pe_forward": 27.151455,
+    "sector": "Technology",
+    "target_mean_price": 223.76843
+  },
+  "UBER": {
+    "currency": "USD",
+    "eps_ttm": 4.73,
+    "exchange": "NYQ",
+    "market_cap": 145056022528,
+    "name": "Uber Technologies, Inc.",
+    "pe_forward": 16.416046,
+    "sector": "Technology",
+    "target_mean_price": 103.58
+  },
+  "UNH": {
+    "currency": "USD",
+    "eps_ttm": 13.23,
+    "exchange": "NYQ",
+    "market_cap": 276232962048,
+    "name": "UnitedHealth Group Incorporated",
+    "pe_forward": 15.113276,
+    "sector": "Healthcare",
+    "target_mean_price": 360.6154
+  },
+  "UPS": {
+    "currency": "USD",
+    "eps_ttm": 6.56,
+    "exchange": "NYQ",
+    "market_cap": 86411730944,
+    "name": "United Parcel Service, Inc.",
+    "pe_forward": 12.807661,
+    "sector": "Industrials",
+    "target_mean_price": 112.71429
+  },
+  "V": {
+    "currency": "USD",
+    "eps_ttm": 10.64,
+    "exchange": "NYQ",
+    "market_cap": 586818060288,
+    "name": "Visa Inc.",
+    "pe_forward": 20.933607,
+    "sector": "Financial Services",
+    "target_mean_price": 395.25742
+  },
+  "VRTX": {
+    "currency": "USD",
+    "eps_ttm": 15.32,
+    "exchange": "NMS",
+    "market_cap": 110969511936,
+    "name": "Vertex Pharmaceuticals Incorporated",
+    "pe_forward": 19.961922,
+    "sector": "Healthcare",
+    "target_mean_price": 547.7931
+  },
+  "VZ": {
+    "currency": "USD",
+    "eps_ttm": 4.06,
+    "exchange": "NYQ",
+    "market_cap": 194182184960,
+    "name": "Verizon Communications Inc.",
+    "pe_forward": 8.76163,
+    "sector": "Communication Services",
+    "target_mean_price": 51.17273
+  },
+  "WFC": {
+    "currency": "USD",
+    "eps_ttm": 6.26,
+    "exchange": "NYQ",
+    "market_cap": 263513276416,
+    "name": "Wells Fargo & Company",
+    "pe_forward": 10.778719,
+    "sector": "Financial Services",
+    "target_mean_price": 98.36
+  },
+  "WMT": {
+    "currency": "USD",
+    "eps_ttm": 2.72,
+    "exchange": "NMS",
+    "market_cap": 1010661457920,
+    "name": "Walmart Inc.",
+    "pe_forward": 38.593735,
+    "sector": "Consumer Defensive",
+    "target_mean_price": 136.02438
+  },
+  "XOM": {
+    "currency": "USD",
+    "eps_ttm": 6.7,
+    "exchange": "NYQ",
+    "market_cap": 633916817408,
+    "name": "Exxon Mobil Corporation",
+    "pe_forward": 15.555022,
+    "sector": "Energy",
+    "target_mean_price": 160.875
+  }
+}
