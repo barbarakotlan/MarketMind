@@ -5,6 +5,12 @@ import {
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
+/**
+ * Pre-defined array of core market indices and bellwether assets tracked 
+ * persistently at the top of the dashboard view.
+ * 
+ * @type {Array<{ticker: string, label: string}>}
+ */
 const MARKET_TICKERS = [
     { ticker: 'SPY', label: 'S&P 500' },
     { ticker: 'QQQ', label: 'NASDAQ' },
@@ -13,6 +19,12 @@ const MARKET_TICKERS = [
     { ticker: 'GLD', label: 'Gold' },
 ];
 
+/**
+ * Hardcoded routing dictionary mapping primary application pathways to iconography
+ * for the Quick Access mosaic component.
+ * 
+ * @type {Array<{page: string, icon: Object, label: string}>}
+ */
 const QUICK_ACCESS = [
     { page: 'search', icon: Search, label: 'Search' },
     { page: 'watchlist', icon: Star, label: 'Watchlist' },
@@ -24,18 +36,29 @@ const QUICK_ACCESS = [
     { page: 'news', icon: Newspaper, label: 'News' },
 ];
 
+// Unified tailwind abstractions ensuring UI conformity across independent dashboard fragments
 const cardClass = 'ui-panel transition-shadow duration-200 hover:shadow-elevated';
 const skeletonClass = 'animate-pulse rounded-control bg-mm-surface-subtle';
 
+/**
+ * Subcomponent serving as a marquee indicating macroscopic market health organically.
+ * Aggregates independent HTTP requests concurrently for performance.
+ * 
+ * @component
+ */
 function MarketPulseStrip() {
     const [data, setData] = useState({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Issue concurrent requests resolving multiple isolated endpoints simultaneously 
+        // to minimize cumulative round-trip latency. Use `allSettled` to avoid cascading failure
+        // from a single malformed resolution.
         Promise.allSettled(
             MARKET_TICKERS.map(({ ticker }) => apiRequest(API_ENDPOINTS.STOCK(ticker)))
         ).then(results => {
             const map = {};
+            // Re-compose returned structures binding responses tightly to corresponding identities
             results.forEach((r, i) => {
                 if (r.status === 'fulfilled' && !r.value.error) {
                     map[MARKET_TICKERS[i].ticker] = r.value;
@@ -54,6 +77,8 @@ function MarketPulseStrip() {
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
                 {MARKET_TICKERS.map(({ ticker, label }) => {
                     const stock = data[ticker];
+                    
+                    // Conditionally handle variable schema differences dynamically 
                     const change = stock?.changePercent || stock?.change_percent;
                     const isPos = change > 0;
                     const isNeg = change < 0;
@@ -62,6 +87,7 @@ function MarketPulseStrip() {
                         <div key={ticker} className={`${cardClass} p-4`}>
                             <span className="text-sm font-medium text-mm-text-secondary">{label}</span>
 
+                            {/* Render explicit loading states seamlessly maintaining layout height matrices */}
                             {loading || !stock ? (
                                 <div className="mt-2">
                                     <div className={`${skeletonClass} mb-2 h-6 w-20`}></div>
@@ -72,6 +98,7 @@ function MarketPulseStrip() {
                                     <span className="block text-xl font-semibold text-mm-text-primary">
                                         ${stock.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '—'}
                                     </span>
+                                    {/* Style indicators using dynamic classes reflecting immediate trend orientations */}
                                     <div className={`mt-1 flex items-center text-sm font-semibold ${isPos ? 'text-mm-positive' : isNeg ? 'text-mm-negative' : 'text-mm-text-secondary'}`}>
                                         {isPos ? <ArrowUpRight className="mr-1 h-4 w-4" /> : isNeg ? <ArrowDownRight className="mr-1 h-4 w-4" /> : null}
                                         <span>{isPos ? '+' : ''}{change?.toFixed(2) ?? '0.00'}%</span>
@@ -86,6 +113,13 @@ function MarketPulseStrip() {
     );
 }
 
+/**
+ * Subcomponent summarizing total simulated portfolio performance passively.
+ * 
+ * @component
+ * @param {Object} props
+ * @param {Function} props.setActivePage - Callback hook enabling quick navigation into deep panels.
+ */
 function PortfolioSummaryCard({ setActivePage }) {
     const [portfolio, setPortfolio] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -93,12 +127,15 @@ function PortfolioSummaryCard({ setActivePage }) {
     useEffect(() => {
         apiRequest(API_ENDPOINTS.PORTFOLIO)
             .then(d => { setPortfolio(d); setLoading(false); })
-            .catch(() => setLoading(false));
+            .catch(() => setLoading(false)); // Fail quietly returning neutral summary default state
     }, []);
 
+    // Derive explicit boolean conditions tracking allocation existence safely against null properties
     const stockPositionsCount = portfolio?.positions?.length || 0;
     const optionsPositionsCount = portfolio?.options_positions?.length || 0;
     const hasPositions = stockPositionsCount + optionsPositionsCount > 0;
+    
+    // Abstract complex variables into easily parsed integers
     const totalValue = portfolio?.total_value;
     const pnl = portfolio?.total_pl;
     const pnlPos = pnl > 0;
@@ -149,16 +186,25 @@ function PortfolioSummaryCard({ setActivePage }) {
     );
 }
 
+/**
+ * Subcomponent serving strictly conditionally when actionable user alerts are currently triggered.
+ * 
+ * @component
+ * @param {Object} props
+ * @param {Function} props.setActivePage - Callback hook tunneling route change instructions globally. 
+ */
 function AlertsBadgeCard({ setActivePage }) {
     const [count, setCount] = useState(0);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Ask API for specifically matching unhandled rule evaluations 
         apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true))
             .then(d => { setCount(d.length); setLoading(false); })
             .catch(() => setLoading(false));
     }, []);
 
+    // Explicitly unmount silently providing space if notification requirements are not meant
     if (loading || count === 0) return null;
 
     return (
@@ -187,6 +233,13 @@ function AlertsBadgeCard({ setActivePage }) {
     );
 }
 
+/**
+ * Mosaic layout subcomponent bridging users toward prominent high-use functionality organically.
+ * 
+ * @component
+ * @param {Object} props
+ * @param {Function} props.setActivePage - Navigation dispatch trigger.
+ */
 function QuickAccessGrid({ setActivePage }) {
     return (
         <div className="ui-panel p-6 h-full">
@@ -194,6 +247,7 @@ function QuickAccessGrid({ setActivePage }) {
                 <Target className="mr-2 h-4 w-4 text-mm-accent-primary" /> Quick Access
             </h2>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                {/* Dynamically construct tile links utilizing configuration JSON objects directly */}
                 {QUICK_ACCESS.map(({ page, icon: Icon, label }) => (
                     <button
                         key={page}
@@ -211,13 +265,22 @@ function QuickAccessGrid({ setActivePage }) {
     );
 }
 
+/**
+ * Subcomponent streaming breaking market news efficiently limiting payload sizes structurally.
+ * 
+ * @component
+ * @param {Object} props
+ * @param {Function} props.setActivePage - Navigation dispatch trigger.
+ */
 function TopNewsSection({ setActivePage }) {
     const [articles, setArticles] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Enforce limitation dynamically preventing huge unrenderable array allocations locally
         apiRequest(`${API_ENDPOINTS.NEWS()}?category=general&limit=4`)
             .then(d => {
+                // Parse unpredictably packaged objects gracefully evaluating deep keys optionally
                 const items = Array.isArray(d) ? d : (d.articles ?? d.news ?? []);
                 setArticles(items.slice(0, 4));
                 setLoading(false);
@@ -240,6 +303,7 @@ function TopNewsSection({ setActivePage }) {
             </div>
 
             <div className="divide-y divide-mm-border">
+                {/* Condition routing: rendering structured loaders, empty alerts properly, or iterated entity maps cleanly */}
                 {loading ? (
                     <div className="space-y-4 p-6">
                         {[1, 2, 3].map(i => <div key={i} className={`${skeletonClass} h-12 w-full`}></div>)}
@@ -273,6 +337,16 @@ function TopNewsSection({ setActivePage }) {
     );
 }
 
+/**
+ * DashboardPage Component
+ * 
+ * Top level encapsulation establishing home-screen topology and integrating disparate micro-level summaries.
+ * 
+ * @component
+ * @param {Object} props
+ * @param {Function} props.setActivePage - Parent layout dispatch altering structural SPA routing implicitly.
+ * @returns {JSX.Element}
+ */
 const DashboardPage = ({ setActivePage }) => {
     return (
         <div className="ui-page animate-fade-in space-y-2">
@@ -283,11 +357,13 @@ const DashboardPage = ({ setActivePage }) => {
 
             <MarketPulseStrip />
 
+            {/* Split layout enforcing constrained left bar prioritizing graphical real-estate dynamically toward right elements */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-1 flex flex-col">
                     <div className="flex-1">
                         <PortfolioSummaryCard setActivePage={setActivePage} />
                     </div>
+                    {/* Conditionally appended module resting harmlessly outside bounding layouts dynamically */}
                     <AlertsBadgeCard setActivePage={setActivePage} />
                 </div>
 
@@ -302,3 +378,4 @@ const DashboardPage = ({ setActivePage }) => {
 };
 
 export default DashboardPage;
+
