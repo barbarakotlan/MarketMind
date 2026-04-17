@@ -9,6 +9,17 @@ const cardClass =
     'bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm';
 
 // ─── Plan data ────────────────────────────────────────────────────────────────
+
+/**
+ * Hardcoded configuration defining current market plans and pricing tiers.
+ * 
+ * @type {Array<{
+ *   id: string, icon: Object, label: string, price: number, cadence: string, 
+ *   tagline: string, accent: string, accentLight: string, accentText: string, 
+ *   ctaLabel: string, ctaStyle: string, badge?: string, 
+ *   includes: string[], excludes: string[]
+ * }>}
+ */
 const PLANS = [
     {
         id: 'free',
@@ -61,21 +72,38 @@ const PLANS = [
     },
 ];
 
+/**
+ * Teaser configuration for upcoming features displayed in the roadmap component.
+ * @type {Array<{icon: Object, label: string, desc: string}>}
+ */
 const FUTURE_FEATURES = [
     { icon: GraduationCap, label: 'Student Tier',       desc: 'Discounted Pro access for verified .edu emails.' },
     { icon: Users,         label: 'Team Plans',          desc: 'Shared portfolios and collaborative watchlists.' },
     { icon: Sparkles,      label: 'Ad-Supported Free',   desc: 'Optional ads to unlock extra prediction credits.' },
 ];
 
-// ─── PlanCard ─────────────────────────────────────────────────────────────────
+// ─── Component Helpers ────────────────────────────────────────────────────────
+
+/**
+ * PlanCard Component
+ * 
+ * Renders an interactive card representing a subscription tier.
+ * 
+ * @param {Object} props - React props.
+ * @param {Object} props.plan - Configuration object for a specific plan.
+ * @param {boolean} props.isAnnual - Boolean dictating if annual discounts apply.
+ * @param {Function} props.onUpgrade - Callback fired when initiating checkout.
+ */
 function PlanCard({ plan, isAnnual, onUpgrade }) {
     const Icon        = plan.icon;
     const monthly     = typeof plan.price === 'number' ? plan.price : parseInt(plan.price, 10);
+    // Calculate the annual saving discount locally without rounding errors relying on static math
     const displayPrice = isAnnual && monthly > 0 ? Math.round(monthly * 0.8) : monthly;
 
+    /** Handle the call-to-action button click */
     function handleCTA() {
-        if (monthly === 0) return;   // free plan — no checkout needed
-        onUpgrade(isAnnual);
+        if (monthly === 0) return;   // Guard clause: free plan doesn't trigger checkout router
+        onUpgrade(isAnnual); // Bubble the current contextual discount intent
     }
 
     return (
@@ -86,6 +114,7 @@ function PlanCard({ plan, isAnnual, onUpgrade }) {
                 : 'border-gray-200 dark:border-gray-700 shadow-sm'}
             bg-white dark:bg-gray-800 hover:shadow-lg hover:-translate-y-0.5
         `}>
+            {/* Contextual top-banner badge (e.g. 'Most Popular') */}
             {plan.badge && (
                 <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold tracking-wide text-white bg-gradient-to-r ${plan.accent}`}>
                     {plan.badge}
@@ -98,6 +127,8 @@ function PlanCard({ plan, isAnnual, onUpgrade }) {
                 </div>
                 <h3 className="text-xl font-extrabold text-gray-900 dark:text-white tracking-tight">{plan.label}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{plan.tagline}</p>
+                
+                {/* Dynamically parsed pricing grid indicating current tier value */}
                 <div className="mt-5 flex items-end gap-1">
                     {monthly === 0 ? (
                         <span className="text-4xl font-black text-gray-900 dark:text-white">Free</span>
@@ -108,6 +139,7 @@ function PlanCard({ plan, isAnnual, onUpgrade }) {
                         </>
                     )}
                 </div>
+                {/* Annual incentive tooltip injected selectively via react properties */}
                 {isAnnual && monthly > 0 && (
                     <p className={`text-xs font-semibold mt-1 ${plan.accentText}`}>
                         Save 20% with annual billing
@@ -128,12 +160,14 @@ function PlanCard({ plan, isAnnual, onUpgrade }) {
             <div className="px-6 pt-5 pb-6 flex-1">
                 <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Includes</p>
                 <ul className="space-y-2.5">
+                    {/* Render active entitlements iteratively */}
                     {plan.includes.map((f) => (
                         <li key={f} className="flex items-start gap-2.5 text-sm text-gray-700 dark:text-gray-300">
                             <Check className={`w-4 h-4 mt-0.5 flex-shrink-0 ${plan.accentText}`} />
                             <span>{f}</span>
                         </li>
                     ))}
+                    {/* Render omitted capabilities indicating tier differentiation constraints */}
                     {plan.excludes.map((f) => (
                         <li key={f} className="flex items-start gap-2.5 text-sm text-gray-400 dark:text-gray-600">
                             <X className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -146,6 +180,11 @@ function PlanCard({ plan, isAnnual, onUpgrade }) {
     );
 }
 
+/**
+ * HowItWorksStrip Component
+ * 
+ * Simple informational horizontal pipeline indicating the secure sign-up process flow.
+ */
 function HowItWorksStrip() {
     const steps = [
         { icon: Shield,     label: 'Sign up with Clerk',   desc: 'Secure, instant account creation.' },
@@ -164,6 +203,7 @@ function HowItWorksStrip() {
                     return (
                         <div key={s.label} className="flex flex-col items-start gap-3">
                             <div className="flex items-center gap-3">
+                                {/* Array index dynamically providing stepwise integers */}
                                 <span className="text-xs font-black text-gray-300 dark:text-gray-600 w-5">{`0${i + 1}`}</span>
                                 <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
                                     <Icon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -173,6 +213,7 @@ function HowItWorksStrip() {
                                 <p className="text-sm font-bold text-gray-900 dark:text-white">{s.label}</p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{s.desc}</p>
                             </div>
+                            {/* Intersperse directional carets universally except for the trailing item */}
                             {i < steps.length - 1 && (
                                 <ChevronRight className="hidden md:block absolute text-gray-200" />
                             )}
@@ -184,6 +225,11 @@ function HowItWorksStrip() {
     );
 }
 
+/**
+ * ComingUpSection Component
+ * 
+ * Marketing banner summarizing upcoming capabilities.
+ */
 function ComingUpSection() {
     return (
         <div className="mt-10">
@@ -208,16 +254,26 @@ function ComingUpSection() {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
 /**
- * Props:
- *   onNavigateToCheckout(isAnnual) — called when user clicks "Upgrade to Pro"
- *                                    navigate to <CheckoutPage isAnnual={isAnnual} />
+ * PlanPage Component
+ * 
+ * Aggregates all subscription and marketing sub-components into a unified storefront view.
+ * Exposes a localized toggle between monthly and annual billing preferences, injecting variables
+ * deep into nested card modules.
+ * 
+ * @component
+ * @param {Object} props - React Props
+ * @param {Function} props.onNavigateToCheckout - Callback directing active navigation to the Stripe pipeline proxy context. Passed `isAnnual` flag indicating preference.
+ * @returns {JSX.Element}
  */
 const PlanPage = ({ onNavigateToCheckout }) => {
+    // Local memory tracking desired billing frequency multiplier internally across child models
     const [isAnnual, setIsAnnual] = useState(false);
 
     return (
         <div className="max-w-7xl mx-auto p-6 lg:p-8 animate-fade-in">
+            {/* Header Content Box */}
             <div className="mb-10 text-center">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 mb-4">
                     <Crown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
@@ -230,6 +286,7 @@ const PlanPage = ({ onNavigateToCheckout }) => {
                     Start free, upgrade when you're ready. No hidden fees, cancel anytime.
                 </p>
 
+                {/* Periodicity toggler utilizing state coupling */}
                 <div className="inline-flex items-center gap-3 mt-6 bg-gray-100 dark:bg-gray-700/60 p-1 rounded-xl">
                     <button
                         onClick={() => setIsAnnual(false)}
@@ -249,13 +306,14 @@ const PlanPage = ({ onNavigateToCheckout }) => {
                 </div>
             </div>
 
+            {/* Loop dynamically iterating over system configurations creating independent grid fragments */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start max-w-3xl mx-auto">
                 {PLANS.map((plan) => (
                     <PlanCard
                         key={plan.id}
                         plan={plan}
                         isAnnual={isAnnual}
-                        onUpgrade={(annual) => onNavigateToCheckout(annual)}
+                        onUpgrade={(annual) => onNavigateToCheckout(annual)} // Callback tunneling
                     />
                 ))}
             </div>
