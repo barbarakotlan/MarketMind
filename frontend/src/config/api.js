@@ -93,6 +93,7 @@ export const API_ENDPOINTS = {
     // Predictions
     PREDICT: (model, ticker) => `${API_BASE_URL}/predict/${model}/${ticker}`,
     PREDICT_ENSEMBLE: (ticker) => `${API_BASE_URL}/predict/ensemble/${ticker}`,
+    CLEAR_MODEL_CACHE: (model_type, ticker) => `${API_BASE_URL}/model-cache/${model_type}/${ticker}`,
     EVALUATE: (ticker, params = {}) => {
         const queryString = new URLSearchParams(params).toString();
         return `${API_BASE_URL}/evaluate/${ticker}${queryString ? '?' + queryString : ''}`;

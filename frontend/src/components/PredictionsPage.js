@@ -3,9 +3,9 @@ import StockPredictionCard from './ui/StockPredictionCard';
 import PredictionChart from './charts/PredictionChart';
 import ModelComparisonCard from './ui/ModelComparisonCard';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
-import TickerAutocompleteInput from './TickerAutocompleteInput';
 
 const DEFAULT_SINGLE_MODEL = 'LinReg';
+const DL_MODELS = new Set(['LSTM', 'GRU', 'Transformer']);
 
 const PredictionsPage = ({ initialTicker }) => {
     const [ticker, setTicker] = useState('');
@@ -14,6 +14,7 @@ const PredictionsPage = ({ initialTicker }) => {
     const [error, setError] = useState('');
     const [useEnsemble, setUseEnsemble] = useState(true);
     const [useModel, setUseModel] = useState(DEFAULT_SINGLE_MODEL);
+    const [retraining, setRetraining] = useState(false);
 
     const buildPredictionEndpoint = (searchTicker) => {
         const selectedModel = useModel || DEFAULT_SINGLE_MODEL;
@@ -68,6 +69,20 @@ const PredictionsPage = ({ initialTicker }) => {
         }
     };
 
+    const handleRetrain = async () => {
+        const activeTicker = ticker.trim();
+        if (!activeTicker || !DL_MODELS.has(useModel)) return;
+        setRetraining(true);
+        setError('');
+        try {
+            await apiRequest(API_ENDPOINTS.CLEAR_MODEL_CACHE(useModel, activeTicker.toUpperCase()), { method: 'DELETE' });
+        } catch {
+            // Cache clear failing is non-fatal — proceed to retrain anyway
+        }
+        await fetchPredictions(activeTicker);
+        setRetraining(false);
+    };
+
     const modeButtonClass = (active) => (
         active
             ? 'rounded-control border border-mm-accent-primary/20 bg-mm-accent-primary/10 px-4 py-2 font-semibold text-mm-accent-primary'
@@ -94,10 +109,10 @@ const PredictionsPage = ({ initialTicker }) => {
                 <form onSubmit={handleSearch} className="flex gap-4">
                     <div className="flex-1">
                         <div className="relative">
-                            <TickerAutocompleteInput
+                            <input
+                                type="text"
                                 value={ticker}
-                                onChange={setTicker}
-                                onSelect={(sym) => { setTicker(sym); fetchPredictions(sym); }}
+                                onChange={(e) => setTicker(e.target.value)}
                                 placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
                                 className="w-full px-4 py-3 pl-12 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-lg"
                             />
@@ -175,6 +190,23 @@ const PredictionsPage = ({ initialTicker }) => {
                         </svg>
                         Single Model
                     </button>
+                    {!useEnsemble && DL_MODELS.has(useModel) && ticker.trim() && (
+                        <button
+                            type="button"
+                            onClick={handleRetrain}
+                            disabled={retraining || loading}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                                retraining || loading
+                                    ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
+                                    : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-800'
+                            }`}
+                        >
+                            <svg className={`w-4 h-4 ${retraining ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            {retraining ? 'Retraining...' : 'Force Retrain'}
+                        </button>
+                    )}
                     {!useEnsemble && (
                         <div className="flex gap-3">
                             <button
@@ -263,7 +295,7 @@ const PredictionsPage = ({ initialTicker }) => {
             {predictionData && !loading && (
                 <div className="animate-fade-in space-y-6">
                     <div className="ui-panel-elevated p-6">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div className="text-center">
                                 <p className="text-sm text-mm-text-secondary mb-1">Recent Date</p>
                                 <p className="text-xl font-semibold text-mm-text-primary">{predictionData.recentDate}</p>
@@ -276,6 +308,18 @@ const PredictionsPage = ({ initialTicker }) => {
                                 <p className="text-sm text-mm-text-secondary mb-1">Predicted Close</p>
                                 <p className="text-xl font-semibold text-mm-accent-primary">${predictionData.recentPredicted}</p>
                             </div>
+                            {predictionData.confidence != null && (
+                                <div className="text-center">
+                                    <p className="text-sm text-mm-text-secondary mb-1">Model Confidence</p>
+                                    <p className={`text-xl font-semibold ${
+                                        predictionData.confidence >= 80
+                                            ? 'text-mm-positive'
+                                            : predictionData.confidence >= 65
+                                                ? 'text-yellow-500'
+                                                : 'text-mm-negative'
+                                    }`}>{predictionData.confidence}%</p>
+                                </div>
+                            )}
                         </div>
                     </div>
 

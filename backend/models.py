@@ -237,8 +237,12 @@ def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_
     X_train_scaled = scaler_X.fit_transform(X_train_raw.reshape(-1, n_features)).reshape(n_train, seq_len_, n_features)
     y_train_scaled = scaler_y.fit_transform(y_train_raw.reshape(-1, 1)).reshape(y_train_raw.shape)
 
-    X_val_scaled = scaler_X.transform(X_val_raw.reshape(-1, n_features)).reshape(X_val_raw.shape)
-    y_val_scaled = scaler_y.transform(y_val_raw.reshape(-1, 1)).reshape(y_val_raw.shape)
+    if len(X_val_raw) > 0:
+        X_val_scaled = scaler_X.transform(X_val_raw.reshape(-1, n_features)).reshape(X_val_raw.shape)
+        y_val_scaled = scaler_y.transform(y_val_raw.reshape(-1, 1)).reshape(y_val_raw.shape)
+    else:
+        X_val_scaled = X_val_raw
+        y_val_scaled = y_val_raw
 
     X_train_t = torch.FloatTensor(X_train_scaled)
     y_train_t = torch.FloatTensor(y_train_scaled)
@@ -272,7 +276,18 @@ def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_
                 val_loss = criterion(val_pred, y_val_t.to(device))
             print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f} | Val Loss: {val_loss:.6f}")
 
-    return model, scaler_X, scaler_y, device
+    # Compute val MAPE on day-1 predictions (inverse-transformed) for confidence scoring
+    val_mape = None
+    if len(X_val_raw) > 0:
+        model.eval()
+        with torch.no_grad():
+            val_pred_scaled = model(X_val_t.to(device), device).cpu().numpy()
+        pred_day1 = scaler_y.inverse_transform(val_pred_scaled[:, :1].reshape(-1, 1)).flatten()
+        actual_day1 = y_val_raw[:len(val_pred_scaled), 0]
+        denom = np.maximum(np.abs(actual_day1), 1e-9)
+        val_mape = float(np.mean(np.abs((actual_day1 - pred_day1) / denom)) * 100)
+
+    return model, scaler_X, scaler_y, device, val_mape
 
 # Long Short-Term Memory (LSTM) prediction function
 def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30):
@@ -282,6 +297,10 @@ def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30)
 
         # Build features
         X_features, _, _ = prepare_ml_data(df, lookback)
+
+        if len(X_features) < seq_len:
+            print(f"lstm_predict: insufficient data ({len(X_features)} rows < seq_len={seq_len})")
+            return None
 
         # Take last seq_len rows
         last_window_raw = X_features[-seq_len:]
@@ -372,11 +391,19 @@ def gru_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_s
     X_train_scaled = scaler_X.fit_transform(X_train_raw.reshape(-1, n_features)).reshape(n_train, seq_len_, n_features)
     y_train_scaled = scaler_y.fit_transform(y_train_raw.reshape(-1, 1)).reshape(y_train_raw.shape)
 
-    X_val_scaled = scaler_X.transform(X_val_raw.reshape(-1, n_features)).reshape(X_val_raw.shape)
-    y_val_scaled = scaler_y.transform(y_val_raw.reshape(-1, 1)).reshape(y_val_raw.shape)
+    if len(X_val_raw) > 0:
+        X_val_scaled = scaler_X.transform(X_val_raw.reshape(-1, n_features)).reshape(X_val_raw.shape)
+        y_val_scaled = scaler_y.transform(y_val_raw.reshape(-1, 1)).reshape(y_val_raw.shape)
+    else:
+        X_val_scaled = X_val_raw
+        y_val_scaled = y_val_raw
 
-    X_test_scaled = scaler_X.transform(X_test_raw.reshape(-1, n_features)).reshape(X_test_raw.shape)
-    y_test_scaled = scaler_y.transform(y_test_raw.reshape(-1, 1)).reshape(y_test_raw.shape)
+    if len(X_test_raw) > 0:
+        X_test_scaled = scaler_X.transform(X_test_raw.reshape(-1, n_features)).reshape(X_test_raw.shape)
+        y_test_scaled = scaler_y.transform(y_test_raw.reshape(-1, 1)).reshape(y_test_raw.shape)
+    else:
+        X_test_scaled = X_test_raw
+        y_test_scaled = y_test_raw
 
     # --- 5. Build and train model ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -410,7 +437,18 @@ def gru_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_s
                 val_loss = criterion(val_pred, y_val_t.to(device))
             print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f} | Val Loss: {val_loss:.6f}")
 
-    return model, scaler_X, scaler_y, device
+    # Compute val MAPE on day-1 predictions (inverse-transformed) for confidence scoring
+    val_mape = None
+    if len(X_val_raw) > 0:
+        model.eval()
+        with torch.no_grad():
+            val_pred_scaled = model(X_val_t.to(device), device).cpu().numpy()
+        pred_day1 = scaler_y.inverse_transform(val_pred_scaled[:, :1].reshape(-1, 1)).flatten()
+        actual_day1 = y_val_raw[:len(val_pred_scaled), 0]
+        denom = np.maximum(np.abs(actual_day1), 1e-9)
+        val_mape = float(np.mean(np.abs((actual_day1 - pred_day1) / denom)) * 100)
+
+    return model, scaler_X, scaler_y, device, val_mape
 
 
 def gru_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30, days_ahead=7):
@@ -423,6 +461,10 @@ def gru_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30, 
         model.eval()
 
         X_features, _, _ = prepare_ml_data(df, lookback)
+
+        if len(X_features) < seq_len:
+            print(f"gru_predict: insufficient data ({len(X_features)} rows < seq_len={seq_len})")
+            return None
 
         last_window_raw = X_features[-seq_len:]
         n_features = last_window_raw.shape[1]
@@ -438,6 +480,70 @@ def gru_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30, 
 
     except Exception as e:
         print(f"GRU error: {e}")
+        return None
+
+
+def dl_rolling_confidence(df, model, scaler_X, scaler_y, device, model_type,
+                          lookback=14, seq_len=30, n_windows=10):
+    """
+    Compute DL model confidence via rolling inference over n_windows non-overlapping
+    7-day evaluation windows on known actuals.  No retraining — uses the cached model.
+
+    Each window uses seq_len days of input and evaluates all 7 predicted days against
+    real closes, matching the actual prediction horizon.  Windows are non-overlapping
+    in the test region so the MAPE samples are independent.
+
+    Maps: confidence = clamp(100 - avg_mape * 5, 50, 95)
+    Returns a float in [50, 95], or None if data is insufficient.
+    """
+    try:
+        X_features, _, df_features = prepare_ml_data(df, lookback)
+        y_all = df_features['Close'].values
+
+        # Each window needs seq_len input days + 7 actual days (non-overlapping in test region)
+        if len(X_features) < seq_len + n_windows * 7:
+            return None
+
+        model.eval()
+        mapes = []
+        for i in range(n_windows):
+            # Non-overlapping: window i ends at len - 7*(n_windows - i)
+            end_idx = len(X_features) - 7 * (n_windows - i)
+            if end_idx < seq_len or end_idx + 7 > len(y_all):
+                continue
+
+            window_X = X_features[end_idx - seq_len:end_idx]
+            actuals_7 = y_all[end_idx:end_idx + 7]  # 7 real closes following the window
+
+            n_features = window_X.shape[1]
+            window_scaled = scaler_X.transform(
+                window_X.reshape(-1, n_features)
+            ).reshape(1, seq_len, n_features)
+            window_tensor = torch.FloatTensor(window_scaled).to(device)
+
+            with torch.no_grad():
+                if model_type == "Transformer":
+                    pred_scaled = model(window_tensor).cpu().numpy()
+                else:
+                    pred_scaled = model(window_tensor, device).cpu().numpy()
+
+            # Inverse-transform all 7 predicted days
+            pred_7 = scaler_y.inverse_transform(
+                pred_scaled[0].reshape(-1, 1)
+            ).flatten()
+
+            denom = np.maximum(np.abs(actuals_7), 1e-9)
+            window_mape = float(np.mean(np.abs((actuals_7 - pred_7) / denom)) * 100)
+            mapes.append(window_mape)
+
+        if not mapes:
+            return None
+
+        avg_mape = float(np.mean(mapes))
+        return round(max(50.0, min(95.0, 100.0 - avg_mape * 5.0)), 1)
+
+    except Exception as e:
+        print(f"dl_rolling_confidence error: {e}")
         return None
 
 
@@ -539,8 +645,12 @@ def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhe
     X_train_scaled = scaler_X.fit_transform(X_train_raw.reshape(-1, n_features)).reshape(n_train, seq_len_, n_features)
     y_train_scaled = scaler_y.fit_transform(y_train_raw.reshape(-1, 1)).reshape(y_train_raw.shape)
 
-    X_val_scaled = scaler_X.transform(X_val_raw.reshape(-1, n_features)).reshape(X_val_raw.shape)
-    y_val_scaled = scaler_y.transform(y_val_raw.reshape(-1, 1)).reshape(y_val_raw.shape)
+    if len(X_val_raw) > 0:
+        X_val_scaled = scaler_X.transform(X_val_raw.reshape(-1, n_features)).reshape(X_val_raw.shape)
+        y_val_scaled = scaler_y.transform(y_val_raw.reshape(-1, 1)).reshape(y_val_raw.shape)
+    else:
+        X_val_scaled = X_val_raw
+        y_val_scaled = y_val_raw
 
     X_train_t = torch.FloatTensor(X_train_scaled)
     y_train_t = torch.FloatTensor(y_train_scaled)
@@ -580,7 +690,18 @@ def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhe
                 val_loss = criterion(val_pred, y_val_t.to(device))
             print(f"Epoch {epoch+1}/{epochs} | Train Loss: {total_loss/len(loader):.6f} | Val Loss: {val_loss:.6f}")
 
-    return model, scaler_X, scaler_y, device
+    # Compute val MAPE on day-1 predictions (inverse-transformed) for confidence scoring
+    val_mape = None
+    if len(X_val_raw) > 0:
+        model.eval()
+        with torch.no_grad():
+            val_pred_scaled = model(X_val_t.to(device)).cpu().numpy()
+        pred_day1 = scaler_y.inverse_transform(val_pred_scaled[:, :1].reshape(-1, 1)).flatten()
+        actual_day1 = y_val_raw[:len(val_pred_scaled), 0]
+        denom = np.maximum(np.abs(actual_day1), 1e-9)
+        val_mape = float(np.mean(np.abs((actual_day1 - pred_day1) / denom)) * 100)
+
+    return model, scaler_X, scaler_y, device, val_mape
 
 def transformer_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30):
     '''Predict future stock prices using the trained Transformer model'''
@@ -589,6 +710,10 @@ def transformer_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_
 
         # Build features
         X_features, _, _ = prepare_ml_data(df, lookback)
+
+        if len(X_features) < seq_len:
+            print(f"transformer_predict: insufficient data ({len(X_features)} rows < seq_len={seq_len})")
+            return None
 
         # Take last seq_len rows
         last_window_raw = X_features[-seq_len:]

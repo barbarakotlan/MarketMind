@@ -40,7 +40,7 @@ except ImportError:
 
 # --- Imports ---
 from news_fetcher import get_general_news
-from models import create_dataset, ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict, gru_train, gru_predict, transformer_train, transformer_predict, LSTM, GRU, TransformerModel
+from models import create_dataset, ensemble_predict, calculate_metrics, linear_regression_predict, random_forest_predict, xgboost_predict, lstm_train, lstm_predict, gru_train, gru_predict, transformer_train, transformer_predict, dl_rolling_confidence, LSTM, GRU, TransformerModel
 import model_store
 
 # In-memory L1 cache for DL models: key = "MODEL:TICKER", value = (model, scaler_X, scaler_y, device, trained_at)
@@ -1445,36 +1445,85 @@ def clean_value(val):
 
 
 # --- Helper Function ---
-def get_symbol_suggestions(query):
+def _fetch_alpha_vantage_suggestions(query):
+    """Query Alpha Vantage SYMBOL_SEARCH. Returns list of {symbol, name} dicts."""
+    if not ALPHA_VANTAGE_API_KEY:
+        return []
+    try:
+        url = (
+            f'https://www.alphavantage.co/query'
+            f'?function=SYMBOL_SEARCH&keywords={query}&apikey={ALPHA_VANTAGE_API_KEY}'
+        )
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        matches = []
+        for item in data.get('bestMatches', []):
+            symbol = item.get('1. symbol', '')
+            region = item.get('4. region', '')
+            asset_type = item.get('3. type', '')
+            # Keep US equities with simple symbols only
+            if (symbol and region == 'United States' and asset_type == 'Equity'
+                    and '.' not in symbol and '/' not in symbol and ':' not in symbol):
+                matches.append({
+                    "symbol": symbol,
+                    "name": item.get('2. name', ''),
+                })
+        return matches
+    except Exception as e:
+        logger.error(f"Alpha Vantage symbol search error: {e}")
+        return []
+
+
+def _fetch_finnhub_suggestions(query):
+    """Query Finnhub symbol search. Returns list of {symbol, name} dicts."""
     if not FINNHUB_API_KEY:
-        logger.warning("FINNHUB_API_KEY not configured. Cannot get suggestions.")
         return []
     try:
         url = f'https://finnhub.io/api/v1/search?q={query}&token={FINNHUB_API_KEY}'
         r = requests.get(url, timeout=5)
         data = r.json()
-        results = data.get('result', [])
-        formatted_matches = []
-        for item in results:
+        matches = []
+        for item in data.get('result', []):
             symbol = item.get('symbol', '')
-            # Filter to simple US equity symbols only (no dots, slashes, or exchange prefixes)
             if symbol and '.' not in symbol and '/' not in symbol and ':' not in symbol:
-                formatted_matches.append({
+                matches.append({
                     "symbol": symbol,
-                    "name": item.get('description', '')
+                    "name": item.get('description', ''),
                 })
-
-        # Sort: exact match first, then starts-with, then the rest
-        q = query.upper()
-        formatted_matches.sort(key=lambda item: (
-            0 if item['symbol'].upper() == q else
-            1 if item['symbol'].upper().startswith(q) else
-            2
-        ))
-        return formatted_matches[:8]
+        return matches
     except Exception as e:
-        logger.error(f"Error in get_symbol_suggestions: {e}")
+        logger.error(f"Finnhub symbol search error: {e}")
         return []
+
+
+def get_symbol_suggestions(query):
+    """
+    Search for ticker symbols. Tries Alpha Vantage first (broader, more accurate),
+    then supplements with Finnhub results for any symbols not already found.
+    Falls back to Finnhub-only if Alpha Vantage is unavailable or returns nothing.
+    """
+    q = query.upper()
+
+    av_results = _fetch_alpha_vantage_suggestions(query)
+
+    # Supplement with Finnhub — add any symbols AV didn't return
+    fh_results = _fetch_finnhub_suggestions(query)
+    seen = {item['symbol'] for item in av_results}
+    for item in fh_results:
+        if item['symbol'] not in seen:
+            av_results.append(item)
+            seen.add(item['symbol'])
+
+    if not av_results:
+        return []
+
+    # Sort: exact match first, then starts-with, then the rest
+    av_results.sort(key=lambda item: (
+        0 if item['symbol'].upper() == q else
+        1 if item['symbol'].upper().startswith(q) else
+        2
+    ))
+    return av_results[:8]
 
 
 # --- Watchlist Endpoints ---
@@ -1657,6 +1706,18 @@ def predict_stock(model, ticker):
         if df.empty or len(df) < min_rows:
             return jsonify({"error": "Insufficient historical data."}), 404
 
+        # Map endpoint model name to prediction_service CV model name (for ML confidence)
+        _ML_CV_NAME = {
+            "LinReg": "linear_regression",
+            "RandomForest": "random_forest",
+            "XGBoost": "xgboost",
+        }
+
+        # dl_val_mape is set by the DL branches for confidence scoring
+        # dl_model / dl_scaler_X / dl_scaler_y / dl_device are set by the DL branches
+        # so dl_rolling_confidence can be called after predictions are made.
+        dl_model = dl_scaler_X = dl_scaler_y = dl_device = None
+
         # --- Run model ---
         if model == "LinReg":
             preds = linear_regression_predict(df, days_ahead=7)
@@ -1672,13 +1733,14 @@ def predict_stock(model, ticker):
             else:
                 disk = model_store.load_model("LSTM", sanitized_ticker, LSTM, _DL_CACHE_TTL_HOURS)
                 if disk:
-                    lstm_model, scaler_X, scaler_y, device, trained_at = disk
-                    _DL_MODEL_CACHE[cache_key] = (lstm_model, scaler_X, scaler_y, device, trained_at)
+                    lstm_model, scaler_X, scaler_y, device, trained_at, _vm = disk
+                    _DL_MODEL_CACHE[cache_key] = (lstm_model, scaler_X, scaler_y, device, trained_at, _vm)
                 else:
-                    lstm_model, scaler_X, scaler_y, device = lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
-                    model_store.save_model("LSTM", sanitized_ticker, lstm_model, scaler_X, scaler_y)
-                    _DL_MODEL_CACHE[cache_key] = (lstm_model, scaler_X, scaler_y, device, datetime.now(timezone.utc))
-            preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device, days_ahead=7)
+                    lstm_model, scaler_X, scaler_y, device, _vm = lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+                    model_store.save_model("LSTM", sanitized_ticker, lstm_model, scaler_X, scaler_y, val_mape=_vm)
+                    _DL_MODEL_CACHE[cache_key] = (lstm_model, scaler_X, scaler_y, device, datetime.now(timezone.utc), _vm)
+            dl_model, dl_scaler_X, dl_scaler_y, dl_device = lstm_model, scaler_X, scaler_y, device
+            preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device)
         elif model == "GRU":
             cache_key = f"GRU:{sanitized_ticker.upper()}"
             cached = _DL_MODEL_CACHE.get(cache_key)
@@ -1687,12 +1749,13 @@ def predict_stock(model, ticker):
             else:
                 disk = model_store.load_model("GRU", sanitized_ticker, GRU, _DL_CACHE_TTL_HOURS)
                 if disk:
-                    gru_model, scaler_X, scaler_y, device, trained_at = disk
-                    _DL_MODEL_CACHE[cache_key] = (gru_model, scaler_X, scaler_y, device, trained_at)
+                    gru_model, scaler_X, scaler_y, device, trained_at, _vm = disk
+                    _DL_MODEL_CACHE[cache_key] = (gru_model, scaler_X, scaler_y, device, trained_at, _vm)
                 else:
-                    gru_model, scaler_X, scaler_y, device = gru_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
-                    model_store.save_model("GRU", sanitized_ticker, gru_model, scaler_X, scaler_y)
-                    _DL_MODEL_CACHE[cache_key] = (gru_model, scaler_X, scaler_y, device, datetime.now(timezone.utc))
+                    gru_model, scaler_X, scaler_y, device, _vm = gru_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+                    model_store.save_model("GRU", sanitized_ticker, gru_model, scaler_X, scaler_y, val_mape=_vm)
+                    _DL_MODEL_CACHE[cache_key] = (gru_model, scaler_X, scaler_y, device, datetime.now(timezone.utc), _vm)
+            dl_model, dl_scaler_X, dl_scaler_y, dl_device = gru_model, scaler_X, scaler_y, device
             preds = gru_predict(df, gru_model, scaler_X, scaler_y, device, days_ahead=7)
         elif model == "Transformer":
             cache_key = f"Transformer:{sanitized_ticker.upper()}"
@@ -1702,12 +1765,13 @@ def predict_stock(model, ticker):
             else:
                 disk = model_store.load_model("Transformer", sanitized_ticker, TransformerModel, _DL_CACHE_TTL_HOURS)
                 if disk:
-                    trans_model, scaler_X, scaler_y, device, trained_at = disk
-                    _DL_MODEL_CACHE[cache_key] = (trans_model, scaler_X, scaler_y, device, trained_at)
+                    trans_model, scaler_X, scaler_y, device, trained_at, _vm = disk
+                    _DL_MODEL_CACHE[cache_key] = (trans_model, scaler_X, scaler_y, device, trained_at, _vm)
                 else:
-                    trans_model, scaler_X, scaler_y, device = transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
-                    model_store.save_model("Transformer", sanitized_ticker, trans_model, scaler_X, scaler_y)
-                    _DL_MODEL_CACHE[cache_key] = (trans_model, scaler_X, scaler_y, device, datetime.now(timezone.utc))
+                    trans_model, scaler_X, scaler_y, device, _vm = transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
+                    model_store.save_model("Transformer", sanitized_ticker, trans_model, scaler_X, scaler_y, val_mape=_vm)
+                    _DL_MODEL_CACHE[cache_key] = (trans_model, scaler_X, scaler_y, device, datetime.now(timezone.utc), _vm)
+            dl_model, dl_scaler_X, dl_scaler_y, dl_device = trans_model, scaler_X, scaler_y, device
             preds = transformer_predict(df, trans_model, scaler_X, scaler_y, device)
         else:
             return jsonify({"error": "Unknown model"}), 400
@@ -1722,12 +1786,34 @@ def predict_stock(model, ticker):
 
         future_dates = pd.bdate_range(start=recent_date + pd.Timedelta(days=1), periods=len(preds))
 
+        # Compute confidence:
+        # - ML models: rolling CV MAE normalised by price (cached, no extra cost)
+        # - DL models: rolling inference on the last 10 days of known actuals
+        #              using the already-cached model (no retraining, fast)
+        # Both map: confidence = clamp(100 - avg_mape% * 5, 50, 95)
+        cv_name = _ML_CV_NAME.get(model)
+        if cv_name is not None:
+            try:
+                ohlcv = prediction_service._load_canonical_ohlcv(sanitized_ticker)
+                confidence = prediction_service.model_confidence_from_cv(ohlcv, sanitized_ticker, cv_name)
+            except Exception:
+                confidence = 75.0
+        elif dl_model is not None:
+            rolling_conf = dl_rolling_confidence(
+                df, dl_model, dl_scaler_X, dl_scaler_y, dl_device, model,
+                n_windows=10,
+            )
+            confidence = rolling_conf if rolling_conf is not None else 75.0
+        else:
+            confidence = 75.0
+
         response = {
             "symbol": info.get('symbol', sanitized_ticker.upper()),
             "companyName": info.get('longName', 'N/A'),
             "recentDate": recent_date.strftime('%Y-%m-%d'),
             "recentClose": round(recent_close, 2),
             "recentPredicted": round(float(preds[0]), 2),
+            "confidence": confidence,
             "predictions": [
                 {
                     "date": date.strftime('%Y-%m-%d'),
@@ -1771,6 +1857,34 @@ def _resolve_selector_gate_for_ticker(sanitized_ticker, requested_mode, selector
     )
 
 
+_DL_MODEL_TYPES = {"LSTM", "GRU", "Transformer"}
+
+@app.route('/model-cache/<string:model_type>/<string:ticker>', methods=['DELETE'])
+@limiter.limit(RateLimits.STANDARD)
+def clear_model_cache(model_type, ticker):
+    """Force-evict a DL model from both in-memory and disk cache so the next
+    predict call triggers a full retrain from scratch."""
+    _try_authenticate_optional_request()
+    if model_type not in _DL_MODEL_TYPES:
+        return jsonify({"error": f"Unknown model type '{model_type}'. Must be one of: {sorted(_DL_MODEL_TYPES)}"}), 400
+
+    sanitized_ticker = ticker.split(':')[0].upper()
+    cache_key = f"{model_type}:{sanitized_ticker}"
+
+    evicted_memory = cache_key in _DL_MODEL_CACHE
+    _DL_MODEL_CACHE.pop(cache_key, None)
+
+    evicted_disk = model_store.delete_model(model_type, sanitized_ticker)
+
+    return jsonify({
+        "model_type": model_type,
+        "ticker": sanitized_ticker,
+        "evicted_memory": evicted_memory,
+        "evicted_disk": evicted_disk,
+        "message": f"{model_type} cache cleared for {sanitized_ticker}. Next prediction will retrain from scratch.",
+    })
+
+
 @app.route('/predict/ensemble/<string:ticker>')
 @limiter.limit(RateLimits.STANDARD)
 def predict_ensemble(ticker):
@@ -1791,6 +1905,7 @@ def predict_ensemble(ticker):
         future_prediction_dates_fn=prediction_service.get_future_prediction_dates,
         yf_module=yf,
         live_ensemble_signal_components_fn=_live_ensemble_signal_components,
+        ensemble_confidence_fn=prediction_service.ensemble_confidence_from_cv,
         infer_selective_decision_fn=infer_selective_decision,
         jsonify_fn=jsonify,
         logger=logger,
@@ -2643,6 +2758,7 @@ def public_api_ensemble_prediction(ticker):
         selector_source_requestable=SELECTOR_SOURCE_REQUESTABLE,
         yf_module=yf,
         live_ensemble_signal_components_fn=_live_ensemble_signal_components,
+        ensemble_confidence_fn=prediction_service.ensemble_confidence_from_cv,
         infer_selective_decision_fn=infer_selective_decision,
         logger=logger,
         pd_module=pd,

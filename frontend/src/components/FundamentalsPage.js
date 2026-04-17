@@ -14,7 +14,6 @@ import {
     Activity,
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
-import TickerAutocompleteInput from './TickerAutocompleteInput';
 import {
     getMarketSessionLabel,
     getMarketSessionSummary,
@@ -449,10 +448,10 @@ const FundamentalsPage = () => {
                 <form onSubmit={handleSearch} className="flex gap-4 flex-col md:flex-row">
                     <div className="flex-1 relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 z-10 pointer-events-none" />
-                        <TickerAutocompleteInput
+                        <input
+                            type="text"
                             value={ticker}
-                            onChange={setTicker}
-                            onSelect={(sym) => { setTicker(sym); fetchFundamentals(sym); }}
+                            onChange={(e) => setTicker(e.target.value)}
                             placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
                             className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                         />

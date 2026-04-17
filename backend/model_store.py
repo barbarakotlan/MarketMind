@@ -57,7 +57,7 @@ def _hyperparams_from_model(model_type: str, model) -> dict:
         }
 
 
-def save_model(model_type: str, ticker: str, model, scaler_X, scaler_y):
+def save_model(model_type: str, ticker: str, model, scaler_X, scaler_y, val_mape=None):
     """Persist model weights, scalers, and metadata to disk."""
     _ensure_dir()
     stem = _stem(model_type, ticker)
@@ -74,6 +74,7 @@ def save_model(model_type: str, ticker: str, model, scaler_X, scaler_y):
         "ticker": ticker.upper(),
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "hyperparams": _hyperparams_from_model(model_type, model),
+        "val_mape": float(val_mape) if val_mape is not None else None,
     }
     with open(MODEL_CACHE_DIR / f"{stem}_meta.json", "w") as f:
         json.dump(meta, f)
@@ -130,4 +131,21 @@ def load_model(model_type: str, ticker: str, model_class, ttl_hours: float):
     model.load_state_dict(torch.load(pt_path, map_location=device, weights_only=True))
     model.eval()
 
-    return model, scaler_X, scaler_y, device, trained_at
+    val_mape = meta.get("val_mape")
+
+    return model, scaler_X, scaler_y, device, trained_at, val_mape
+
+
+def delete_model(model_type: str, ticker: str) -> bool:
+    """
+    Remove all cached files for a model+ticker combination.
+    Returns True if any files were deleted, False if nothing existed.
+    """
+    stem = _stem(model_type, ticker)
+    deleted = False
+    for suffix in (".pt", "_meta.json", "_scaler_X.pkl", "_scaler_y.pkl"):
+        path = MODEL_CACHE_DIR / f"{stem}{suffix}"
+        if path.exists():
+            path.unlink()
+            deleted = True
+    return deleted

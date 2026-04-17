@@ -15,7 +15,6 @@ import {
     Activity 
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
-import TickerAutocompleteInput from './TickerAutocompleteInput';
 
 // Helper to format numbers or return 'N/A'
 const formatNum = (num, digits = 2) => {
@@ -554,10 +553,10 @@ const OptionsPage = () => {
                 <div className="ui-panel mb-8 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <form onSubmit={handleSearchTicker} className="flex flex-col md:flex-row gap-4">
                         <div className="flex-1 relative">
-                            <TickerAutocompleteInput
+                            <input
+                                type="text"
                                 value={ticker}
-                                onChange={setTicker}
-                                onSelect={(sym) => { setTicker(sym); searchTicker(sym); }}
+                                onChange={(e) => setTicker(e.target.value)}
                                 placeholder="Search ticker (e.g., AAPL)"
                                 className="ui-input py-4 pl-14 text-lg font-medium"
                             />

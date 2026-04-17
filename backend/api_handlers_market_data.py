@@ -460,6 +460,7 @@ def predict_ensemble_handler(
     future_prediction_dates_fn,
     yf_module,
     live_ensemble_signal_components_fn,
+    ensemble_confidence_fn,
     infer_selective_decision_fn,
     jsonify_fn,
     logger,
@@ -502,11 +503,7 @@ def predict_ensemble_handler(
             logger=logger,
         )
 
-        confidence = (
-            round(95.0 - (np_module.std(list(individual_preds.values())) * 2), 1)
-            if len(individual_preds) > 1
-            else 85.0
-        )
+        confidence = ensemble_confidence_fn(sanitized_ticker, individual_preds, recent_close)
 
         response = {
             "symbol": info.get("symbol", ticker.upper()),

@@ -340,8 +340,12 @@ def _default_live_weight_windows(series_length: int) -> int:
     return max(3, min(8, max(1, series_length // 30)))
 
 
-def _ensemble_weights_from_recent_cv(ohlcv: pd.DataFrame, ticker: str) -> Dict[str, float]:
-    cache_key = ("ensemble_weights", _normalize_ticker(ticker), len(ohlcv))
+def _ensemble_cv_errors(ohlcv: pd.DataFrame, ticker: str) -> Dict[str, float]:
+    """
+    Run a short rolling CV over all production models and return per-model MAE.
+    Result is cached so it is only computed once per (ticker, data-length) pair.
+    """
+    cache_key = ("cv_errors", _normalize_ticker(ticker), len(ohlcv))
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached
@@ -379,11 +383,23 @@ def _ensemble_weights_from_recent_cv(ohlcv: pd.DataFrame, ticker: str) -> Dict[s
                 errors[model_name] = float(mean_absolute_error(ml_cv["y"], ml_cv[model_name]))
         if "auto_arima" in sf_cv.columns:
             errors["auto_arima"] = float(mean_absolute_error(sf_cv["y"], sf_cv["auto_arima"]))
+    except Exception:
+        errors = {}
 
+    return _cache_set(cache_key, errors)
+
+
+def _ensemble_weights_from_recent_cv(ohlcv: pd.DataFrame, ticker: str) -> Dict[str, float]:
+    cache_key = ("ensemble_weights", _normalize_ticker(ticker), len(ohlcv))
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    errors = _ensemble_cv_errors(ohlcv, ticker)
+    try:
         valid = {name: err for name, err in errors.items() if math.isfinite(err) and err > 0}
         if not valid:
             raise ValueError("No valid validation errors were produced.")
-
         inverse = {name: 1.0 / err for name, err in valid.items()}
         total = sum(inverse.values())
         weights = {name: value / total for name, value in inverse.items()}
@@ -392,6 +408,126 @@ def _ensemble_weights_from_recent_cv(ohlcv: pd.DataFrame, ticker: str) -> Dict[s
         weights = {name: 1.0 / len(available) for name in available}
 
     return _cache_set(cache_key, weights)
+
+
+def _h7_window_count(series_length: int) -> int:
+    """Non-overlapping 7-day test windows for h=7 confidence CV."""
+    return max(4, min(10, series_length // 40))
+
+
+def _ensemble_cv_errors_h7(
+    ohlcv: pd.DataFrame, ticker: str
+) -> Tuple[Dict[str, float], Optional[float]]:
+    """
+    Rolling CV with h=7, non-overlapping windows, for all production models.
+
+    Returns (per_model_mae, ensemble_mae) where:
+      - per_model_mae: each model's MAE measured over the full 7-day horizon
+      - ensemble_mae:  the actual weighted-ensemble MAE (not the weighted average of
+                       individual errors) — computed by combining model CV predictions
+                       with the h=1 weights, then comparing to actuals
+
+    Cached separately from the h=1 CV used for weight assignment.
+    Falls back to ({}, None) on failure.
+    """
+    cache_key = ("cv_errors_h7", _normalize_ticker(ticker), len(ohlcv))
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        long_df = _build_long_frame(ohlcv, ticker)
+        n_windows = _h7_window_count(len(long_df))
+        input_size = min(max(len(long_df) - n_windows * 7, 60), 180)
+
+        ml_models = _build_ml_models()
+        ml_fcst = _build_mlforecast(ml_models)
+        ml_cv = ml_fcst.cross_validation(
+            df=long_df.reset_index(drop=True),
+            n_windows=n_windows,
+            h=7,
+            step_size=7,
+            refit=1,
+            static_features=[],
+            input_size=input_size,
+        )
+
+        sf = _build_statsforecast()
+        sf_cv = sf.cross_validation(
+            h=7,
+            df=long_df[["unique_id", "ds", "y"]].reset_index(drop=True),
+            n_windows=n_windows,
+            step_size=7,
+            refit=1,
+            input_size=input_size,
+        )
+
+        errors: Dict[str, float] = {}
+        for model_name in ("linear_regression", "random_forest", "xgboost"):
+            if model_name in ml_cv.columns:
+                errors[model_name] = float(mean_absolute_error(ml_cv["y"], ml_cv[model_name]))
+        if "auto_arima" in sf_cv.columns:
+            errors["auto_arima"] = float(mean_absolute_error(sf_cv["y"], sf_cv["auto_arima"]))
+
+        # Compute actual ensemble MAE by merging CV frames and applying weights
+        weights = _ensemble_weights_from_recent_cv(ohlcv, ticker)
+        ensemble_mae: Optional[float] = None
+
+        sf_cols = ["unique_id", "ds", "cutoff"] + (
+            ["auto_arima"] if "auto_arima" in sf_cv.columns else []
+        )
+        if len(sf_cols) > 3:
+            merged = pd.merge(
+                ml_cv[["unique_id", "ds", "cutoff", "y"] + [
+                    m for m in ("linear_regression", "random_forest", "xgboost")
+                    if m in ml_cv.columns
+                ]],
+                sf_cv[sf_cols],
+                on=["unique_id", "ds", "cutoff"],
+                how="inner",
+            )
+        else:
+            merged = ml_cv.copy()
+
+        available = [m for m in PRODUCTION_ENSEMBLE_MODELS if m in merged.columns and m in weights]
+        if available:
+            total_w = sum(weights[m] for m in available)
+            if total_w > 0:
+                ens_preds = sum(
+                    merged[m].to_numpy(dtype=float) * (weights[m] / total_w)
+                    for m in available
+                )
+                ensemble_mae = float(mean_absolute_error(merged["y"].to_numpy(dtype=float), ens_preds))
+
+    except Exception:
+        errors = {}
+        ensemble_mae = None
+
+    result: Tuple[Dict[str, float], Optional[float]] = (errors, ensemble_mae)
+    return _cache_set(cache_key, result)
+
+
+def model_confidence_from_cv(ohlcv: pd.DataFrame, ticker: str, model_name: str) -> float:
+    """
+    Return a [50, 95] confidence score for an ML model based on h=7 CV MAE.
+
+    Uses rolling CV measured at the correct prediction horizon (7 days) so the
+    confidence reflects actual multi-step forecast skill, not just 1-step skill.
+    Falls back to h=1 errors, then 75.0 if data is unavailable.
+    """
+    errors, _ = _ensemble_cv_errors_h7(ohlcv, ticker)
+    mae = errors.get(model_name)
+    if mae is None or not math.isfinite(mae) or mae <= 0:
+        # graceful fallback to the cheaper h=1 estimate
+        h1_errors = _ensemble_cv_errors(ohlcv, ticker)
+        mae = h1_errors.get(model_name)
+        if mae is None or not math.isfinite(mae) or mae <= 0:
+            return 75.0
+    recent_price = float(ohlcv["Close"].iloc[-1])
+    if recent_price <= 0:
+        return 75.0
+    mape_pct = (mae / recent_price) * 100
+    return round(max(50.0, min(95.0, 100.0 - mape_pct * 5.0)), 1)
 
 
 def _predict_production_components(
@@ -418,6 +554,52 @@ def _confidence_from_model_breakdown(model_predictions: Dict[str, np.ndarray], r
     dispersion = sum(abs(pred - mean_prediction) for pred in first_day) / len(first_day)
     confidence = 95.0 - ((dispersion / recent_close) * 100)
     return round(max(55.0, min(95.0, confidence)), 1)
+
+
+def ensemble_confidence_from_cv(
+    ticker: str,
+    model_predictions: Dict[str, np.ndarray],
+    recent_close: float,
+) -> float:
+    """
+    Confidence for the ensemble based on h=7 CV MAE measured at the correct horizon.
+
+    Priority order:
+      1. Actual ensemble MAE from h=7 CV (weighted combination of sub-model CV
+         predictions vs actuals — the most accurate signal)
+      2. Weighted-average of individual h=7 model MAEs (if ensemble MAE unavailable)
+      3. Inter-model dispersion on day-1 predictions (last-resort fallback)
+    """
+    try:
+        ohlcv = _load_canonical_ohlcv(ticker)
+        errors, ensemble_mae = _ensemble_cv_errors_h7(ohlcv, ticker)
+        price = float(ohlcv["Close"].iloc[-1])
+        if price <= 0:
+            raise ValueError("invalid price")
+
+        # 1. Actual ensemble h=7 MAE
+        if ensemble_mae is not None and math.isfinite(ensemble_mae) and ensemble_mae > 0:
+            mape_pct = (ensemble_mae / price) * 100
+            return round(max(50.0, min(95.0, 100.0 - mape_pct * 5.0)), 1)
+
+        # 2. Weighted-average of individual h=7 model MAEs
+        weights = _ensemble_weights_from_recent_cv(ohlcv, ticker)
+        available = [
+            (errors[m], weights[m])
+            for m in errors
+            if m in weights and math.isfinite(errors[m]) and errors[m] > 0
+        ]
+        if available:
+            total_weight = sum(w for _, w in available)
+            if total_weight > 0:
+                weighted_mae = sum(mae * w for mae, w in available) / total_weight
+                mape_pct = (weighted_mae / price) * 100
+                return round(max(50.0, min(95.0, 100.0 - mape_pct * 5.0)), 1)
+
+        raise ValueError("no h=7 CV data")
+    except Exception:
+        # 3. Last-resort: inter-model dispersion on day-1
+        return _confidence_from_model_breakdown(model_predictions, recent_close)
 
 
 def linear_regression_predict(df: pd.DataFrame, days_ahead: int = PREDICTION_HORIZON) -> Optional[np.ndarray]:
@@ -575,7 +757,7 @@ def get_prediction_snapshot(ticker: str) -> Optional[Dict[str, Any]]:
     snapshot = {
         "recentClose": round(recent_close, 2),
         "recentPredicted": round(float(ensemble_preds[0]), 2),
-        "confidence": _confidence_from_model_breakdown(model_breakdown, recent_close),
+        "confidence": ensemble_confidence_from_cv(normalized_ticker, model_breakdown, recent_close),
         "modelsUsed": list(model_breakdown.keys()),
         "predictions": [
             {"day": index + 1, "predictedClose": round(float(pred), 2), "date": future_dates[index].strftime("%Y-%m-%d")}

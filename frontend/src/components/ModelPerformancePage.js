@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import ActualVsPredictedChart from './charts/ActualVsPredictedChart';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
-import TickerAutocompleteInput from './TickerAutocompleteInput';
 
 const MODEL_LABELS = {
     ensemble: 'Ensemble',
@@ -88,10 +87,10 @@ const ModelPerformancePage = () => {
                                 >
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                                 </svg>
-                                <TickerAutocompleteInput
+                                <input
+                                    type="text"
                                     value={ticker}
-                                    onChange={setTicker}
-                                    onSelect={(sym) => { setTicker(sym); fetchEvaluation(sym); }}
+                                    onChange={(e) => setTicker(e.target.value)}
                                     placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
                                     className="ui-input pl-12 text-base"
                                 />
@@ -121,7 +120,7 @@ const ModelPerformancePage = () => {
                     </div>
 
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        <strong>Note:</strong> Backtesting with 5 ML models (RF, XGBoost, LinReg, GRU, LSTM). Takes 10–30 seconds.
+                        <strong>Note:</strong> Backtesting with 6 ML models (RF, XGBoost, LinReg, GRU, LSTM, Transformer). Takes 10–30 seconds.
                     </p>
                 </form>
             </div>
