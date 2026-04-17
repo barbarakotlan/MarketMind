@@ -102,6 +102,9 @@ def gradient_boosting_predict(df, days_ahead=7, lookback=14):
 def lightgbm_predict(df, days_ahead=7, lookback=14):
     return prediction_service.lightgbm_predict(df, days_ahead=days_ahead, lookback=lookback)
 
+def catboost_predict(df, days_ahead=7, lookback=14):
+    return prediction_service.catboost_predict(df, days_ahead=days_ahead, lookback=lookback)
+
 def ensemble_predict(df, days_ahead=7, lookback=14, seq_len=30):
     """
     Extended ensemble that includes LSTM and Transformer

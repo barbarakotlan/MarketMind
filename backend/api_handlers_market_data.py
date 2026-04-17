@@ -375,6 +375,7 @@ def predict_stock_handler(
     xgboost_predict_fn,
     gradient_boosting_predict_fn,
     lightgbm_predict_fn,
+    catboost_predict_fn,
     lstm_train_fn=None,
     lstm_predict_fn=None,
     transformer_train_fn=None,
@@ -396,7 +397,7 @@ def predict_stock_handler(
         elif model in ("RandomForest", "XGBoost"):
             period = "6mo"
             min_rows = 40
-        elif model in ("LSTM", "Transformer", "GradientBoosting", "LightGBM"):
+        elif model in ("LSTM", "Transformer", "GradientBoosting", "LightGBM", "CatBoost"):
             period = "1y"
             min_rows = 200
         else:
@@ -416,6 +417,8 @@ def predict_stock_handler(
             preds = gradient_boosting_predict_fn(df, days_ahead=7)  
         elif model == "LightGBM":
             preds = lightgbm_predict_fn(df, days_ahead=7)
+        elif model == "CatBoost":
+            preds = catboost_predict_fn(df, days_ahead=7)
         elif model == 'LSTM':
             trained, scaler_X, scaler_y, device = lstm_train_fn(
                 df, lookback=14, seq_len=30, days_ahead=7,
