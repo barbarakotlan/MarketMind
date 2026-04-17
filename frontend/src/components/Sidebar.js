@@ -9,6 +9,12 @@ import {
     ChevronLeft, ChevronRight, Boxes, Calendar, SlidersHorizontal, Globe, Bot, Trash2
 } from 'lucide-react';
 
+/**
+ * Hardcoded navigation hierarchy dictating the layout, labels, 
+ * target pages, and associated iconography for the sidebar menu.
+ * 
+ * @type {Array<{label: string, items: Array<{page: string, icon: Object, label: string}>}>}
+ */
 const NAV_GROUPS = [
     {
         label: 'Home',
@@ -62,13 +68,33 @@ const NAV_GROUPS = [
     },
 ];
 
+/**
+ * Sidebar Component
+ * 
+ * Main application navigation rail providing access to all core pages and features.
+ * Features collapsible states, notification polling, and integrated AI chat history functionality.
+ *
+ * @component
+ * @param {Object} props - React props.
+ * @param {string} props.activePage - Currently active navigation state.
+ * @param {Function} props.setActivePage - Callback dispatcher to change the global active page context.
+ * @param {boolean} props.isCollapsed - Visual state defining if the sidebar is minimized.
+ * @param {Function} props.onToggleCollapse - Callback to mutate the sidebar collapse state.
+ * @returns {JSX.Element} The persistent side navigation bar.
+ */
 const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) => {
+    // Context hook fetching global light/dark theme variables
     const { isDarkMode, toggleDarkMode } = useDarkMode();
+    
+    // Local ephemeral states for badge displays and inline contextual panels
     const [newAlertCount, setNewAlertCount] = useState(0);
     const [plan, setPlan] = useState(null);
     const [recentAiChats, setRecentAiChats] = useState([]);
     const [activeAiChatId, setActiveAiChatId] = useState(null);
 
+    /**
+     * Polls the backend API for unread or newly triggered notifications.
+     */
     const checkAlerts = () => {
         apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true))
             .then(data => {
@@ -77,28 +103,37 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             .catch(err => console.error("Error fetching alerts:", err));
     };
 
+    /**
+     * Hydrates the secondary navigation list with the user's localized AI chat history.
+     */
     const loadRecentAiChats = () => {
         apiRequest(API_ENDPOINTS.MARKETMIND_AI_CHATS)
             .then(data => {
+                // Keep the subset trimmed to the 6 most recent sessions for UI cleanliness
                 setRecentAiChats(Array.isArray(data) ? data.slice(0, 6) : []);
             })
             .catch(err => console.error("Error fetching MarketMindAI chats:", err));
     };
 
+    // Effect: Mount a 15-second polling interval strictly dedicated to alert badges
     useEffect(() => {
         checkAlerts();
         const interval = setInterval(checkAlerts, 15000);
         return () => clearInterval(interval);
     }, []);
 
+    // Effect: Attempt to resolve the user's active billing plan for UI adjustments upon mount
     useEffect(() => {
         apiRequest(API_ENDPOINTS.CHECKOUT_PLAN_STATUS)
             .then(data => setPlan(data.plan))
             .catch(() => {});
     }, []);
 
+    // Effect: Register global document event listeners acting as an internal pub/sub system for AI modules
     useEffect(() => {
         loadRecentAiChats();
+        
+        // Listeners updating sidebar state asynchronously avoiding heavy context re-renders
         const handleHistoryUpdated = () => loadRecentAiChats();
         const handleActiveChatChanged = (event) => {
             setActiveAiChatId(event?.detail?.chatId || null);
@@ -107,20 +142,33 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
         window.addEventListener('marketmindai:history-updated', handleHistoryUpdated);
         window.addEventListener('marketmindai:active-chat-changed', handleActiveChatChanged);
         
+        // Cleanup global event scopes tightly coupled to this component instance
         return () => {
             window.removeEventListener('marketmindai:history-updated', handleHistoryUpdated);
             window.removeEventListener('marketmindai:active-chat-changed', handleActiveChatChanged);
         };
     }, []);
 
+    /**
+     * Top-level handler abstracting generic navigation operations.
+     * Side-effects include clearing specific notification states.
+     * 
+     * @param {string} pageName - The identifier routing parameter.
+     */
     const handleNavClick = (pageName) => {
         if (pageName === 'notifications') {
-            setNewAlertCount(0);
+            setNewAlertCount(0); // Assume click implies marking as read locally
         }
         setActivePage(pageName);
     };
 
+    /**
+     * Navigation trigger explicitly dedicated to reviving saved conversational states via custom events.
+     * 
+     * @param {string} chatId - Target conversation UUID.
+     */
     const handleRecentAiChatClick = (chatId) => {
+        // Hydrate sessionStorage prior to dispatching route to ensure synchronous behavior across listeners
         if (typeof window !== 'undefined') {
             window.sessionStorage.setItem('marketmindai:selectedChatId', chatId);
         }
@@ -128,12 +176,22 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
         window.dispatchEvent(new CustomEvent('marketmindai:select-chat', { detail: { chatId } }));
     };
 
+    /**
+     * Remote deletion logic firing a DELETE request while defensively mutating UI state prior to confirmation.
+     * 
+     * @param {Event} event - Browser DOM interaction event.
+     * @param {string} chatId - Target conversation UUID to purge.
+     */
     const handleRecentAiChatDelete = async (event, chatId) => {
         event.preventDefault();
-        event.stopPropagation();
+        event.stopPropagation(); // Halt parent click interactions to prevent accidental navigational swaps
         try {
             await apiRequest(API_ENDPOINTS.MARKETMIND_AI_CHAT_DELETE(chatId), { method: 'DELETE' });
+            
+            // Optimistically clean the local context array
             setRecentAiChats((current) => current.filter((chat) => chat.id !== chatId));
+            
+            // Handle the case where the deleted chat is presently focused and active
             if (activeAiChatId === chatId) {
                 setActiveAiChatId(null);
                 window.dispatchEvent(new CustomEvent('marketmindai:active-chat-changed', { detail: { chatId: null } }));
@@ -153,7 +211,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                 isCollapsed ? 'w-16' : 'w-56'
             }`}
         >
-            {/* Brand bar */}
+            {/* Brand bar and Collapse action */}
             <div className="flex h-14 flex-shrink-0 items-center justify-between border-b border-mm-border px-3">
                 {!isCollapsed && (
                     <img
@@ -178,7 +236,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                 </button>
             </div>
 
-            {/* Navigation */}
+            {/* Main Navigation Wrapper Container */}
             <nav className="flex-1 overflow-y-auto sidebar-scrollbar px-2 py-3 space-y-1">
                 {NAV_GROUPS.map((group, gi) => (
                     <div key={gi}>
@@ -207,6 +265,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                                     >
                                         <Icon className="w-5 h-5 flex-shrink-0" />
                                         {!isCollapsed && <span>{item.label}</span>}
+                                        {/* Inject animated notification dot upon dynamic boolean */}
                                         {isAlerts && newAlertCount > 0 && (
                                             <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
                                                 <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 animate-ping"></span>
@@ -215,7 +274,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                                         )}
                                     </button>
 
-                                    {/* Recent AI Chats (Hidden when collapsed) */}
+                                    {/* Sidebar Extension: Recent AI Chats (Hidden when collapsed intentionally for UI parity) */}
                                     {!isCollapsed && item.page === 'marketmindAI' && recentAiChats.length > 0 && (
                                         <div className="mt-2 ml-4 space-y-1 border-l border-mm-border pl-3">
                                             <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-mm-text-tertiary">
@@ -239,6 +298,7 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                                                                 className="min-w-0 flex-1 text-left"
                                                             >
                                                                 <div className="truncate font-medium">{chat.title}</div>
+                                                                {/* Optional context indicating analysis target */}
                                                                 {chat.attachedTicker && (
                                                                     <div className="mt-0.5 truncate uppercase tracking-[0.16em] text-[10px] opacity-70">
                                                                         {chat.attachedTicker}
@@ -267,12 +327,12 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
                 ))}
             </nav>
 
-            {/* Footer: profile + dark mode toggle */}
+            {/* Footer: Clerk User Profile Button + Contextual Display Elements */}
             <div className="flex-shrink-0 border-t border-mm-border p-3">
                 <div className={`w-full flex ${isCollapsed ? 'flex-col items-center gap-4' : 'items-center justify-between'}`}>
                     <UserButton afterSignOutUrl="/" />
                   
-                    {/* Hide plan badge when collapsed so it doesn't break layout */}
+                    {/* Hide plan badge when collapsed so it doesn't break fixed pixel widths layout */}
                     {!isCollapsed && plan && (
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                             plan === 'pro' 
