@@ -3,6 +3,11 @@ import { TrendingUp, TrendingDown, Minus, Globe, RefreshCw, Calendar, Clock, Mic
 import { Sparklines, SparklinesLine, SparklinesReferenceLine } from 'react-sparklines';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
+/**
+ * Metadata for macroeconomic indicators.
+ * @property {string} desc - A brief explanation of what the indicator measures.
+ * @property {boolean} invert - If true, a lower number is considered "good" (e.g., Unemployment Rate).
+ */
 const INDICATOR_META = {
     URATE: { desc: 'U.S. jobless rate — lower is healthier for the economy.', invert: true },
     CPI: { desc: 'Broad consumer price level. Rising = inflation pressure.', invert: false },
@@ -15,11 +20,15 @@ const INDICATOR_META = {
     HK_URATE: { desc: 'Hong Kong labor-market slack. Lower is healthier.', invert: true },
 };
 
+// Available regions for the dashboard
 const REGION_OPTIONS = [
     { value: 'us', label: 'United States' },
     { value: 'asia', label: 'Asia' },
 ];
 
+/**
+ * Formats standard indicator values based on their unit type.
+ */
 const fmt = (val, unit) => {
     if (val === null || val === undefined) return '—';
     if (unit === '%') return `${val.toFixed(2)}%`;
@@ -27,28 +36,44 @@ const fmt = (val, unit) => {
     return val.toFixed(3);
 };
 
+/**
+ * Formats market signal values with specific decimal requirements (e.g., 4 decimals for FX).
+ */
 const fmtSignalValue = (signal) => {
     const value = signal?.value;
     if (value === null || value === undefined) return '—';
     if (signal?.category === 'FX') return value.toFixed(4);
+    
+    // Format large numbers with commas, handling edge cases for very small numbers
     return value.toLocaleString('en-US', {
         minimumFractionDigits: value < 10 ? 2 : 0,
         maximumFractionDigits: 2,
     });
 };
 
+/**
+ * Formats the percentage change for market signals, prepending a '+' for positive values.
+ */
 const fmtSignalChange = (signal) => {
     const changePercent = signal?.changePercent;
     if (changePercent === null || changePercent === undefined) return '—';
     return `${changePercent > 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
 };
 
+/**
+ * Safely formats event dates from string to a localized short format.
+ */
 const formatEventDate = (dateString) => {
+    // Append a midday time to avoid timezone offset issues pushing the date backward
     const date = new Date(`${dateString}T12:00:00`);
     if (Number.isNaN(date.getTime())) return dateString || 'TBD';
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 };
 
+/**
+ * Filters and sorts upcoming economic events.
+ * Prioritizes High/Medium impact events happening today or in the future.
+ */
 const getFeaturedEvents = (events) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -60,37 +85,56 @@ const getFeaturedEvents = (events) => {
     });
 
     const impactFirst = upcoming.filter((event) => event.impact === 'High' || event.impact === 'Medium');
+    
+    // Return up to 4 high-impact events, falling back to standard upcoming events if none exist
     return (impactFirst.length ? impactFirst : upcoming).slice(0, 4);
 };
 
+/**
+ * Renders a directional trend icon (Up/Down/Flat).
+ * Determines color (green/red) based on whether the movement is economically "good" or "bad".
+ */
 const TrendIcon = ({ value, prev, invert }) => {
     if (value === null || prev === null) return <Minus className="h-4 w-4 text-mm-text-tertiary" />;
+    
     const up = value > prev;
-    const good = invert ? !up : up;
+    const good = invert ? !up : up; // E.g., Up is BAD for Unemployment (invert = true)
+    
+    // Handle flat trends
     if (Math.abs(value - prev) < 0.001) return <Minus className="h-4 w-4 text-mm-text-tertiary" />;
+    
     return up
         ? <TrendingUp className={`h-4 w-4 ${good ? 'text-mm-positive' : 'text-mm-negative'}`} />
         : <TrendingDown className={`h-4 w-4 ${good ? 'text-mm-positive' : 'text-mm-negative'}`} />;
 };
 
+/**
+ * Card component displaying a single economic indicator (e.g., CPI, GDP).
+ * Includes current value, delta from prior, description, and a sparkline chart.
+ */
 const IndicatorCard = ({ ind }) => {
     const meta = INDICATOR_META[ind.symbol] || {};
     const invert = ind.invert ?? meta.invert;
     const sparkValues = (ind.sparkline || []).map((d) => d.value);
     const trend = ind.value !== null && ind.prev !== null ? ind.value - ind.prev : 0;
+    
+    // Determine the color of the text indicating the change
     const trendColor = (() => {
         if (Math.abs(trend) < 0.001) return 'text-mm-text-secondary';
         const up = trend > 0;
         return invert ? (up ? 'text-mm-negative' : 'text-mm-positive') : (up ? 'text-mm-positive' : 'text-mm-negative');
     })();
+
+    // Determine the color of the sparkline chart
     const sparkColor = (() => {
-        if (sparkValues.length < 2) return '#64748b';
+        if (sparkValues.length < 2) return '#64748b'; // Fallback neutral color
         const up = sparkValues[sparkValues.length - 1] > sparkValues[sparkValues.length - 2];
         return invert ? (up ? '#ef4444' : '#16a34a') : (up ? '#16a34a' : '#ef4444');
     })();
 
     return (
         <div className="ui-panel p-5">
+            {/* Header: Symbol, Name, and Trend Icon */}
             <div className="mb-3 flex items-start justify-between">
                 <div>
                     <p className="ui-section-label mb-1">{ind.symbol}</p>
@@ -99,6 +143,7 @@ const IndicatorCard = ({ ind }) => {
                 <TrendIcon value={ind.value} prev={ind.prev} invert={invert} />
             </div>
 
+            {/* Main Data & Chart Container */}
             <div className="flex items-end justify-between gap-4">
                 <div>
                     <p className="text-3xl font-semibold text-mm-text-primary">{fmt(ind.value, ind.unit)}</p>
@@ -111,6 +156,8 @@ const IndicatorCard = ({ ind }) => {
                         As of {ind.date ? new Date(ind.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}
                     </p>
                 </div>
+                
+                {/* Render Sparkline if there are enough data points */}
                 {sparkValues.length > 2 && (
                     <div className="h-12 w-28">
                         <Sparklines data={sparkValues} margin={4}>
@@ -121,6 +168,7 @@ const IndicatorCard = ({ ind }) => {
                 )}
             </div>
 
+            {/* Footer: Indicator Description */}
             {(ind.description || meta.desc) && (
                 <p className="mt-3 border-t border-mm-border pt-3 text-xs leading-relaxed text-mm-text-secondary">
                     {ind.description || meta.desc}
@@ -130,6 +178,9 @@ const IndicatorCard = ({ ind }) => {
     );
 };
 
+/**
+ * Renders a grid of selected FX and commodity pulses (primarily used for the Asia view).
+ */
 const MarketSignalsPanel = ({ signals }) => {
     if (!signals.length) return null;
 
@@ -172,9 +223,14 @@ const MarketSignalsPanel = ({ signals }) => {
     );
 };
 
+/**
+ * An expandable table showing the previous 12 data points for a selected indicator.
+ */
 const HistoryTable = ({ ind }) => {
+    // Reverse the sparkline array to show newest first, limiting to 12 rows
     const rows = [...(ind.sparkline || [])].reverse().slice(0, 12);
     if (!rows.length) return null;
+    
     return (
         <div className="ui-panel overflow-hidden">
             <div className="border-b border-mm-border px-5 py-4">
@@ -215,6 +271,9 @@ const HistoryTable = ({ ind }) => {
     );
 };
 
+/**
+ * Displays upcoming economic events and Fed speeches (Used primarily in the US view).
+ */
 const UpcomingEventsPanel = ({ events, error }) => {
     const featuredEvents = getFeaturedEvents(events);
 
@@ -224,6 +283,7 @@ const UpcomingEventsPanel = ({ events, error }) => {
 
     return (
         <div className="ui-panel p-5">
+            {/* Header */}
             <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
                     <h2 className="flex items-center gap-2 text-sm font-semibold text-mm-text-primary">
@@ -237,11 +297,13 @@ const UpcomingEventsPanel = ({ events, error }) => {
                 <p className="text-xs text-mm-text-tertiary">Data via Fair Economy</p>
             </div>
 
+            {/* Error State */}
             {error ? (
                 <div className="rounded-control border border-mm-border bg-mm-surface-subtle px-4 py-3 text-sm text-mm-text-secondary">
                     {error}
                 </div>
             ) : (
+                /* Events Grid */
                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                     {featuredEvents.map((event) => {
                         const isSpeaker = event.type === 'speaker';
@@ -256,6 +318,7 @@ const UpcomingEventsPanel = ({ events, error }) => {
                                             {event.event}
                                         </p>
                                     </div>
+                                    {/* Impact Badge */}
                                     <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider ${
                                         event.impact === 'High' ? 'ui-status-chip ui-status-chip--negative' :
                                         event.impact === 'Medium' ? 'ui-status-chip ui-status-chip--warning' :
@@ -265,6 +328,7 @@ const UpcomingEventsPanel = ({ events, error }) => {
                                     </span>
                                 </div>
 
+                                {/* Event Time & Type */}
                                 <div className="flex items-center gap-4 text-xs text-mm-text-secondary">
                                     <span className="flex items-center gap-1">
                                         <Clock className="h-3.5 w-3.5" />
@@ -276,6 +340,7 @@ const UpcomingEventsPanel = ({ events, error }) => {
                                     </span>
                                 </div>
 
+                                {/* Event Forecast Data */}
                                 <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
                                     <div>
                                         <p className="text-mm-text-tertiary">Actual</p>
@@ -299,35 +364,52 @@ const UpcomingEventsPanel = ({ events, error }) => {
     );
 };
 
+/**
+ * Main Page Component
+ * Orchestrates fetching macro data, calendar events, and layout generation.
+ */
 const MacroPage = () => {
-    const [region, setRegion] = useState('us');
+    // State management
+    const [region, setRegion] = useState('us'); // Toggle between US and Asia dashboards
     const [indicators, setIndicators] = useState([]);
     const [marketSignals, setMarketSignals] = useState([]);
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [eventsError, setEventsError] = useState('');
-    const [expanded, setExpanded] = useState(null);
+    
+    // Tracks which IndicatorCard is currently expanded to show its HistoryTable
+    const [expanded, setExpanded] = useState(null); 
     const [regionSummary, setRegionSummary] = useState(null);
 
+    /**
+     * Fetches primary macro indicators and optional regional data.
+     * Re-runs whenever the 'region' state changes.
+     */
     const load = useCallback(() => {
         setLoading(true);
         setError('');
         setEventsError('');
+        
+        // Fetch Main Indicators
         apiRequest(API_ENDPOINTS.MACRO_OVERVIEW(region))
             .then((macroPayload) => {
                 if (macroPayload?.error) {
                     throw new Error(macroPayload.error);
                 }
 
+                // Handle variations in API payload structure
                 const nextIndicators = Array.isArray(macroPayload)
                     ? macroPayload
                     : Array.isArray(macroPayload?.indicators)
                         ? macroPayload.indicators
                         : [];
+                
                 setIndicators(nextIndicators);
                 setMarketSignals(Array.isArray(macroPayload?.marketSignals) ? macroPayload.marketSignals : []);
                 setRegionSummary(Array.isArray(macroPayload) ? null : macroPayload);
+                
+                // Collapse the expanded card if its indicator is no longer in the list
                 setExpanded((current) => nextIndicators.some((ind) => ind.symbol === current) ? current : null);
             })
             .catch((e) => {
@@ -340,12 +422,14 @@ const MacroPage = () => {
                 setLoading(false);
             });
 
+        // Only fetch the economic calendar if looking at the US region
         if (region !== 'us') {
             setEvents([]);
             setEventsError('');
             return;
         }
 
+        // Fetch Economic Calendar Events
         apiRequest(API_ENDPOINTS.ECONOMIC_CALENDAR)
             .then((calendarPayload) => {
                 if (calendarPayload?.error) {
@@ -361,12 +445,14 @@ const MacroPage = () => {
             });
     }, [region]);
 
+    // Initial data load and refetch on region switch
     useEffect(() => {
         load();
     }, [load]);
 
     return (
         <div className="ui-page animate-fade-in space-y-8">
+            {/* Header & Controls */}
             <div className="ui-page-header flex items-start justify-between gap-4">
                 <div>
                     <h1 className="ui-page-title flex items-center gap-2">
@@ -378,6 +464,8 @@ const MacroPage = () => {
                             ? 'China and Hong Kong macro indicators with selected FX and commodity signals.'
                             : 'Key U.S. economic indicators updated on a monthly cadence.'}
                     </p>
+                    
+                    {/* Region Selector Toggle */}
                     <div className="mt-4 flex flex-wrap gap-2">
                         {REGION_OPTIONS.map((option) => (
                             <button
@@ -393,12 +481,15 @@ const MacroPage = () => {
                         ))}
                     </div>
                 </div>
+                
+                {/* Manual Refresh Button */}
                 <button onClick={load} disabled={loading} className="ui-button-secondary gap-2">
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                     Refresh
                 </button>
             </div>
 
+            {/* Global Loading State */}
             {loading && (
                 <div className="py-20 text-center">
                     <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-mm-accent-primary border-t-transparent"></div>
@@ -406,12 +497,15 @@ const MacroPage = () => {
                 </div>
             )}
 
+            {/* Global Error State */}
             {error && !loading && (
                 <div className="ui-banner ui-banner-error">{error}</div>
             )}
 
+            {/* Dashboard Content */}
             {!loading && !error && (
                 <>
+                    {/* Conditional Upper Panels based on Region */}
                     {region === 'us' ? (
                         <UpcomingEventsPanel events={events} error={eventsError} />
                     ) : (
@@ -430,8 +524,10 @@ const MacroPage = () => {
                         </div>
                     )}
 
+                    {/* Asia Market Signals */}
                     {region === 'asia' && <MarketSignalsPanel signals={marketSignals} />}
 
+                    {/* Indicators Grid */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         {indicators.map((ind) => (
                             <div
@@ -444,6 +540,7 @@ const MacroPage = () => {
                         ))}
                     </div>
 
+                    {/* Expanded History Table (Shows below the grid when a card is clicked) */}
                     {expanded && (() => {
                         const ind = indicators.find((i) => i.symbol === expanded);
                         return ind ? (
@@ -453,6 +550,7 @@ const MacroPage = () => {
                         ) : null;
                     })()}
 
+                    {/* Helper text when no card is expanded */}
                     {!expanded && (
                         <p className="text-center text-xs text-mm-text-tertiary">
                             {region === 'asia'
