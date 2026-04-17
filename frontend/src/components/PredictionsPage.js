@@ -162,14 +162,17 @@ const PredictionsPage = ({ initialTicker, onConsumeInitialTicker }) => {
                                 <button type="button" onClick={() => setUseModel('XGBoost')} className={modelButtonClass(useModel === 'XGBoost')}>
                                     XGBoost
                                 </button>
+                                <button type="button" onClick={() => setUseModel('GradientBoosting')} className={modelButtonClass(useModel === 'GradientBoosting')}>
+                                    Gradient Boosting
+                                </button>
+                                <button type="button" onClick={() => setUseModel('LightGBM')} className={modelButtonClass(useModel === 'LightGBM')}>
+                                    LightGBM
+                                </button>
                                 <button type="button" onClick={() => setUseModel('LSTM')} className={modelButtonClass(useModel === 'LSTM')}>
                                     LSTM
                                 </button>
                                 <button type="button" onClick={() => setUseModel('Transformer')} className={modelButtonClass(useModel === 'Transformer')}>
                                     Transformer
-                                </button>
-                                <button type="button" onClick={() => setUseModel('GradientBoosting')} className={modelButtonClass(useModel === 'GradientBoosting')}>
-                                    Gradient Boosting
                                 </button>
                             </div>
                         )}

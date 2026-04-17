@@ -34,6 +34,13 @@ except Exception:
     xgb = None
     XGBOOST_AVAILABLE = False
 
+try:
+    import lightgbm as lgb
+    LIGHTGBM_AVAILABLE = True
+except Exception:
+    lgb = None
+    LIGHTGBM_AVAILABLE = False
+
 
 FEATURE_SPEC_VERSION = "prediction-stack-v2"
 PREDICTION_HORIZON = 7
@@ -57,13 +64,14 @@ PRODUCTION_ENSEMBLE_MODELS = (
     "linear_regression",
     "random_forest",
     "xgboost",
-    "lstm",
-    "transformer",
     "gradient_boosting",
+    "lightgbm",
+    "lstm",
+    "transformer"
 )
 
 BENCHMARK_MODELS = ("naive", "seasonal_naive_5", "auto_arima")
-ML_MODELS = ("linear_regression", "random_forest", "xgboost", "lstm", "transformer", "gradient_boosting")
+ML_MODELS = ("linear_regression", "random_forest", "xgboost", "gradient_boosting", "lightgbm", "lstm", "transformer")
 
 _CACHE: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
 
@@ -258,6 +266,17 @@ def _build_ml_models() -> Dict[str, Any]:
             colsample_bytree=0.85,
             random_state=42,
             n_jobs=1,
+        )
+    if LIGHTGBM_AVAILABLE:
+        models["lightgbm"] = lgb.LGBMRegressor(
+            n_estimators=200,
+            max_depth=6,
+            learning_rate=0.05,
+            subsample=0.85,
+            colsample_bytree=0.85,
+            random_state=42,
+            n_jobs=1,
+            verbose=-1,
         )
     return models
 
@@ -485,6 +504,21 @@ def gradient_boosting_predict(df: pd.DataFrame, days_ahead: int = PREDICTION_HOR
         ticker=str(df.attrs.get("ticker") or "AAPL"),
     )
     return result["predictions"].get("gradient_boosting")
+
+def lightgbm_predict(df: pd.DataFrame, days_ahead: int = PREDICTION_HORIZON, lookback: int = 14) -> Optional[np.ndarray]:
+    _ = lookback
+    if not LIGHTGBM_AVAILABLE:
+        return None
+    ohlcv = _coerce_ohlcv_from_input(df)
+    if ohlcv.empty or len(ohlcv) < MIN_HISTORY_ROWS:
+        return None
+    result = _forecast_ml_models(
+        ohlcv,
+        model_names=("lightgbm",),
+        horizon=days_ahead,
+        ticker=str(df.attrs.get("ticker") or "AAPL"),
+    )
+    return result["predictions"].get("lightgbm")
 
 def ensemble_predict(df: pd.DataFrame, days_ahead: int = PREDICTION_HORIZON) -> Tuple[Optional[np.ndarray], Dict[str, np.ndarray]]:
     ohlcv = _coerce_ohlcv_from_input(df)
