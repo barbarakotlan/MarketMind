@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import ActualVsPredictedChart from './charts/ActualVsPredictedChart';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
+// Maps backend model identifiers to human-readable UI labels
 const MODEL_LABELS = {
     ensemble: 'Ensemble',
     auto_arima: 'AutoARIMA',
@@ -14,57 +15,81 @@ const MODEL_LABELS = {
     transformer: 'Transformer',
 };
 
+/**
+ * Formats model names for the UI.
+ * Falls back to formatting the raw string (e.g., 'random_forest' -> 'Random Forest')
+ * if the specific key isn't explicitly defined in MODEL_LABELS.
+ */
 const formatModelName = (modelName) => (
     MODEL_LABELS[modelName] || modelName.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
 );
 
+/**
+ * Determines the CSS color class based on the metric's value and whether 
+ * a positive value represents a "good" outcome (e.g., Returns) or a "bad" outcome (e.g., Drawdown).
+ */
 const metricToneClass = (value, positiveIsGood = true) => {
+    // Handle edge cases where data might be missing or invalid from the pipeline
     if (value === null || value === undefined || Number.isNaN(Number(value))) {
         return 'text-mm-text-secondary';
     }
     const isPositive = Number(value) >= 0;
+    
     if (positiveIsGood) {
         return isPositive ? 'text-mm-positive' : 'text-mm-negative';
     }
+    // Inverse logic for metrics like Max Drawdown where lower/negative is better
     return isPositive ? 'text-mm-negative' : 'text-mm-positive';
 };
 
 const ModelPerformancePage = () => {
+    // --- Application State ---
     const [ticker, setTicker] = useState('');
-    const [evaluationData, setEvaluationData] = useState(null);
+    const [evaluationData, setEvaluationData] = useState(null); // Holds the full backtest payload
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [selectedModel, setSelectedModel] = useState('ensemble');
-    const [testDays, setTestDays] = useState(60);
-    const [deepEvaluation, setDeepEvaluation] = useState(false);
+    
+    // --- UI Controls State ---
+    const [selectedModel, setSelectedModel] = useState('ensemble'); // Default to the blended strategy
+    const [testDays, setTestDays] = useState(60); // Evaluation window
+    const [deepEvaluation, setDeepEvaluation] = useState(false); // Toggles heavy computation (SHAP, frequent retraining)
 
+    /**
+     * Handles the primary evaluation request.
+     * Packages the configuration parameters and initiates the backtest via the API.
+     */
     const handleEvaluate = async (e) => {
         e.preventDefault();
 
+        // Basic validation
         if (!ticker.trim()) {
             setError('Please enter a stock ticker');
             return;
         }
 
+        // Reset state for new evaluation
         setLoading(true);
         setError('');
         setEvaluationData(null);
 
         try {
+            // Dynamically adjust payload based on whether the user wants a rapid check or a deep backtest.
+            // Deep mode increases retrain frequency and calculates SHAP values, which is computationally expensive
+            // for tree-based models like XGBoost and Random Forest.
             const params = deepEvaluation
                 ? {
                     test_days: testDays,
                     fast_mode: false,
                     include_selective: true,
-                    retrain_frequency: 5,
-                    include_explanations: true,
+                    retrain_frequency: 5, // Retrain more frequently for higher accuracy in deep mode
+                    include_explanations: true, // Triggers SHAP value generation
                 }
                 : {
                     test_days: testDays,
                     fast_mode: true,
                     include_selective: false,
-                    retrain_frequency: 10,
-                    max_train_rows: 450,
+                    retrain_frequency: 10, // Less frequent retraining saves significant compute time
+                    max_train_rows: 450, // Cap historical data to speed up execution
                     include_explanations: false,
                 };
 
@@ -78,11 +103,16 @@ const ModelPerformancePage = () => {
         }
     };
 
+    // Derived state: Extract SHAP/explainability data for the currently selected model if it exists
     const selectedExplainability = evaluationData?.models?.[selectedModel]?.explainability;
+    
+    // Feature importance is generally natively supported by tree models and linear regressions.
+    // LSTMs/Transformers usually require separate interpretability wrappers, so we gate the UI here.
     const selectedModelSupportsShap = ['linear_regression', 'random_forest', 'xgboost'].includes(selectedModel);
 
     return (
         <div className="ui-page animate-fade-in space-y-8">
+            {/* --- Header --- */}
             <div className="ui-page-header text-center">
                 <h1 className="ui-page-title mb-2">Model Performance Evaluation</h1>
                 <p className="ui-page-subtitle">
@@ -90,11 +120,14 @@ const ModelPerformancePage = () => {
                 </p>
             </div>
 
+            {/* --- Configuration Panel --- */}
             <div className="ui-panel p-6">
                 <form onSubmit={handleEvaluate} className="space-y-4">
                     <div className="flex flex-col gap-4 lg:flex-row">
+                        {/* Ticker Input */}
                         <div className="flex-1">
                             <div className="relative">
+                                {/* Search Icon */}
                                 <svg
                                     className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-mm-text-tertiary"
                                     fill="none"
@@ -113,6 +146,7 @@ const ModelPerformancePage = () => {
                             </div>
                         </div>
 
+                        {/* Test Window Selector */}
                         <div className="w-full lg:w-52">
                             <select
                                 value={testDays}
@@ -126,6 +160,7 @@ const ModelPerformancePage = () => {
                             </select>
                         </div>
 
+                        {/* Submit Button */}
                         <button
                             type="submit"
                             disabled={loading}
@@ -134,6 +169,8 @@ const ModelPerformancePage = () => {
                             {loading ? 'Evaluating...' : 'Evaluate'}
                         </button>
                     </div>
+
+                    {/* Deep Evaluation Toggle */}
                     <label className="flex items-center gap-3 text-sm text-mm-text-secondary">
                         <input
                             type="checkbox"
@@ -144,12 +181,14 @@ const ModelPerformancePage = () => {
                         Run deep evaluation (slower, includes selective-mode analysis)
                     </label>
 
+                    {/* Warning note for users regarding execution time */}
                     <div className="ui-panel-subtle px-4 py-3 text-sm text-mm-text-secondary">
                         <strong className="text-mm-text-primary">Note:</strong> Fast mode is optimized for responsiveness. Deep mode can take significantly longer.
                     </div>
                 </form>
             </div>
 
+            {/* --- Status Indicators --- */}
             {error && (
                 <div className="ui-banner ui-banner-error animate-fade-in">
                     <p className="font-medium">{error}</p>
@@ -164,8 +203,11 @@ const ModelPerformancePage = () => {
                 </div>
             )}
 
+            {/* --- Evaluation Results Payload --- */}
             {evaluationData && !loading && (
                 <div className="space-y-8 animate-fade-in">
+                    
+                    {/* 1. High-Level KPI Summary */}
                     <div className="ui-panel-elevated p-6">
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
                             <div className="text-center">
@@ -200,6 +242,7 @@ const ModelPerformancePage = () => {
                         </div>
                     </div>
 
+                    {/* 2. Model Selection Tabs */}
                     <div className="ui-panel p-6">
                         <h3 className="ui-section-label mb-4">Model Selection</h3>
                         <div className="flex flex-wrap gap-3">
@@ -210,17 +253,20 @@ const ModelPerformancePage = () => {
                                     className={selectedModel === modelName ? 'ui-button-primary px-5 py-3' : 'ui-button-secondary px-5 py-3'}
                                 >
                                     {formatModelName(modelName)}
+                                    {/* Identify the winner determined by the backend evaluation engine */}
                                     {modelName === evaluationData.best_model && <span className="ml-2">🏆</span>}
                                 </button>
                             ))}
                         </div>
                     </div>
 
+                    {/* 3. Visual Timeseries Chart */}
                     <ActualVsPredictedChart
                         evaluationData={evaluationData}
                         selectedModel={selectedModel}
                     />
 
+                    {/* 4. Cross-Model Metric Comparison Table */}
                     <div className="ui-panel p-6">
                         <h3 className="mb-6 text-xl font-semibold text-mm-text-primary">Model Comparison</h3>
                         <div className="overflow-x-auto">
@@ -260,6 +306,7 @@ const ModelPerformancePage = () => {
                         </div>
                     </div>
 
+                    {/* 5. Simulated Trading Output (Derived from Ensemble signals) */}
                     {evaluationData.returns && (
                         <div className="ui-panel p-6">
                             <h3 className="mb-6 text-xl font-semibold text-mm-text-primary">Trading Performance (Ensemble Strategy)</h3>
@@ -291,6 +338,7 @@ const ModelPerformancePage = () => {
                                 </div>
                                 <div className="ui-panel-subtle p-4 text-center">
                                     <p className="text-sm text-mm-text-secondary mb-1">Max Drawdown</p>
+                                    {/* Note the false flag here: lower Max Drawdown is better */}
                                     <p className={`text-2xl font-semibold ${metricToneClass(evaluationData.returns.max_drawdown, false)}`}>
                                         {evaluationData.returns.max_drawdown}%
                                     </p>
@@ -302,6 +350,7 @@ const ModelPerformancePage = () => {
                         </div>
                     )}
 
+                    {/* 6. Feature Importance / Explainability (SHAP) */}
                     <div className="ui-panel p-6">
                         <h3 className="mb-2 text-xl font-semibold text-mm-text-primary">Explainability</h3>
                         <p className="mb-6 text-sm text-mm-text-secondary">
@@ -310,6 +359,7 @@ const ModelPerformancePage = () => {
 
                         {selectedExplainability ? (
                             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                                {/* Global Aggregated Importance */}
                                 <div className="ui-panel-subtle p-4">
                                     <h4 className="mb-3 font-semibold text-mm-text-primary">Global Top Features</h4>
                                     <div className="space-y-3">
@@ -325,6 +375,7 @@ const ModelPerformancePage = () => {
                                     </div>
                                 </div>
 
+                                {/* Local / Latest Prediction Contribution */}
                                 <div className="ui-panel-subtle p-4">
                                     <h4 className="mb-3 font-semibold text-mm-text-primary">Latest Prediction Contributors</h4>
                                     <div className="space-y-3">
@@ -345,6 +396,7 @@ const ModelPerformancePage = () => {
                                 </div>
                             </div>
                         ) : (
+                            // Fallback UI if SHAP data isn't generated for the current configuration
                             <div className="ui-panel-subtle p-4 text-sm text-mm-text-secondary">
                                 {selectedModelSupportsShap
                                     ? 'Run deep evaluation to generate SHAP explainability for this model.'
@@ -353,6 +405,7 @@ const ModelPerformancePage = () => {
                         )}
                     </div>
 
+                    {/* 7. Information Banner */}
                     <div className="ui-banner ui-banner-warning">
                         <h3 className="mb-2 font-semibold">About This Evaluation</h3>
                         <ul className="space-y-1 text-sm">
@@ -366,6 +419,7 @@ const ModelPerformancePage = () => {
                 </div>
             )}
 
+            {/* --- Empty State (Pre-evaluation) --- */}
             {!evaluationData && !loading && !error && (
                 <div className="ui-empty-state py-16 animate-fade-in">
                     <div className="mb-4 rounded-pill border border-mm-border bg-mm-surface p-6">
