@@ -2,9 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Bell, Plus, Trash2, BellRing, X, Sparkles, TrendingUp } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
+/**
+ * FormNotification Component
+ * A reusable UI banner used to display inline success or error messages
+ * after form submissions (like creating or deleting an alert).
+ */
 const FormNotification = ({ message, onDismiss }) => {
     if (!message) return null;
 
+    // Determine banner styling based on whether the message is a success or error
     const toneClass = message.type === 'success' ? 'ui-banner ui-banner-success' : 'ui-banner ui-banner-error';
 
     return (
@@ -19,30 +25,54 @@ const FormNotification = ({ message, onDismiss }) => {
     );
 };
 
+/**
+ * NotificationsPage Component
+ * The main dashboard for managing user alerts. It allows users to set standard price targets,
+ * generate AI-driven smart alerts, and view/manage both active monitors and recently triggered notifications.
+ */
 const NotificationsPage = ({ onClearAlerts }) => {
-    const [activeAlerts, setActiveAlerts] = useState([]);
-    const [triggeredAlerts, setTriggeredAlerts] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [message, setMessage] = useState(null);
-    const [activeTab, setActiveTab] = useState('price');
+    // --- State Management ---
+    
+    // Alert Data State
+    const [activeAlerts, setActiveAlerts] = useState([]); // Alerts currently monitoring the market
+    const [triggeredAlerts, setTriggeredAlerts] = useState([]); // Alerts that have hit their conditions
+    const [loading, setLoading] = useState(true); // Initial data fetching state
+    const [message, setMessage] = useState(null); // Feedback message for UI operations
+    
+    // Form & UI State
+    const [activeTab, setActiveTab] = useState('price'); // Toggles between 'price' and 'ai' alert creation forms
+    
+    // Price Alert Form State
     const [ticker, setTicker] = useState('');
-    const [condition, setCondition] = useState('below');
+    const [condition, setCondition] = useState('below'); // 'below' or 'above'
     const [price, setPrice] = useState('');
+    
+    // AI Smart Alert Form State
     const [aiPrompt, setAiPrompt] = useState('');
-    const [isAiLoading, setIsAiLoading] = useState(false);
+    const [isAiLoading, setIsAiLoading] = useState(false); // Controls loading state specifically for the AI generation button
 
+    // --- Data Fetching ---
+
+    /**
+     * Fetches both active and triggered alerts concurrently.
+     */
     const fetchAllAlerts = async () => {
         setLoading(true);
         try {
+            // Execute both API calls in parallel to reduce loading time
             const [activeData, triggeredDataRaw] = await Promise.all([
                 apiRequest(API_ENDPOINTS.NOTIFICATIONS),
-                apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true)).catch(() => []),
+                // Fail gracefully to an empty array if the triggered alerts endpoint errors out
+                apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(true)).catch(() => []), 
             ]);
+            
+            // Ensure triggered data is safely iterable
             const triggeredData = Array.isArray(triggeredDataRaw) ? triggeredDataRaw : [];
 
             setActiveAlerts(activeData);
             setTriggeredAlerts(triggeredData);
 
+            // Optional callback passed from parent (e.g., to clear a notification badge in a nav bar)
             if (onClearAlerts) {
                 onClearAlerts();
             }
@@ -53,12 +83,18 @@ const NotificationsPage = ({ onClearAlerts }) => {
         }
     };
 
+    // Load alerts immediately when the component mounts
     useEffect(() => {
         fetchAllAlerts();
         // Intentionally load alerts once on mount.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // --- Action Handlers ---
+
+    /**
+     * Handles the creation of a standard price target alert.
+     */
     const handleCreateNotification = async (e) => {
         e.preventDefault();
         setMessage(null);
@@ -74,6 +110,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                 }),
             });
 
+            // On success, show a message, clear the form, and refresh the data
             setMessage({ type: 'success', text: `Alert set for ${ticker.toUpperCase()}` });
             setTicker('');
             setPrice('');
@@ -83,10 +120,13 @@ const NotificationsPage = ({ onClearAlerts }) => {
         }
     };
 
+    /**
+     * Handles the creation of an AI-driven smart alert.
+     */
     const handleCreateSmartNotification = async (e) => {
         e.preventDefault();
         setMessage(null);
-        setIsAiLoading(true);
+        setIsAiLoading(true); // Lock the submit button while the AI processes the natural language prompt
 
         try {
             const response = await apiRequest(API_ENDPOINTS.NOTIFICATIONS_SMART, {
@@ -108,6 +148,10 @@ const NotificationsPage = ({ onClearAlerts }) => {
         }
     };
 
+    /**
+     * Deletes a specific alert by its ID.
+     * Handles both active and triggered alerts by checking the 'type' parameter.
+     */
     const handleDelete = async (id, type) => {
         const endpoint = type === 'active'
             ? API_ENDPOINTS.NOTIFICATION(id)
@@ -115,27 +159,31 @@ const NotificationsPage = ({ onClearAlerts }) => {
 
         try {
             await apiRequest(endpoint, { method: 'DELETE' });
-            fetchAllAlerts();
+            fetchAllAlerts(); // Refresh the lists after successful deletion
         } catch (err) {
             setMessage({ type: 'error', text: err.message });
         }
     };
 
+    /**
+     * Clears all previously triggered alerts from the user's history.
+     */
     const handleClearTriggeredAlerts = async () => {
         setMessage(null);
 
         try {
             await apiRequest(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED(), { method: 'DELETE' });
-            setTriggeredAlerts([]);
+            setTriggeredAlerts([]); // Optimistically clear the UI
 
             if (onClearAlerts) {
-                onClearAlerts();
+                onClearAlerts(); // Update parent state if necessary
             }
         } catch (err) {
             setMessage({ type: 'error', text: err.message });
         }
     };
 
+    // Helper function to handle active/inactive tab styling
     const tabClass = (tab) => (
         activeTab === tab
             ? 'ui-tab ui-tab-active flex-1 justify-center gap-2'
@@ -144,6 +192,8 @@ const NotificationsPage = ({ onClearAlerts }) => {
 
     return (
         <div className="ui-page animate-fade-in space-y-8">
+            
+            {/* --- Header --- */}
             <div className="ui-page-header text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-pill border border-mm-border bg-mm-surface shadow-card">
                     <Bell className="h-8 w-8 text-mm-accent-primary" />
@@ -152,7 +202,9 @@ const NotificationsPage = ({ onClearAlerts }) => {
                 <p className="ui-page-subtitle">Monitor markets and get notified instantly.</p>
             </div>
 
+            {/* --- Alert Creation Panel --- */}
             <div className="ui-panel overflow-hidden">
+                {/* Tab Navigation */}
                 <div className="border-b border-mm-border px-6 pt-6">
                     <div className="ui-tab-group flex w-full">
                         <button onClick={() => setActiveTab('price')} className={tabClass('price')}>
@@ -166,8 +218,10 @@ const NotificationsPage = ({ onClearAlerts }) => {
                     </div>
                 </div>
 
+                {/* Form Content Area */}
                 <div className="p-6">
                     {activeTab === 'price' ? (
+                        // Standard Price Target Form
                         <form onSubmit={handleCreateNotification} className="space-y-6 animate-fade-in">
                             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                                 <div>
@@ -212,6 +266,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                             </button>
                         </form>
                     ) : (
+                        // AI Smart Alert Form
                         <form onSubmit={handleCreateSmartNotification} className="space-y-6 animate-fade-in">
                             <div>
                                 <label className="ui-form-label flex items-center gap-2">
@@ -227,6 +282,7 @@ const NotificationsPage = ({ onClearAlerts }) => {
                                 />
                             </div>
 
+                            {/* Quick-insert tags to help users format prompts */}
                             <div className="flex gap-2 overflow-x-auto pb-2">
                                 {['AAPL Earnings', 'TSLA News', 'BTC > 100k'].map((tag) => (
                                     <button
@@ -260,11 +316,15 @@ const NotificationsPage = ({ onClearAlerts }) => {
                         </form>
                     )}
 
+                    {/* Displays success/error messages resulting from form actions */}
                     <FormNotification message={message} onDismiss={() => setMessage(null)} />
                 </div>
             </div>
 
+            {/* --- Alert Management Grid --- */}
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+                
+                {/* Left Column: Active Monitors */}
                 <div className="ui-panel p-6">
                     <h2 className="mb-6 flex items-center gap-2 text-xl font-semibold text-mm-text-primary">
                         <span className="h-2 w-2 rounded-pill bg-mm-positive"></span>
@@ -305,12 +365,14 @@ const NotificationsPage = ({ onClearAlerts }) => {
                     </div>
                 </div>
 
+                {/* Right Column: Recent Notifications (Triggered) */}
                 <div className="ui-panel p-6">
                     <div className="mb-6 flex items-center justify-between">
                         <h2 className="flex items-center gap-2 text-xl font-semibold text-mm-text-primary">
                             <span className="h-2 w-2 rounded-pill bg-mm-negative"></span>
                             Recent Notifications
                         </h2>
+                        {/* Only show "Clear All" if there are alerts to clear */}
                         {triggeredAlerts.length > 0 && (
                             <button onClick={handleClearTriggeredAlerts} className="text-xs font-semibold text-mm-accent-primary hover:underline">
                                 Clear All
