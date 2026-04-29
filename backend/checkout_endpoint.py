@@ -100,6 +100,7 @@ def _get_authenticated_email(clerk_user_id: str) -> str | None:
     if auth_email:
         return auth_email
 
+    # Fall back to the persisted profile so returning users can check out even if the token lacks email claims.
     with session_scope(_get_database_url()) as session:
         user = session.get(AppUser, clerk_user_id)
         if user and user.email:
@@ -127,6 +128,7 @@ def _get_or_create_stripe_customer(clerk_user_id: str, email: str) -> stripe.Cus
             except stripe.error.InvalidRequestError:
                 user.stripe_customer_id = None
 
+        # Store Clerk identity in Stripe metadata so support/debug tooling can trace the customer back to the app user.
         customer = stripe.Customer.create(
             email=email,
             metadata={"clerk_user_id": clerk_user_id},
@@ -233,6 +235,7 @@ def stripe_webhook():
     etype = event["type"]
     obj   = event["data"]["object"]
 
+    # Keep app access tied to Stripe's billing lifecycle; webhooks are the source of truth after checkout starts.
     if etype == "invoice.payment_succeeded":
         customer_id = obj["customer"]
         _set_user_plan(customer_id, "pro", "active")
