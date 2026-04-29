@@ -3,6 +3,7 @@ from __future__ import annotations
 FREE_PLAN = "free"
 PRO_PLAN = "pro"
 
+# Centralize plan gates here so route handlers enforce the same limits shown in the pricing UI.
 PLAN_LIMITS = {
     FREE_PLAN: {
         "prediction_requests_per_day": 5,
@@ -13,6 +14,7 @@ PLAN_LIMITS = {
     },
     PRO_PLAN: {
         "prediction_requests_per_day": 100,
+        # None means the plan is not capped by this local app-level limiter.
         "watchlist_items": None,
         "active_alerts": 50,
         "paper_trades_per_month": None,
@@ -22,6 +24,7 @@ PLAN_LIMITS = {
 
 
 def normalize_plan(plan: str | None) -> str:
+    # Unknown, blank, or legacy plan strings should fail closed to the Free limits.
     return PRO_PLAN if str(plan or "").strip().lower() == PRO_PLAN else FREE_PLAN
 
 
