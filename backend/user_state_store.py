@@ -33,6 +33,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 
+# Keep model definitions portable: Postgres gets JSONB while SQLite keeps the local-dev path lightweight.
 JSON_VARIANT = JSON().with_variant(JSONB(), "postgresql")
 SNAPSHOT_ID_TYPE = BigInteger().with_variant(Integer(), "sqlite")
 
@@ -367,6 +368,7 @@ def _is_sqlite_url(database_url: str) -> bool:
 def _configure_sqlite_connection(dbapi_connection: Any) -> None:
     cursor = dbapi_connection.cursor()
     try:
+        # These pragmas make local SQLite behave closer to the production persistence assumptions.
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA busy_timeout=30000")
         cursor.execute("PRAGMA journal_mode=WAL")
@@ -397,6 +399,7 @@ def ensure_database_ready(database_url: str) -> None:
             lambda dbapi_connection, _connection_record: _configure_sqlite_connection(dbapi_connection),
         )
 
+    # SQLite is used for local/dev persistence, while managed databases should normally rely on migrations.
     if _should_auto_create_schema(url):
         Base.metadata.create_all(engine)
 
@@ -477,6 +480,7 @@ def touch_app_user(
     username: Optional[str] = None,
     created_at: Optional[datetime] = None,
 ) -> AppUser:
+    # Most user-state writes pass through here so profile metadata and last_seen_at stay fresh.
     user = session.get(AppUser, clerk_user_id)
     now = utcnow()
     if user is None:
