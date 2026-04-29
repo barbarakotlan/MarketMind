@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { useAuth } from '@clerk/clerk-react';
 import StockPredictionCard from './ui/StockPredictionCard';
 import PredictionChart from './charts/PredictionChart';
 import ModelComparisonCard from './ui/ModelComparisonCard';
@@ -9,6 +10,7 @@ const DEFAULT_SINGLE_MODEL = 'LinReg';
 const DL_MODELS = new Set(['LSTM', 'GRU', 'Transformer']);
 
 const PredictionsPage = ({ initialTicker }) => {
+    const { isSignedIn } = useAuth();
     const [ticker, setTicker] = useState('');
     const [predictionData, setPredictionData] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -289,13 +291,25 @@ const PredictionsPage = ({ initialTicker }) => {
             {loading && (
                 <div className="text-center py-12 animate-fade-in">
                     <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-mm-accent-primary border-t-transparent"></div>
-                    <p className="mt-4 text-mm-text-secondary">Analyzing stock data and generating predictions...</p>
+                    <p className="mt-4 text-mm-text-secondary">
+                        {!useEnsemble && DL_MODELS.has(useModel) && isSignedIn
+                            ? `Training your personal ${useModel} model...`
+                            : 'Analyzing stock data and generating predictions...'}
+                    </p>
                 </div>
             )}
 
             {predictionData && !loading && (
                 <div className="animate-fade-in space-y-6">
                     <div className="ui-panel-elevated p-6">
+                        {predictionData.trainedAt && isSignedIn && (
+                            <div className="flex justify-end mb-3">
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-mm-accent-primary/10 px-3 py-1 text-xs font-medium text-mm-accent-primary border border-mm-accent-primary/20">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-mm-accent-primary"></span>
+                                    Your personal model
+                                </span>
+                            </div>
+                        )}
                         <div className={`grid grid-cols-1 gap-4 ${predictionData.trainedAt ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
                             <div className="text-center">
                                 <p className="text-sm text-mm-text-secondary mb-1">Recent Date</p>
