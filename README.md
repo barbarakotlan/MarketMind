@@ -167,7 +167,16 @@ npm install
 npm start
 ```
 
-When both processes are running, the frontend is available at `http://localhost:3000` and the backend API is available at `http://localhost:5001`.
+4. For local Stripe checkout testing, run the Stripe CLI webhook listener in a separate terminal.
+
+```bash
+stripe login
+stripe listen --forward-to localhost:5001/checkout/webhook
+```
+
+Copy the `whsec_...` signing secret printed by `stripe listen` into `STRIPE_WEBHOOK_SECRET` in the root `.env` file. Keep the backend running with `STRIPE_SECRET_KEY`, `STRIPE_PRICE_PRO_MONTHLY`, and `STRIPE_PRICE_PRO_ANNUAL` set to test-mode Stripe values, and keep the frontend running with `REACT_APP_STRIPE_PUBLISHABLE_KEY` set in `frontend/.env`.
+
+When the backend, frontend, and Stripe listener are running, the frontend is available at `http://localhost:3000`, the backend API is available at `http://localhost:5001`, and Stripe events are delivered to `POST /checkout/webhook`.
 
 ## For Developers
 
