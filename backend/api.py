@@ -1718,6 +1718,7 @@ def predict_stock(model, ticker):
         # so dl_rolling_confidence can be called after predictions are made.
         dl_model = dl_scaler_X = dl_scaler_y = dl_device = None
         dl_trained_at = None
+        _dl_user_id = get_current_user_id()
 
         # --- Run model ---
         if model == "LinReg":
@@ -1727,53 +1728,53 @@ def predict_stock(model, ticker):
         elif model == "XGBoost":
             preds = xgboost_predict(df, days_ahead=7)
         elif model == "LSTM":
-            cache_key = f"LSTM:{sanitized_ticker.upper()}"
+            cache_key = f"LSTM:{sanitized_ticker.upper()}:{_dl_user_id}" if _dl_user_id else f"LSTM:{sanitized_ticker.upper()}"
             cached = _DL_MODEL_CACHE.get(cache_key)
             if cached and (datetime.now(timezone.utc) - cached[4]).total_seconds() < _DL_CACHE_TTL_HOURS * 3600:
                 lstm_model, scaler_X, scaler_y, device, trained_at = cached[0], cached[1], cached[2], cached[3], cached[4]
             else:
-                disk = model_store.load_model("LSTM", sanitized_ticker, LSTM, _DL_CACHE_TTL_HOURS)
+                disk = model_store.load_model("LSTM", sanitized_ticker, LSTM, _DL_CACHE_TTL_HOURS, user_id=_dl_user_id)
                 if disk:
                     lstm_model, scaler_X, scaler_y, device, trained_at, _vm = disk
                     _DL_MODEL_CACHE[cache_key] = (lstm_model, scaler_X, scaler_y, device, trained_at, _vm)
                 else:
                     lstm_model, scaler_X, scaler_y, device, _vm = lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
                     trained_at = datetime.now(timezone.utc)
-                    model_store.save_model("LSTM", sanitized_ticker, lstm_model, scaler_X, scaler_y, val_mape=_vm)
+                    model_store.save_model("LSTM", sanitized_ticker, lstm_model, scaler_X, scaler_y, val_mape=_vm, user_id=_dl_user_id)
                     _DL_MODEL_CACHE[cache_key] = (lstm_model, scaler_X, scaler_y, device, trained_at, _vm)
             dl_model, dl_scaler_X, dl_scaler_y, dl_device, dl_trained_at = lstm_model, scaler_X, scaler_y, device, trained_at
             preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device)
         elif model == "GRU":
-            cache_key = f"GRU:{sanitized_ticker.upper()}"
+            cache_key = f"GRU:{sanitized_ticker.upper()}:{_dl_user_id}" if _dl_user_id else f"GRU:{sanitized_ticker.upper()}"
             cached = _DL_MODEL_CACHE.get(cache_key)
             if cached and (datetime.now(timezone.utc) - cached[4]).total_seconds() < _DL_CACHE_TTL_HOURS * 3600:
                 gru_model, scaler_X, scaler_y, device, trained_at = cached[0], cached[1], cached[2], cached[3], cached[4]
             else:
-                disk = model_store.load_model("GRU", sanitized_ticker, GRU, _DL_CACHE_TTL_HOURS)
+                disk = model_store.load_model("GRU", sanitized_ticker, GRU, _DL_CACHE_TTL_HOURS, user_id=_dl_user_id)
                 if disk:
                     gru_model, scaler_X, scaler_y, device, trained_at, _vm = disk
                     _DL_MODEL_CACHE[cache_key] = (gru_model, scaler_X, scaler_y, device, trained_at, _vm)
                 else:
                     gru_model, scaler_X, scaler_y, device, _vm = gru_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
                     trained_at = datetime.now(timezone.utc)
-                    model_store.save_model("GRU", sanitized_ticker, gru_model, scaler_X, scaler_y, val_mape=_vm)
+                    model_store.save_model("GRU", sanitized_ticker, gru_model, scaler_X, scaler_y, val_mape=_vm, user_id=_dl_user_id)
                     _DL_MODEL_CACHE[cache_key] = (gru_model, scaler_X, scaler_y, device, trained_at, _vm)
             dl_model, dl_scaler_X, dl_scaler_y, dl_device, dl_trained_at = gru_model, scaler_X, scaler_y, device, trained_at
             preds = gru_predict(df, gru_model, scaler_X, scaler_y, device, days_ahead=7)
         elif model == "Transformer":
-            cache_key = f"Transformer:{sanitized_ticker.upper()}"
+            cache_key = f"Transformer:{sanitized_ticker.upper()}:{_dl_user_id}" if _dl_user_id else f"Transformer:{sanitized_ticker.upper()}"
             cached = _DL_MODEL_CACHE.get(cache_key)
             if cached and (datetime.now(timezone.utc) - cached[4]).total_seconds() < _DL_CACHE_TTL_HOURS * 3600:
                 trans_model, scaler_X, scaler_y, device, trained_at = cached[0], cached[1], cached[2], cached[3], cached[4]
             else:
-                disk = model_store.load_model("Transformer", sanitized_ticker, TransformerModel, _DL_CACHE_TTL_HOURS)
+                disk = model_store.load_model("Transformer", sanitized_ticker, TransformerModel, _DL_CACHE_TTL_HOURS, user_id=_dl_user_id)
                 if disk:
                     trans_model, scaler_X, scaler_y, device, trained_at, _vm = disk
                     _DL_MODEL_CACHE[cache_key] = (trans_model, scaler_X, scaler_y, device, trained_at, _vm)
                 else:
                     trans_model, scaler_X, scaler_y, device, _vm = transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
                     trained_at = datetime.now(timezone.utc)
-                    model_store.save_model("Transformer", sanitized_ticker, trans_model, scaler_X, scaler_y, val_mape=_vm)
+                    model_store.save_model("Transformer", sanitized_ticker, trans_model, scaler_X, scaler_y, val_mape=_vm, user_id=_dl_user_id)
                     _DL_MODEL_CACHE[cache_key] = (trans_model, scaler_X, scaler_y, device, trained_at, _vm)
             dl_model, dl_scaler_X, dl_scaler_y, dl_device, dl_trained_at = trans_model, scaler_X, scaler_y, device, trained_at
             preds = transformer_predict(df, trans_model, scaler_X, scaler_y, device)
@@ -1874,12 +1875,13 @@ def clear_model_cache(model_type, ticker):
         return jsonify({"error": f"Unknown model type '{model_type}'. Must be one of: {sorted(_DL_MODEL_TYPES)}"}), 400
 
     sanitized_ticker = ticker.split(':')[0].upper()
-    cache_key = f"{model_type}:{sanitized_ticker}"
+    _cache_user_id = get_current_user_id()
+    cache_key = f"{model_type}:{sanitized_ticker}:{_cache_user_id}" if _cache_user_id else f"{model_type}:{sanitized_ticker}"
 
     evicted_memory = cache_key in _DL_MODEL_CACHE
     _DL_MODEL_CACHE.pop(cache_key, None)
 
-    evicted_disk = model_store.delete_model(model_type, sanitized_ticker)
+    evicted_disk = model_store.delete_model(model_type, sanitized_ticker, user_id=_cache_user_id)
 
     return jsonify({
         "model_type": model_type,

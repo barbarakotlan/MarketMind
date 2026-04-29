@@ -2,15 +2,17 @@
 Disk-persistent store for trained DL models (LSTM, GRU, Transformer).
 
 Layout under MODEL_CACHE_DIR (default: backend/model_cache/):
-  {MODEL_TYPE}_{TICKER}.pt          — PyTorch state_dict
-  {MODEL_TYPE}_{TICKER}_meta.json   — constructor args + trained_at timestamp
-  {MODEL_TYPE}_{TICKER}_scaler_X.pkl — fitted MinMaxScaler for features
-  {MODEL_TYPE}_{TICKER}_scaler_y.pkl — fitted MinMaxScaler for targets
+  {MODEL_TYPE}_{TICKER}.pt              — global model (unauthenticated users)
+  {MODEL_TYPE}_{TICKER}_{USER}.pt       — per-user model
+  {MODEL_TYPE}_{TICKER}_meta.json       — constructor args + trained_at timestamp
+  {MODEL_TYPE}_{TICKER}_scaler_X.pkl    — fitted MinMaxScaler for features
+  {MODEL_TYPE}_{TICKER}_scaler_y.pkl    — fitted MinMaxScaler for targets
 """
 
 import json
 import os
 import pickle
+import re
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,8 +28,11 @@ def _ensure_dir():
         MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _stem(model_type: str, ticker: str) -> str:
+def _stem(model_type: str, ticker: str, user_id: str = None) -> str:
     safe_ticker = ticker.upper().replace("/", "_").replace(".", "_")
+    if user_id:
+        safe_uid = re.sub(r"[^a-zA-Z0-9_-]", "_", str(user_id))
+        return f"{model_type}_{safe_ticker}_{safe_uid}"
     return f"{model_type}_{safe_ticker}"
 
 
@@ -57,10 +62,10 @@ def _hyperparams_from_model(model_type: str, model) -> dict:
         }
 
 
-def save_model(model_type: str, ticker: str, model, scaler_X, scaler_y, val_mape=None):
+def save_model(model_type: str, ticker: str, model, scaler_X, scaler_y, val_mape=None, user_id: str = None):
     """Persist model weights, scalers, and metadata to disk."""
     _ensure_dir()
-    stem = _stem(model_type, ticker)
+    stem = _stem(model_type, ticker, user_id)
 
     torch.save(model.state_dict(), MODEL_CACHE_DIR / f"{stem}.pt")
 
@@ -80,14 +85,14 @@ def save_model(model_type: str, ticker: str, model, scaler_X, scaler_y, val_mape
         json.dump(meta, f)
 
 
-def load_model(model_type: str, ticker: str, model_class, ttl_hours: float):
+def load_model(model_type: str, ticker: str, model_class, ttl_hours: float, user_id: str = None):
     """
     Load a model from disk if it exists and is within TTL.
 
     Returns (model, scaler_X, scaler_y, device, trained_at) or None.
     trained_at is a timezone-aware datetime.
     """
-    stem = _stem(model_type, ticker)
+    stem = _stem(model_type, ticker, user_id)
     meta_path = MODEL_CACHE_DIR / f"{stem}_meta.json"
     pt_path   = MODEL_CACHE_DIR / f"{stem}.pt"
     sx_path   = MODEL_CACHE_DIR / f"{stem}_scaler_X.pkl"
@@ -136,12 +141,12 @@ def load_model(model_type: str, ticker: str, model_class, ttl_hours: float):
     return model, scaler_X, scaler_y, device, trained_at, val_mape
 
 
-def delete_model(model_type: str, ticker: str) -> bool:
+def delete_model(model_type: str, ticker: str, user_id: str = None) -> bool:
     """
     Remove all cached files for a model+ticker combination.
     Returns True if any files were deleted, False if nothing existed.
     """
-    stem = _stem(model_type, ticker)
+    stem = _stem(model_type, ticker, user_id)
     deleted = False
     for suffix in (".pt", "_meta.json", "_scaler_X.pkl", "_scaler_y.pkl"):
         path = MODEL_CACHE_DIR / f"{stem}{suffix}"
