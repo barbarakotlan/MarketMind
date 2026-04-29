@@ -1717,6 +1717,7 @@ def predict_stock(model, ticker):
         # dl_model / dl_scaler_X / dl_scaler_y / dl_device are set by the DL branches
         # so dl_rolling_confidence can be called after predictions are made.
         dl_model = dl_scaler_X = dl_scaler_y = dl_device = None
+        dl_trained_at = None
 
         # --- Run model ---
         if model == "LinReg":
@@ -1729,7 +1730,7 @@ def predict_stock(model, ticker):
             cache_key = f"LSTM:{sanitized_ticker.upper()}"
             cached = _DL_MODEL_CACHE.get(cache_key)
             if cached and (datetime.now(timezone.utc) - cached[4]).total_seconds() < _DL_CACHE_TTL_HOURS * 3600:
-                lstm_model, scaler_X, scaler_y, device = cached[0], cached[1], cached[2], cached[3]
+                lstm_model, scaler_X, scaler_y, device, trained_at = cached[0], cached[1], cached[2], cached[3], cached[4]
             else:
                 disk = model_store.load_model("LSTM", sanitized_ticker, LSTM, _DL_CACHE_TTL_HOURS)
                 if disk:
@@ -1737,15 +1738,16 @@ def predict_stock(model, ticker):
                     _DL_MODEL_CACHE[cache_key] = (lstm_model, scaler_X, scaler_y, device, trained_at, _vm)
                 else:
                     lstm_model, scaler_X, scaler_y, device, _vm = lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+                    trained_at = datetime.now(timezone.utc)
                     model_store.save_model("LSTM", sanitized_ticker, lstm_model, scaler_X, scaler_y, val_mape=_vm)
-                    _DL_MODEL_CACHE[cache_key] = (lstm_model, scaler_X, scaler_y, device, datetime.now(timezone.utc), _vm)
-            dl_model, dl_scaler_X, dl_scaler_y, dl_device = lstm_model, scaler_X, scaler_y, device
+                    _DL_MODEL_CACHE[cache_key] = (lstm_model, scaler_X, scaler_y, device, trained_at, _vm)
+            dl_model, dl_scaler_X, dl_scaler_y, dl_device, dl_trained_at = lstm_model, scaler_X, scaler_y, device, trained_at
             preds = lstm_predict(df, lstm_model, scaler_X, scaler_y, device)
         elif model == "GRU":
             cache_key = f"GRU:{sanitized_ticker.upper()}"
             cached = _DL_MODEL_CACHE.get(cache_key)
             if cached and (datetime.now(timezone.utc) - cached[4]).total_seconds() < _DL_CACHE_TTL_HOURS * 3600:
-                gru_model, scaler_X, scaler_y, device = cached[0], cached[1], cached[2], cached[3]
+                gru_model, scaler_X, scaler_y, device, trained_at = cached[0], cached[1], cached[2], cached[3], cached[4]
             else:
                 disk = model_store.load_model("GRU", sanitized_ticker, GRU, _DL_CACHE_TTL_HOURS)
                 if disk:
@@ -1753,15 +1755,16 @@ def predict_stock(model, ticker):
                     _DL_MODEL_CACHE[cache_key] = (gru_model, scaler_X, scaler_y, device, trained_at, _vm)
                 else:
                     gru_model, scaler_X, scaler_y, device, _vm = gru_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=100, batch_size=32, lr=0.001)
+                    trained_at = datetime.now(timezone.utc)
                     model_store.save_model("GRU", sanitized_ticker, gru_model, scaler_X, scaler_y, val_mape=_vm)
-                    _DL_MODEL_CACHE[cache_key] = (gru_model, scaler_X, scaler_y, device, datetime.now(timezone.utc), _vm)
-            dl_model, dl_scaler_X, dl_scaler_y, dl_device = gru_model, scaler_X, scaler_y, device
+                    _DL_MODEL_CACHE[cache_key] = (gru_model, scaler_X, scaler_y, device, trained_at, _vm)
+            dl_model, dl_scaler_X, dl_scaler_y, dl_device, dl_trained_at = gru_model, scaler_X, scaler_y, device, trained_at
             preds = gru_predict(df, gru_model, scaler_X, scaler_y, device, days_ahead=7)
         elif model == "Transformer":
             cache_key = f"Transformer:{sanitized_ticker.upper()}"
             cached = _DL_MODEL_CACHE.get(cache_key)
             if cached and (datetime.now(timezone.utc) - cached[4]).total_seconds() < _DL_CACHE_TTL_HOURS * 3600:
-                trans_model, scaler_X, scaler_y, device = cached[0], cached[1], cached[2], cached[3]
+                trans_model, scaler_X, scaler_y, device, trained_at = cached[0], cached[1], cached[2], cached[3], cached[4]
             else:
                 disk = model_store.load_model("Transformer", sanitized_ticker, TransformerModel, _DL_CACHE_TTL_HOURS)
                 if disk:
@@ -1769,9 +1772,10 @@ def predict_stock(model, ticker):
                     _DL_MODEL_CACHE[cache_key] = (trans_model, scaler_X, scaler_y, device, trained_at, _vm)
                 else:
                     trans_model, scaler_X, scaler_y, device, _vm = transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=100, batch_size=32, lr=0.001)
+                    trained_at = datetime.now(timezone.utc)
                     model_store.save_model("Transformer", sanitized_ticker, trans_model, scaler_X, scaler_y, val_mape=_vm)
-                    _DL_MODEL_CACHE[cache_key] = (trans_model, scaler_X, scaler_y, device, datetime.now(timezone.utc), _vm)
-            dl_model, dl_scaler_X, dl_scaler_y, dl_device = trans_model, scaler_X, scaler_y, device
+                    _DL_MODEL_CACHE[cache_key] = (trans_model, scaler_X, scaler_y, device, trained_at, _vm)
+            dl_model, dl_scaler_X, dl_scaler_y, dl_device, dl_trained_at = trans_model, scaler_X, scaler_y, device, trained_at
             preds = transformer_predict(df, trans_model, scaler_X, scaler_y, device)
         else:
             return jsonify({"error": "Unknown model"}), 400
@@ -1814,6 +1818,7 @@ def predict_stock(model, ticker):
             "recentClose": round(recent_close, 2),
             "recentPredicted": round(float(preds[0]), 2),
             "confidence": confidence,
+            "trainedAt": dl_trained_at.isoformat() if dl_trained_at else None,
             "predictions": [
                 {
                     "date": date.strftime('%Y-%m-%d'),
