@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatDistanceToNow } from 'date-fns';
 import StockPredictionCard from './ui/StockPredictionCard';
 import PredictionChart from './charts/PredictionChart';
 import ModelComparisonCard from './ui/ModelComparisonCard';
@@ -295,7 +296,7 @@ const PredictionsPage = ({ initialTicker }) => {
             {predictionData && !loading && (
                 <div className="animate-fade-in space-y-6">
                     <div className="ui-panel-elevated p-6">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className={`grid grid-cols-1 gap-4 ${predictionData.trainedAt ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
                             <div className="text-center">
                                 <p className="text-sm text-mm-text-secondary mb-1">Recent Date</p>
                                 <p className="text-xl font-semibold text-mm-text-primary">{predictionData.recentDate}</p>
@@ -318,6 +319,14 @@ const PredictionsPage = ({ initialTicker }) => {
                                                 ? 'text-yellow-500'
                                                 : 'text-mm-negative'
                                     }`}>{predictionData.confidence}%</p>
+                                </div>
+                            )}
+                            {predictionData.trainedAt && (
+                                <div className="text-center">
+                                    <p className="text-sm text-mm-text-secondary mb-1">Last Trained</p>
+                                    <p className="text-xl font-semibold text-mm-text-primary">
+                                        {formatDistanceToNow(new Date(predictionData.trainedAt), { addSuffix: true })}
+                                    </p>
                                 </div>
                             )}
                         </div>
