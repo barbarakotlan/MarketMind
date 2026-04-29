@@ -12,6 +12,7 @@ const AuthFetchBridge = () => {
     const jwtTemplate = process.env.REACT_APP_CLERK_JWT_TEMPLATE;
 
     useEffect(() => {
+        // Install once near the app root so every fetch can share the same auth boundary.
         installAuthFetchInterceptor();
     }, []);
 
@@ -29,6 +30,7 @@ const AuthFetchBridge = () => {
             setAuthSessionState('signedIn');
             setAuthTokenGetter(async ({ skipCache = false } = {}) => {
                 try {
+                    // Clerk templates are optional locally, but production can use them to mint API-scoped JWTs.
                     const opts = {};
                     if (jwtTemplate && jwtTemplate.trim()) {
                         opts.template = jwtTemplate.trim();
