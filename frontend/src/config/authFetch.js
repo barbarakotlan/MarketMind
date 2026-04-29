@@ -19,6 +19,7 @@ const isBackendRequest = (url) => {
     const origin = getOrigin(url);
     const apiOrigin = getOrigin(API_BASE_URL);
     if (!origin) return false;
+    // Accept the configured API origin plus older localhost references that still appear in some call sites.
     return origin === apiOrigin || LEGACY_API_ORIGINS.has(origin);
 };
 
@@ -28,6 +29,7 @@ const normalizeBackendUrl = (url) => {
         if (!LEGACY_API_ORIGINS.has(parsed.origin)) {
             return parsed.toString();
         }
+        // Route legacy localhost backend URLs through the current API base so deploy previews stay consistent.
         const apiBase = new URL(API_BASE_URL, window.location.origin);
         parsed.protocol = apiBase.protocol;
         parsed.host = apiBase.host;
@@ -54,6 +56,7 @@ const waitForTokenGetter = async (timeoutMs = 1500) => {
         return tokenGetter;
     }
 
+    // The bridge may mount a beat after early API calls, so wait briefly before sending an anonymous request.
     const startedAt = Date.now();
     while (!tokenGetter && Date.now() - startedAt < timeoutMs) {
         if (authSessionState === 'signedOut') {
