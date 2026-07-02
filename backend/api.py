@@ -121,18 +121,23 @@ from user_state_store import (
     touch_public_api_key_last_used as touch_public_api_key_last_used_db,
     touch_app_user as touch_app_user_db,
 )
-from subscription_limits import FREE_PLAN, PRO_PLAN, limit_for_plan, normalize_plan
 
 #Emoji Fix
 import sys
 import io
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+# Force UTF-8 stdout/stderr so emoji log lines don't blow up under servers
+# whose default streams aren't UTF-8. Guarded because test runners (and other
+# harnesses) replace sys.stdout with a capture object that has no .buffer;
+# rewrapping it would break output capture, so we skip the rewrap there.
+try:
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+except (AttributeError, ValueError):
+    pass
 
 # --- New Imports for Options Suggester ---
 from options_suggester import generate_suggestion
-from checkout_endpoint import checkout_bp
 import api_auth as api_auth_helpers
 import api_handlers_deliverables as deliverables_handlers
 import api_handlers_market_data as market_data_handlers
@@ -167,7 +172,6 @@ app = Flask(__name__)
 # --- Security Configuration ---
 # Set Flask secret key for session management
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
-app.register_blueprint(checkout_bp)
 FLASK_ENV = os.getenv('FLASK_ENV', 'development').strip().lower()
 IS_PRODUCTION = FLASK_ENV == 'production'
 
@@ -369,106 +373,6 @@ def _sync_authenticated_user(payload):
         database_url=DATABASE_URL,
         touch_app_user_fn=touch_app_user_db,
     )
-
-
-def _get_current_plan(user_id=None):
-    resolved_user_id = user_id or get_current_user_id()
-    if not resolved_user_id or not _sql_persistence_enabled() or not DATABASE_URL:
-        return FREE_PLAN
-
-    _ensure_user_state_storage_ready()
-    with user_state_session_scope(DATABASE_URL) as session:
-        user = session.get(AppUser, resolved_user_id)
-        if user is None:
-            touch_app_user_db(session, resolved_user_id)
-            return FREE_PLAN
-        return normalize_plan(getattr(user, 'plan', FREE_PLAN))
-
-
-def _subscription_limit(limit_key, user_id=None):
-    return limit_for_plan(_get_current_plan(user_id), limit_key)
-
-
-def _subscription_limit_response(message, *, limit_key=None, plan=None, status_code=403):
-    payload = {
-        "error": message,
-        "code": "subscription_limit_reached",
-        "plan": plan or _get_current_plan(),
-    }
-    if limit_key:
-        payload["limitKey"] = limit_key
-        payload["limit"] = _subscription_limit(limit_key)
-    return jsonify(payload), status_code
-
-
-def _usage_bucket_file(identity_key, filename):
-    return _get_user_file_path(identity_key, filename)
-
-
-def _load_usage_bucket(identity_key, filename):
-    path = _usage_bucket_file(identity_key, filename)
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, 'r', encoding='utf-8') as handle:
-            data = json.load(handle)
-            return data if isinstance(data, dict) else {}
-    except (OSError, ValueError, TypeError):
-        return {}
-
-
-def _save_usage_bucket(identity_key, filename, payload):
-    path = _usage_bucket_file(identity_key, filename)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-
-
-def _prediction_usage_identity():
-    user_id = get_current_user_id()
-    if user_id:
-        return user_id
-    remote_addr = request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr or 'anonymous'
-    return f"anon:{remote_addr}"
-
-
-def _today_key():
-    return datetime.now(timezone.utc).strftime('%Y-%m-%d')
-
-
-def _prediction_usage_count(identity_key=None):
-    usage = _load_usage_bucket(identity_key or _prediction_usage_identity(), 'prediction_usage.json')
-    return int(usage.get(_today_key(), 0) or 0)
-
-
-def _record_prediction_usage(identity_key=None):
-    resolved_identity = identity_key or _prediction_usage_identity()
-    usage = _load_usage_bucket(resolved_identity, 'prediction_usage.json')
-    today_key = _today_key()
-    usage = {today_key: int(usage.get(today_key, 0) or 0) + 1}
-    _save_usage_bucket(resolved_identity, 'prediction_usage.json', usage)
-
-
-def _paper_trade_count_this_month(user_id=None):
-    portfolio = load_portfolio(user_id or get_current_user_id())
-    current_month = datetime.now(timezone.utc).strftime('%Y-%m')
-    total = 0
-    for trade in portfolio.get('trade_history', []) or []:
-        timestamp = str(trade.get('timestamp') or trade.get('date') or '')
-        if timestamp.startswith(current_month):
-            total += 1
-    return total
-
-
-def _prediction_market_trade_count_this_month(user_id=None):
-    portfolio = load_prediction_portfolio(user_id or get_current_user_id())
-    current_month = datetime.now(timezone.utc).strftime('%Y-%m')
-    total = 0
-    for trade in portfolio.get('trade_history', []) or []:
-        timestamp = str(trade.get('timestamp') or '')
-        if timestamp.startswith(current_month):
-            total += 1
-    return total
 
 
 def _response_status_code(response):
@@ -1429,18 +1333,6 @@ def get_watchlist():
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def add_to_watchlist(ticker):
-    current_watchlist = load_watchlist(get_current_user_id())
-    watchlist_limit = _subscription_limit('watchlist_items')
-    normalized_ticker = str(ticker or '').strip().upper()
-    if (
-        watchlist_limit is not None
-        and len(current_watchlist) >= int(watchlist_limit)
-        and normalized_ticker not in current_watchlist
-    ):
-        return _subscription_limit_response(
-            f"Free users can track up to {watchlist_limit} tickers in the watchlist. Upgrade to Pro to add more.",
-            limit_key='watchlist_items',
-        )
     return market_data_handlers.add_to_watchlist_handler(
         ticker,
         get_current_user_id_fn=get_current_user_id,
@@ -1556,14 +1448,6 @@ def get_option_suggestion(ticker):
 @limiter.limit(RateLimits.STANDARD)
 def predict_stock(model, ticker):
     _try_authenticate_optional_request()
-    prediction_limit = _subscription_limit('prediction_requests_per_day')
-    prediction_usage = _prediction_usage_count()
-    if prediction_limit is not None and prediction_usage >= int(prediction_limit):
-        return _subscription_limit_response(
-            f"{_get_current_plan().capitalize()} users can run up to {prediction_limit} AI predictions per day.",
-            limit_key='prediction_requests_per_day',
-        )
-
     response = market_data_handlers.predict_stock_handler(
         model,
         ticker,
@@ -1585,8 +1469,6 @@ def predict_stock(model, ticker):
         logger=logger,
         pd_module=pd,
     )
-    if _response_status_code(response) < 400:
-        _record_prediction_usage()
     return response
 
 def _to_bool(value):
@@ -1614,14 +1496,6 @@ def _chart_prediction_points(sanitized_ticker):
 @limiter.limit(RateLimits.STANDARD)
 def predict_ensemble(ticker):
     _try_authenticate_optional_request()
-    prediction_limit = _subscription_limit('prediction_requests_per_day')
-    prediction_usage = _prediction_usage_count()
-    if prediction_limit is not None and prediction_usage >= int(prediction_limit):
-        return _subscription_limit_response(
-            f"{_get_current_plan().capitalize()} users can run up to {prediction_limit} AI predictions per day.",
-            limit_key='prediction_requests_per_day',
-        )
-
     response = market_data_handlers.predict_ensemble_handler(
         ticker,
         request_obj=request,
@@ -1633,8 +1507,6 @@ def predict_ensemble(ticker):
         pd_module=pd,
         np_module=np,
     )
-    if _response_status_code(response) < 400:
-        _record_prediction_usage()
     return response
 
 
@@ -1691,12 +1563,6 @@ def optimize_paper_portfolio():
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
 def buy_stock():
-    paper_trade_limit = _subscription_limit('paper_trades_per_month')
-    if paper_trade_limit is not None and _paper_trade_count_this_month() >= int(paper_trade_limit):
-        return _subscription_limit_response(
-            f"Free users can place up to {paper_trade_limit} paper trades per month. Upgrade to Pro for unlimited paper trading.",
-            limit_key='paper_trades_per_month',
-        )
     return paper_handlers.buy_stock_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
@@ -1715,12 +1581,6 @@ def buy_stock():
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
 def sell_stock():
-    paper_trade_limit = _subscription_limit('paper_trades_per_month')
-    if paper_trade_limit is not None and _paper_trade_count_this_month() >= int(paper_trade_limit):
-        return _subscription_limit_response(
-            f"Free users can place up to {paper_trade_limit} paper trades per month. Upgrade to Pro for unlimited paper trading.",
-            limit_key='paper_trades_per_month',
-        )
     return paper_handlers.sell_stock_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
@@ -1737,12 +1597,6 @@ def sell_stock():
 @app.route('/paper/options/buy', methods=['POST'])
 @require_auth
 def buy_option():
-    paper_trade_limit = _subscription_limit('paper_trades_per_month')
-    if paper_trade_limit is not None and _paper_trade_count_this_month() >= int(paper_trade_limit):
-        return _subscription_limit_response(
-            f"Free users can place up to {paper_trade_limit} paper trades per month. Upgrade to Pro for unlimited paper trading.",
-            limit_key='paper_trades_per_month',
-        )
     return paper_handlers.buy_option_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
@@ -1756,12 +1610,6 @@ def buy_option():
 @app.route('/paper/options/sell', methods=['POST'])
 @require_auth
 def sell_option():
-    paper_trade_limit = _subscription_limit('paper_trades_per_month')
-    if paper_trade_limit is not None and _paper_trade_count_this_month() >= int(paper_trade_limit):
-        return _subscription_limit_response(
-            f"Free users can place up to {paper_trade_limit} paper trades per month. Upgrade to Pro for unlimited paper trading.",
-            limit_key='paper_trades_per_month',
-        )
     return paper_handlers.sell_option_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
@@ -1815,14 +1663,6 @@ def reset_portfolio():
 @app.route('/notifications', methods=['GET', 'POST'])
 @require_auth
 def handle_notifications():
-    if request.method == 'POST':
-        notifications = load_notifications(get_current_user_id())
-        active_alert_limit = _subscription_limit('active_alerts')
-        if active_alert_limit is not None and len(notifications.get('active', [])) >= int(active_alert_limit):
-            return _subscription_limit_response(
-                f"Free users can keep up to {active_alert_limit} active alerts. Upgrade to Pro for more alert capacity.",
-                limit_key='active_alerts',
-            )
     return notification_handlers.handle_notifications_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
@@ -1838,13 +1678,6 @@ def handle_notifications():
 @app.route('/notifications/smart', methods=['POST'])
 @require_auth
 def create_smart_alert():
-    notifications = load_notifications(get_current_user_id())
-    active_alert_limit = _subscription_limit('active_alerts')
-    if active_alert_limit is not None and len(notifications.get('active', [])) >= int(active_alert_limit):
-        return _subscription_limit_response(
-            f"Free users can keep up to {active_alert_limit} active alerts. Upgrade to Pro for more alert capacity.",
-            limit_key='active_alerts',
-        )
     return notification_handlers.create_smart_alert_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
@@ -2099,17 +1932,6 @@ def get_prediction_portfolio():
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['market_id', 'outcome', 'contracts'])
 def buy_prediction_contract():
-    prediction_market_trade_limit = _subscription_limit('prediction_market_trades_per_month')
-    if prediction_market_trade_limit is not None and _prediction_market_trade_count_this_month() >= int(prediction_market_trade_limit):
-        if int(prediction_market_trade_limit) == 0:
-            return _subscription_limit_response(
-                "Prediction Markets paper trading is available on Pro only. Upgrade to Pro to place simulated prediction-market trades.",
-                limit_key='prediction_market_trades_per_month',
-            )
-        return _subscription_limit_response(
-            f"You have reached your monthly prediction-market paper trade limit of {prediction_market_trade_limit}.",
-            limit_key='prediction_market_trades_per_month',
-        )
     return prediction_markets_handlers.buy_prediction_contract_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
@@ -2128,17 +1950,6 @@ def buy_prediction_contract():
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['market_id', 'outcome', 'contracts'])
 def sell_prediction_contract():
-    prediction_market_trade_limit = _subscription_limit('prediction_market_trades_per_month')
-    if prediction_market_trade_limit is not None and _prediction_market_trade_count_this_month() >= int(prediction_market_trade_limit):
-        if int(prediction_market_trade_limit) == 0:
-            return _subscription_limit_response(
-                "Prediction Markets paper trading is available on Pro only. Upgrade to Pro to place simulated prediction-market trades.",
-                limit_key='prediction_market_trades_per_month',
-            )
-        return _subscription_limit_response(
-            f"You have reached your monthly prediction-market paper trade limit of {prediction_market_trade_limit}.",
-            limit_key='prediction_market_trades_per_month',
-        )
     return prediction_markets_handlers.sell_prediction_contract_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,

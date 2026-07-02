@@ -21,7 +21,6 @@ finnhub-python==2.4.25
 Flask==3.1.2
 flask-cors==6.0.1
 flask-limiter==4.1.1
-flask-sqlalchemy==3.1.1
 frozendict==2.4.6
 frozenlist==1.8.0
 html5lib==1.1
@@ -70,13 +69,10 @@ schedule==1.2.2
 shap==0.49.1
 SQLAlchemy==2.0.44
 statsforecast==2.0.3
-stripe==15.0.0
 alembic==1.14.1
 threadpoolctl==3.6.0
 duckdb==0.10.3
 torch>=2.0
-torchvision>=0.15
-torchaudio>=2.0
 transformers==4.41.2
 typing-inspection==0.4.2
 typing_extensions==4.15.0
@@ -89,12 +85,17 @@ websockets==15.0.1
 Werkzeug==3.1.3
 xgboost==2.1.4
 lightgbm==3.3.5
-catboost==1.2.4
+catboost==1.2.5
 yarl==1.22.0
 yfinance==0.2.66
 zipp==3.23.0
+
+# Optional: prediction-markets provider SDK. Guarded by try/except in
+# prediction_markets_fetcher.py; unavailable in CI (filtered out there).
 dr-manhattan
-shap
-mlforecast
-statsforecast
-exchange_calendars
+
+# Optional: OpenBB integration (financials/filings/screener/macro). NOT installed
+# by default — it pulls a very large, version-conflicting dependency tree. Install
+# separately (`pip install openbb`) to enable; code degrades gracefully when absent
+# via OPENBB_AVAILABLE. CI filters any `openbb[...]` line out.
+# openbb
