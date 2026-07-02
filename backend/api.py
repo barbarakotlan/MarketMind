@@ -8,7 +8,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests
-from flask import Flask, jsonify, request, g, send_file
+from flask import Flask, Blueprint, jsonify, request, g, send_file
 from flask_cors import CORS
 from datetime import datetime, timedelta, date, timezone
 import json
@@ -166,12 +166,7 @@ logger.addHandler(handler)
 
 logger.info("🚀 MarketMind API Starting...")
 
-# Initialize the Flask application
-app = Flask(__name__)
-
-# --- Security Configuration ---
-# Set Flask secret key for session management
-app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
+# --- Flask app configuration (consumed by create_app) ---
 FLASK_ENV = os.getenv('FLASK_ENV', 'development').strip().lower()
 IS_PRODUCTION = FLASK_ENV == 'production'
 
@@ -185,21 +180,28 @@ if IS_PRODUCTION and not allowed_origins:
 if not allowed_origins:
     allowed_origins = [origin.strip() for origin in DEFAULT_DEV_CORS_ORIGINS.split(',')]
 
-CORS(
-    app,
-    resources={r"/*": {"origins": allowed_origins}},
-    supports_credentials=False,
-    allow_headers=["Content-Type", "Authorization", "Accept"],
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-)
+# --- Rate limiting (limiter + RateLimits live in extensions.py so they can be
+# imported by the @limiter.limit route decorators below without an app; the app
+# is bound in create_app via limiter.init_app). ---
+from flask_limiter.errors import RateLimitExceeded
+from flask_limiter.util import get_remote_address
+from extensions import limiter, RateLimits
+
+# Every route and app-wide hook is registered on this single module-scope
+# blueprint at import time. create_app() then builds the Flask app and registers
+# the blueprint. This keeps all 120 route functions in place (with full access to
+# this module's helpers) while making the application constructible on demand
+# (e.g. an isolated app per test) instead of at import.
+api_bp = Blueprint('api', __name__)
+
 
 # --- Security Headers Middleware ---
-@app.before_request
+@api_bp.before_app_request
 def begin_public_api_request():
     api_public_helpers.begin_public_request()
 
 
-@app.after_request
+@api_bp.after_app_request
 def add_security_headers(response):
     # Prevent MIME type sniffing
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -231,32 +233,35 @@ def add_security_headers(response):
         logger=logger,
     )
 
-# --- Rate Limiting Setup ---
-from flask_limiter import Limiter
-from flask_limiter.errors import RateLimitExceeded
-from flask_limiter.util import get_remote_address
-
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=[],
-    app=app,
-    headers_enabled=True,
-    storage_uri=os.getenv('PUBLIC_API_RATE_LIMIT_STORAGE_URL', '').strip() or None,
-)
-
-# Define rate limits
-class RateLimits:
-    LIGHT = os.getenv('RATE_LIMIT_LIGHT', '10/minute')
-    STANDARD = os.getenv('RATE_LIMIT_STANDARD', '20/minute')
-    HEAVY = os.getenv('RATE_LIMIT_HEAVY', '2/minute')
-    WRITE = os.getenv('RATE_LIMIT_WRITE', '5/minute')
-
-
-@app.errorhandler(RateLimitExceeded)
+@api_bp.app_errorhandler(RateLimitExceeded)
 def handle_rate_limit_exceeded(_exc):
     if api_public_helpers.is_public_api_request(request.path):
         return _public_api_error_response(429, "rate_limited", "Rate limit exceeded for this API key.")
     return jsonify({"error": "Rate limit exceeded"}), 429
+
+
+def create_app(config=None):
+    """Application factory: build the Flask app, wire extensions, register routes.
+
+    All routes/hooks are already registered on the module-scope ``api_bp`` by
+    import time, so this just constructs the app, applies config, binds the
+    rate limiter, and registers the blueprint. Pass ``config`` (a dict) to
+    override ``app.config`` values in tests.
+    """
+    app = Flask(__name__)
+    app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
+    if config:
+        app.config.update(config)
+    CORS(
+        app,
+        resources={r"/*": {"origins": allowed_origins}},
+        supports_credentials=False,
+        allow_headers=["Content-Type", "Authorization", "Accept"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    )
+    limiter.init_app(app)
+    app.register_blueprint(api_bp)
+    return app
 
 # --- CONFIGURATION ---
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
@@ -591,7 +596,7 @@ def validate_request_json(required_fields):
     all required fields. Returns 400 with missing fields if not.
     
     Usage:
-        @app.route('/buy', methods=['POST'])
+        @api_bp.route('/buy', methods=['POST'])
         @validate_request_json(['ticker', 'shares'])
         def buy_stock():
             data = request.get_json()
@@ -857,7 +862,7 @@ def save_watchlist(tickers, user_id=None):
     )
 
 
-@app.route('/auth/me', methods=['GET'])
+@api_bp.route('/auth/me', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def auth_me():
@@ -877,7 +882,7 @@ def _marketmind_ai_not_configured_response():
     return jsonify({"error": "MarketMindAI requires SQL-backed persistence and DATABASE_URL configuration"}), 503
 
 
-@app.route('/deliverables', methods=['GET'])
+@api_bp.route('/deliverables', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_deliverables():
@@ -893,7 +898,7 @@ def get_deliverables():
     )
 
 
-@app.route('/deliverables', methods=['POST'])
+@api_bp.route('/deliverables', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def post_deliverable():
@@ -912,7 +917,7 @@ def post_deliverable():
     )
 
 
-@app.route('/deliverables/<string:deliverable_id>', methods=['GET'])
+@api_bp.route('/deliverables/<string:deliverable_id>', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_deliverable(deliverable_id):
@@ -930,7 +935,7 @@ def get_deliverable(deliverable_id):
     )
 
 
-@app.route('/deliverables/<string:deliverable_id>', methods=['PATCH'])
+@api_bp.route('/deliverables/<string:deliverable_id>', methods=['PATCH'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def patch_deliverable(deliverable_id):
@@ -950,7 +955,7 @@ def patch_deliverable(deliverable_id):
     )
 
 
-@app.route('/deliverables/<string:deliverable_id>/assumptions', methods=['PUT'])
+@api_bp.route('/deliverables/<string:deliverable_id>/assumptions', methods=['PUT'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def put_deliverable_assumptions(deliverable_id):
@@ -970,7 +975,7 @@ def put_deliverable_assumptions(deliverable_id):
     )
 
 
-@app.route('/deliverables/<string:deliverable_id>/reviews', methods=['POST'])
+@api_bp.route('/deliverables/<string:deliverable_id>/reviews', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def post_deliverable_review(deliverable_id):
@@ -990,7 +995,7 @@ def post_deliverable_review(deliverable_id):
     )
 
 
-@app.route('/deliverables/<string:deliverable_id>/preflight', methods=['POST'])
+@api_bp.route('/deliverables/<string:deliverable_id>/preflight', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def post_deliverable_preflight(deliverable_id):
@@ -1008,7 +1013,7 @@ def post_deliverable_preflight(deliverable_id):
     )
 
 
-@app.route('/deliverables/<string:deliverable_id>/context', methods=['GET'])
+@api_bp.route('/deliverables/<string:deliverable_id>/context', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_deliverable_context(deliverable_id):
@@ -1026,7 +1031,7 @@ def get_deliverable_context(deliverable_id):
     )
 
 
-@app.route('/deliverables/<string:deliverable_id>/memos', methods=['GET'])
+@api_bp.route('/deliverables/<string:deliverable_id>/memos', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_deliverable_memos(deliverable_id):
@@ -1044,7 +1049,7 @@ def get_deliverable_memos(deliverable_id):
     )
 
 
-@app.route('/deliverables/<string:deliverable_id>/memos/generate', methods=['POST'])
+@api_bp.route('/deliverables/<string:deliverable_id>/memos/generate', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.HEAVY)
 def post_deliverable_generate(deliverable_id):
@@ -1062,7 +1067,7 @@ def post_deliverable_generate(deliverable_id):
     )
 
 
-@app.route('/deliverables/<string:deliverable_id>/memos/<string:memo_id>/download', methods=['GET'])
+@api_bp.route('/deliverables/<string:deliverable_id>/memos/<string:memo_id>/download', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def download_deliverable_memo(deliverable_id, memo_id):
@@ -1084,7 +1089,7 @@ def download_deliverable_memo(deliverable_id, memo_id):
     )
 
 
-@app.route('/marketmind-ai/bootstrap', methods=['GET'])
+@api_bp.route('/marketmind-ai/bootstrap', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_bootstrap():
@@ -1096,7 +1101,7 @@ def get_marketmind_ai_bootstrap():
     )
 
 
-@app.route('/marketmind-ai/chats', methods=['GET'])
+@api_bp.route('/marketmind-ai/chats', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_chats():
@@ -1112,7 +1117,7 @@ def get_marketmind_ai_chats():
     )
 
 
-@app.route('/marketmind-ai/chats/<string:chat_id>', methods=['GET'])
+@api_bp.route('/marketmind-ai/chats/<string:chat_id>', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_chat(chat_id):
@@ -1130,7 +1135,7 @@ def get_marketmind_ai_chat(chat_id):
     )
 
 
-@app.route('/marketmind-ai/chats/<string:chat_id>', methods=['DELETE'])
+@api_bp.route('/marketmind-ai/chats/<string:chat_id>', methods=['DELETE'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def delete_marketmind_ai_chat_route(chat_id):
@@ -1148,7 +1153,7 @@ def delete_marketmind_ai_chat_route(chat_id):
     )
 
 
-@app.route('/marketmind-ai/context', methods=['GET'])
+@api_bp.route('/marketmind-ai/context', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_context():
@@ -1169,7 +1174,7 @@ def get_marketmind_ai_context():
     )
 
 
-@app.route('/marketmind-ai/retrieval-status', methods=['GET'])
+@api_bp.route('/marketmind-ai/retrieval-status', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_retrieval_status_route():
@@ -1190,7 +1195,7 @@ def get_marketmind_ai_retrieval_status_route():
     )
 
 
-@app.route('/marketmind-ai/chat', methods=['POST'])
+@api_bp.route('/marketmind-ai/chat', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.HEAVY)
 def post_marketmind_ai_chat():
@@ -1209,7 +1214,7 @@ def post_marketmind_ai_chat():
     )
 
 
-@app.route('/marketmind-ai/artifacts/preflight', methods=['POST'])
+@api_bp.route('/marketmind-ai/artifacts/preflight', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def post_marketmind_ai_artifact_preflight():
@@ -1228,7 +1233,7 @@ def post_marketmind_ai_artifact_preflight():
     )
 
 
-@app.route('/marketmind-ai/artifacts', methods=['GET'])
+@api_bp.route('/marketmind-ai/artifacts', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_artifacts():
@@ -1244,7 +1249,7 @@ def get_marketmind_ai_artifacts():
     )
 
 
-@app.route('/marketmind-ai/artifacts', methods=['POST'])
+@api_bp.route('/marketmind-ai/artifacts', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.HEAVY)
 def post_marketmind_ai_artifact_generate():
@@ -1263,7 +1268,7 @@ def post_marketmind_ai_artifact_generate():
     )
 
 
-@app.route('/marketmind-ai/artifacts/<string:artifact_id>', methods=['GET'])
+@api_bp.route('/marketmind-ai/artifacts/<string:artifact_id>', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_artifact(artifact_id):
@@ -1281,7 +1286,7 @@ def get_marketmind_ai_artifact(artifact_id):
     )
 
 
-@app.route('/marketmind-ai/artifacts/<string:artifact_id>/versions/<string:version_id>/download', methods=['GET'])
+@api_bp.route('/marketmind-ai/artifacts/<string:artifact_id>/versions/<string:version_id>/download', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def download_marketmind_ai_artifact(artifact_id, version_id):
@@ -1318,7 +1323,7 @@ def get_symbol_suggestions(query):
 
 
 # --- Watchlist Endpoints ---
-@app.route('/watchlist', methods=['GET'])
+@api_bp.route('/watchlist', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_watchlist():
@@ -1329,7 +1334,7 @@ def get_watchlist():
     )
 
 
-@app.route('/watchlist/<string:ticker>', methods=['POST'])
+@api_bp.route('/watchlist/<string:ticker>', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def add_to_watchlist(ticker):
@@ -1342,7 +1347,7 @@ def add_to_watchlist(ticker):
     )
 
 
-@app.route('/watchlist/<string:ticker>', methods=['DELETE'])
+@api_bp.route('/watchlist/<string:ticker>', methods=['DELETE'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def remove_from_watchlist(ticker):
@@ -1356,7 +1361,7 @@ def remove_from_watchlist(ticker):
 
 
 # --- Stock Data Endpoint ---
-@app.route('/stock/<string:ticker>')
+@api_bp.route('/stock/<string:ticker>')
 @limiter.limit(RateLimits.STANDARD)
 def get_stock_data(ticker):
     return market_data_handlers.get_stock_data_handler(
@@ -1375,7 +1380,7 @@ def get_stock_data(ticker):
 
 
 # --- Chart Endpoint ---
-@app.route('/chart/<string:ticker>')
+@api_bp.route('/chart/<string:ticker>')
 def get_chart_data(ticker):
     return market_data_handlers.get_chart_data_handler(
         ticker,
@@ -1391,7 +1396,7 @@ def get_chart_data(ticker):
 
 
 # --- News Endpoint ---
-@app.route('/news')
+@api_bp.route('/news')
 def get_query_news():
     return market_data_handlers.get_query_news_handler(
         request_obj=request,
@@ -1402,7 +1407,7 @@ def get_query_news():
 
 
 # --- Options Endpoints ---
-@app.route('/options/stock_price/<string:ticker>')
+@api_bp.route('/options/stock_price/<string:ticker>')
 def get_options_stock_price(ticker):
     return market_data_handlers.get_options_stock_price_handler(
         ticker,
@@ -1412,7 +1417,7 @@ def get_options_stock_price(ticker):
     )
 
 
-@app.route('/options/<string:ticker>', methods=['GET'])
+@api_bp.route('/options/<string:ticker>', methods=['GET'])
 def get_option_expirations(ticker):
     return market_data_handlers.get_option_expirations_handler(
         ticker,
@@ -1421,7 +1426,7 @@ def get_option_expirations(ticker):
     )
 
 
-@app.route('/options/chain/<ticker>', methods=['GET'])
+@api_bp.route('/options/chain/<ticker>', methods=['GET'])
 def get_option_chain(ticker):
     return market_data_handlers.get_option_chain_handler(
         ticker,
@@ -1433,7 +1438,7 @@ def get_option_chain(ticker):
     )
 
 # --- Options Suggestion Endpoint ---
-@app.route('/options/suggest/<string:ticker>', methods=['GET'])
+@api_bp.route('/options/suggest/<string:ticker>', methods=['GET'])
 def get_option_suggestion(ticker):
     return market_data_handlers.get_option_suggestion_handler(
         ticker,
@@ -1444,7 +1449,7 @@ def get_option_suggestion(ticker):
 
 
 # --- ML Endpoints ---
-@app.route('/predict/<string:model>/<string:ticker>')
+@api_bp.route('/predict/<string:model>/<string:ticker>')
 @limiter.limit(RateLimits.STANDARD)
 def predict_stock(model, ticker):
     _try_authenticate_optional_request()
@@ -1492,7 +1497,7 @@ def _chart_prediction_points(sanitized_ticker):
     )
 
 
-@app.route('/predict/ensemble/<string:ticker>')
+@api_bp.route('/predict/ensemble/<string:ticker>')
 @limiter.limit(RateLimits.STANDARD)
 def predict_ensemble(ticker):
     _try_authenticate_optional_request()
@@ -1531,7 +1536,7 @@ def record_portfolio_snapshot(portfolio_data, user_id):
     _record_portfolio_snapshot_legacy(portfolio_data, user_id)
 
 
-@app.route('/paper/portfolio', methods=['GET'])
+@api_bp.route('/paper/portfolio', methods=['GET'])
 @require_auth
 def get_paper_portfolio():
     return paper_handlers.get_paper_portfolio_handler(
@@ -1544,7 +1549,7 @@ def get_paper_portfolio():
     )
 
 
-@app.route('/paper/portfolio/optimize', methods=['POST'])
+@api_bp.route('/paper/portfolio/optimize', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.STANDARD)
 def optimize_paper_portfolio():
@@ -1558,7 +1563,7 @@ def optimize_paper_portfolio():
     )
 
 
-@app.route('/paper/buy', methods=['POST'])
+@api_bp.route('/paper/buy', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
@@ -1576,7 +1581,7 @@ def buy_stock():
     )
 
 
-@app.route('/paper/sell', methods=['POST'])
+@api_bp.route('/paper/sell', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
@@ -1594,7 +1599,7 @@ def sell_stock():
     )
 
 
-@app.route('/paper/options/buy', methods=['POST'])
+@api_bp.route('/paper/options/buy', methods=['POST'])
 @require_auth
 def buy_option():
     return paper_handlers.buy_option_handler(
@@ -1607,7 +1612,7 @@ def buy_option():
     )
 
 
-@app.route('/paper/options/sell', methods=['POST'])
+@api_bp.route('/paper/options/sell', methods=['POST'])
 @require_auth
 def sell_option():
     return paper_handlers.sell_option_handler(
@@ -1621,7 +1626,7 @@ def sell_option():
 
 
 # --- This is YOUR corrected portfolio history endpoint ---
-@app.route('/paper/history', methods=['GET'])
+@api_bp.route('/paper/history', methods=['GET'])
 @require_auth
 def get_paper_history():
     return paper_handlers.get_paper_history_handler(
@@ -1639,7 +1644,7 @@ def get_paper_history():
     )
 
 
-@app.route('/paper/transactions', methods=['GET'])
+@api_bp.route('/paper/transactions', methods=['GET'])
 @require_auth
 def get_trade_history():
     return paper_handlers.get_trade_history_handler(
@@ -1649,7 +1654,7 @@ def get_trade_history():
     )
 
 
-@app.route('/paper/reset', methods=['POST'])
+@api_bp.route('/paper/reset', methods=['POST'])
 @require_auth
 def reset_portfolio():
     return paper_handlers.reset_portfolio_handler(
@@ -1660,7 +1665,7 @@ def reset_portfolio():
 
 
 # --- NEW: Notification Endpoints ---
-@app.route('/notifications', methods=['GET', 'POST'])
+@api_bp.route('/notifications', methods=['GET', 'POST'])
 @require_auth
 def handle_notifications():
     return notification_handlers.handle_notifications_handler(
@@ -1675,7 +1680,7 @@ def handle_notifications():
     )
 
 
-@app.route('/notifications/smart', methods=['POST'])
+@api_bp.route('/notifications/smart', methods=['POST'])
 @require_auth
 def create_smart_alert():
     return notification_handlers.create_smart_alert_handler(
@@ -1692,7 +1697,7 @@ def create_smart_alert():
     )
 
 
-@app.route('/notifications/<string:alert_id>', methods=['DELETE'])
+@api_bp.route('/notifications/<string:alert_id>', methods=['DELETE'])
 @require_auth
 def delete_notification(alert_id):
     return notification_handlers.delete_notification_handler(
@@ -1704,7 +1709,7 @@ def delete_notification(alert_id):
     )
 
 
-@app.route('/notifications/triggered', methods=['GET', 'DELETE'])
+@api_bp.route('/notifications/triggered', methods=['GET', 'DELETE'])
 @require_auth
 def get_triggered_notifications():
     return notification_handlers.get_triggered_notifications_handler(
@@ -1716,7 +1721,7 @@ def get_triggered_notifications():
     )
 
 
-@app.route('/notifications/triggered/<string:alert_id>', methods=['DELETE'])
+@api_bp.route('/notifications/triggered/<string:alert_id>', methods=['DELETE'])
 @require_auth
 def delete_triggered_notification(alert_id):
     return notification_handlers.delete_triggered_notification_handler(
@@ -1764,7 +1769,7 @@ def run_scheduler():
 
 
 # --- All of Tazeem's other endpoints (Forex, Crypto, etc.) ---
-@app.route('/api/news', methods=['GET'])
+@api_bp.route('/api/news', methods=['GET'])
 def news_api():
     return reference_data_handlers.news_api_handler(
         get_general_news_fn=get_general_news,
@@ -1772,7 +1777,7 @@ def news_api():
     )
 
 
-@app.route('/evaluate/<string:ticker>')
+@api_bp.route('/evaluate/<string:ticker>')
 @limiter.limit(RateLimits.HEAVY)
 def evaluate_models(ticker):
     return market_data_handlers.evaluate_models_handler(
@@ -1784,7 +1789,7 @@ def evaluate_models(ticker):
     )
 
 
-@app.route('/forex/convert')
+@api_bp.route('/forex/convert')
 def forex_convert():
     return reference_data_handlers.forex_convert_handler(
         request_obj=request,
@@ -1794,7 +1799,7 @@ def forex_convert():
     )
 
 
-@app.route('/forex/currencies')
+@api_bp.route('/forex/currencies')
 def forex_currencies():
     return reference_data_handlers.forex_currencies_handler(
         get_currency_list_fn=get_currency_list,
@@ -1803,7 +1808,7 @@ def forex_currencies():
     )
 
 
-@app.route('/crypto/convert')
+@api_bp.route('/crypto/convert')
 def crypto_convert():
     return reference_data_handlers.crypto_convert_handler(
         request_obj=request,
@@ -1813,7 +1818,7 @@ def crypto_convert():
     )
 
 
-@app.route('/crypto/list')
+@api_bp.route('/crypto/list')
 def crypto_list():
     return reference_data_handlers.crypto_list_handler(
         get_crypto_list_fn=get_crypto_list,
@@ -1822,7 +1827,7 @@ def crypto_list():
     )
 
 
-@app.route('/crypto/currencies')
+@api_bp.route('/crypto/currencies')
 def crypto_target_currencies():
     return reference_data_handlers.crypto_target_currencies_handler(
         get_target_currencies_fn=get_target_currencies,
@@ -1831,7 +1836,7 @@ def crypto_target_currencies():
     )
 
 
-@app.route('/commodities/price/<string:commodity>')
+@api_bp.route('/commodities/price/<string:commodity>')
 def commodity_price(commodity):
     return reference_data_handlers.commodity_price_handler(
         commodity,
@@ -1842,7 +1847,7 @@ def commodity_price(commodity):
     )
 
 
-@app.route('/commodities/list')
+@api_bp.route('/commodities/list')
 def commodities_list():
     return reference_data_handlers.commodities_list_handler(
         get_commodity_list_fn=get_commodity_list,
@@ -1851,7 +1856,7 @@ def commodities_list():
     )
 
 
-@app.route('/commodities/all')
+@api_bp.route('/commodities/all')
 def commodities_all():
     return reference_data_handlers.commodities_all_handler(
         get_commodities_by_category_fn=get_commodities_by_category,
@@ -1864,7 +1869,7 @@ def commodities_all():
 # PREDICTION MARKETS ENDPOINTS (Standalone Feature)
 # ============================================================
 
-@app.route('/prediction-markets', methods=['GET'])
+@api_bp.route('/prediction-markets', methods=['GET'])
 @limiter.limit(RateLimits.STANDARD)
 def list_prediction_markets():
     return prediction_markets_handlers.list_prediction_markets_handler(
@@ -1877,7 +1882,7 @@ def list_prediction_markets():
     )
 
 
-@app.route('/prediction-markets/exchanges', methods=['GET'])
+@api_bp.route('/prediction-markets/exchanges', methods=['GET'])
 @limiter.limit(RateLimits.LIGHT)
 def list_prediction_exchanges():
     return prediction_markets_handlers.list_prediction_exchanges_handler(
@@ -1886,7 +1891,7 @@ def list_prediction_exchanges():
     )
 
 
-@app.route('/prediction-markets/analyze', methods=['POST'])
+@api_bp.route('/prediction-markets/analyze', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def analyze_prediction_market():
@@ -1900,7 +1905,7 @@ def analyze_prediction_market():
     )
 
 
-@app.route('/prediction-markets/<path:market_id>', methods=['GET'])
+@api_bp.route('/prediction-markets/<path:market_id>', methods=['GET'])
 @limiter.limit(RateLimits.STANDARD)
 def get_prediction_market(market_id):
     return prediction_markets_handlers.get_prediction_market_handler(
@@ -1913,7 +1918,7 @@ def get_prediction_market(market_id):
     )
 
 
-@app.route('/prediction-markets/portfolio', methods=['GET'])
+@api_bp.route('/prediction-markets/portfolio', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_prediction_portfolio():
@@ -1927,7 +1932,7 @@ def get_prediction_portfolio():
     )
 
 
-@app.route('/prediction-markets/buy', methods=['POST'])
+@api_bp.route('/prediction-markets/buy', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['market_id', 'outcome', 'contracts'])
@@ -1945,7 +1950,7 @@ def buy_prediction_contract():
     )
 
 
-@app.route('/prediction-markets/sell', methods=['POST'])
+@api_bp.route('/prediction-markets/sell', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['market_id', 'outcome', 'contracts'])
@@ -1963,7 +1968,7 @@ def sell_prediction_contract():
     )
 
 
-@app.route('/prediction-markets/history', methods=['GET'])
+@api_bp.route('/prediction-markets/history', methods=['GET'])
 @require_auth
 @limiter.limit(RateLimits.LIGHT)
 def get_prediction_trade_history():
@@ -1974,7 +1979,7 @@ def get_prediction_trade_history():
     )
 
 
-@app.route('/prediction-markets/reset', methods=['POST'])
+@api_bp.route('/prediction-markets/reset', methods=['POST'])
 @require_auth
 @limiter.limit(RateLimits.WRITE)
 def reset_prediction_portfolio():
@@ -1993,7 +1998,7 @@ def _resolve_market_asset(ticker, market=None):
     return parse_asset_reference(ticker, market)
 
 
-@app.route('/fundamentals/<string:ticker>')
+@api_bp.route('/fundamentals/<string:ticker>')
 def get_fundamentals(ticker):
     return reference_data_handlers.get_fundamentals_handler(
         ticker,
@@ -2009,7 +2014,7 @@ def get_fundamentals(ticker):
         exchange_session_service_module=exchange_session_service,
     )
 # --- NEW: Autocomplete Symbol Search (from Jimmy's branch) ---
-@app.route('/search-symbols')
+@api_bp.route('/search-symbols')
 def search_symbols():
     return market_data_handlers.search_symbols_handler(
         request_obj=request,
@@ -2028,7 +2033,7 @@ CALENDAR_CACHE = {
 }
 
 
-@app.route('/calendar/economic', methods=['GET'])
+@api_bp.route('/calendar/economic', methods=['GET'])
 def get_economic_calendar():
     return reference_data_handlers.get_economic_calendar_handler(
         calendar_cache=CALENDAR_CACHE,
@@ -2039,7 +2044,7 @@ def get_economic_calendar():
     )
 
 
-@app.route('/calendar/market-sessions', methods=['GET'])
+@api_bp.route('/calendar/market-sessions', methods=['GET'])
 def get_market_sessions_calendar():
     return reference_data_handlers.get_market_sessions_handler(
         request_obj=request,
@@ -2056,7 +2061,7 @@ def _obb_to_float(val):
     return api_market_utils_helpers.obb_to_float(val)
 
 
-@app.route('/fundamentals/financials/<string:ticker>')
+@api_bp.route('/fundamentals/financials/<string:ticker>')
 def get_financial_statements(ticker):
     return reference_data_handlers.get_financial_statements_handler(
         ticker,
@@ -2068,7 +2073,7 @@ def get_financial_statements(ticker):
     )
 
 
-@app.route('/fundamentals/filings/<string:ticker>')
+@api_bp.route('/fundamentals/filings/<string:ticker>')
 def get_sec_filings(ticker):
     return reference_data_handlers.get_sec_filings_handler(
         ticker,
@@ -2080,7 +2085,7 @@ def get_sec_filings(ticker):
     )
 
 
-@app.route('/fundamentals/sec-intelligence/<string:ticker>')
+@api_bp.route('/fundamentals/sec-intelligence/<string:ticker>')
 def get_sec_intelligence(ticker):
     return reference_data_handlers.get_sec_intelligence_handler(
         ticker,
@@ -2090,7 +2095,7 @@ def get_sec_intelligence(ticker):
     )
 
 
-@app.route('/fundamentals/filings/<string:ticker>/<string:accession_number>')
+@api_bp.route('/fundamentals/filings/<string:ticker>/<string:accession_number>')
 def get_sec_filing_detail(ticker, accession_number):
     return reference_data_handlers.get_sec_filing_detail_handler(
         ticker,
@@ -2101,7 +2106,7 @@ def get_sec_filing_detail(ticker, accession_number):
     )
 
 
-@app.route('/screener')
+@api_bp.route('/screener')
 def get_screener():
     return reference_data_handlers.get_screener_handler(
         base_dir=BASE_DIR,
@@ -2112,7 +2117,7 @@ def get_screener():
     )
 
 
-@app.route('/screener/presets')
+@api_bp.route('/screener/presets')
 def get_screener_presets():
     return reference_data_handlers.get_screener_presets_handler(
         base_dir=BASE_DIR,
@@ -2123,7 +2128,7 @@ def get_screener_presets():
     )
 
 
-@app.route('/screener/scan')
+@api_bp.route('/screener/scan')
 def get_screener_scan():
     return reference_data_handlers.get_screener_scan_handler(
         base_dir=BASE_DIR,
@@ -2141,7 +2146,7 @@ MACRO_INDICATORS = [
     {"symbol": "IP",    "name": "Industrial Production", "unit": "Index","multiplier": 1, "series_id": "INDPRO"},
 ]
 
-@app.route('/macro/overview')
+@api_bp.route('/macro/overview')
 def get_macro_overview():
     return reference_data_handlers.get_macro_overview_handler(
         openbb_available=OPENBB_AVAILABLE,
@@ -2160,7 +2165,7 @@ def get_macro_overview():
 # MarketMind Public API v1 (Private Beta)
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.route('/api/public/docs', methods=['GET'])
+@api_bp.route('/api/public/docs', methods=['GET'])
 def public_api_docs():
     if not _public_api_docs_enabled():
         return _public_api_error_response(404, "not_found", "MarketMind Public API docs are not enabled.")
@@ -2168,7 +2173,7 @@ def public_api_docs():
         return app.response_class(f.read(), mimetype='text/html')
 
 
-@app.route('/api/public/openapi/v1.yaml', methods=['GET'])
+@api_bp.route('/api/public/openapi/v1.yaml', methods=['GET'])
 def public_api_openapi_spec():
     if not _public_api_docs_enabled():
         return _public_api_error_response(404, "not_found", "MarketMind Public API docs are not enabled.")
@@ -2176,7 +2181,7 @@ def public_api_openapi_spec():
         return app.response_class(f.read(), mimetype='application/yaml')
 
 
-@app.route('/api/public/openapi/v2.yaml', methods=['GET'])
+@api_bp.route('/api/public/openapi/v2.yaml', methods=['GET'])
 def public_api_openapi_spec_v2():
     if not _public_api_docs_enabled():
         return _public_api_error_response(404, "not_found", "MarketMind Public API docs are not enabled.")
@@ -2184,7 +2189,7 @@ def public_api_openapi_spec_v2():
         return app.response_class(f.read(), mimetype='application/yaml')
 
 
-@app.route('/api/public/v1/health', methods=['GET'])
+@api_bp.route('/api/public/v1/health', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2194,7 +2199,7 @@ def public_api_health():
     return _public_dispatch(public_handlers.health_handler, version='v1')
 
 
-@app.route('/api/public/v1/stock/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v1/stock/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2220,7 +2225,7 @@ def public_api_stock(ticker):
     )
 
 
-@app.route('/api/public/v1/chart/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v1/chart/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2243,7 +2248,7 @@ def public_api_chart(ticker):
     )
 
 
-@app.route('/api/public/v1/news', methods=['GET'])
+@api_bp.route('/api/public/v1/news', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2263,7 +2268,7 @@ def public_api_news():
     )
 
 
-@app.route('/api/public/v1/search-symbols', methods=['GET'])
+@api_bp.route('/api/public/v1/search-symbols', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2283,7 +2288,7 @@ def public_api_search_symbols():
     )
 
 
-@app.route('/api/public/v1/predictions/ensemble/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v1/predictions/ensemble/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2307,7 +2312,7 @@ def public_api_ensemble_prediction(ticker):
     )
 
 
-@app.route('/api/public/v1/fundamentals/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v1/fundamentals/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2333,7 +2338,7 @@ def public_api_fundamentals(ticker):
     )
 
 
-@app.route('/api/public/v1/macro/overview', methods=['GET'])
+@api_bp.route('/api/public/v1/macro/overview', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2355,7 +2360,7 @@ def public_api_macro_overview():
     )
 
 
-@app.route('/api/public/v2/health', methods=['GET'])
+@api_bp.route('/api/public/v2/health', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2365,7 +2370,7 @@ def public_api_v2_health():
     return _public_dispatch(public_handlers.health_handler, version='v2')
 
 
-@app.route('/api/public/v2/search-symbols', methods=['GET'])
+@api_bp.route('/api/public/v2/search-symbols', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2385,7 +2390,7 @@ def public_api_v2_search_symbols():
     )
 
 
-@app.route('/api/public/v2/stock/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v2/stock/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2411,7 +2416,7 @@ def public_api_v2_stock(ticker):
     )
 
 
-@app.route('/api/public/v2/chart/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v2/chart/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2434,7 +2439,7 @@ def public_api_v2_chart(ticker):
     )
 
 
-@app.route('/api/public/v2/fundamentals/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v2/fundamentals/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2460,7 +2465,7 @@ def public_api_v2_fundamentals(ticker):
     )
 
 
-@app.route('/api/public/v2/macro/overview', methods=['GET'])
+@api_bp.route('/api/public/v2/macro/overview', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2484,7 +2489,7 @@ def public_api_v2_macro_overview():
     )
 
 
-@app.route('/api/public/v2/predictions/ensemble/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v2/predictions/ensemble/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2508,7 +2513,7 @@ def public_api_v2_ensemble_prediction(ticker):
     )
 
 
-@app.route('/api/public/v2/evaluations/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v2/evaluations/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2528,7 +2533,7 @@ def public_api_v2_evaluations(ticker):
     )
 
 
-@app.route('/api/public/v2/screener/presets', methods=['GET'])
+@api_bp.route('/api/public/v2/screener/presets', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2548,7 +2553,7 @@ def public_api_v2_screener_presets():
     )
 
 
-@app.route('/api/public/v2/screener/scan', methods=['GET'])
+@api_bp.route('/api/public/v2/screener/scan', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2569,7 +2574,7 @@ def public_api_v2_screener_scan():
     )
 
 
-@app.route('/api/public/v2/options/stock-price/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v2/options/stock-price/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2588,7 +2593,7 @@ def public_api_v2_options_stock_price(ticker):
     )
 
 
-@app.route('/api/public/v2/options/expirations/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v2/options/expirations/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2606,7 +2611,7 @@ def public_api_v2_option_expirations(ticker):
     )
 
 
-@app.route('/api/public/v2/options/chain/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v2/options/chain/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2627,7 +2632,7 @@ def public_api_v2_option_chain(ticker):
     )
 
 
-@app.route('/api/public/v2/options/suggest/<string:ticker>', methods=['GET'])
+@api_bp.route('/api/public/v2/options/suggest/<string:ticker>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2646,7 +2651,7 @@ def public_api_v2_option_suggestion(ticker):
     )
 
 
-@app.route('/api/public/v2/forex/convert', methods=['GET'])
+@api_bp.route('/api/public/v2/forex/convert', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2665,7 +2670,7 @@ def public_api_v2_forex_convert():
     )
 
 
-@app.route('/api/public/v2/forex/currencies', methods=['GET'])
+@api_bp.route('/api/public/v2/forex/currencies', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2683,7 +2688,7 @@ def public_api_v2_forex_currencies():
     )
 
 
-@app.route('/api/public/v2/crypto/convert', methods=['GET'])
+@api_bp.route('/api/public/v2/crypto/convert', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2702,7 +2707,7 @@ def public_api_v2_crypto_convert():
     )
 
 
-@app.route('/api/public/v2/crypto/list', methods=['GET'])
+@api_bp.route('/api/public/v2/crypto/list', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2720,7 +2725,7 @@ def public_api_v2_crypto_list():
     )
 
 
-@app.route('/api/public/v2/crypto/currencies', methods=['GET'])
+@api_bp.route('/api/public/v2/crypto/currencies', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2738,7 +2743,7 @@ def public_api_v2_crypto_currencies():
     )
 
 
-@app.route('/api/public/v2/commodities/price/<string:commodity>', methods=['GET'])
+@api_bp.route('/api/public/v2/commodities/price/<string:commodity>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2758,7 +2763,7 @@ def public_api_v2_commodity_price(commodity):
     )
 
 
-@app.route('/api/public/v2/commodities/list', methods=['GET'])
+@api_bp.route('/api/public/v2/commodities/list', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2776,7 +2781,7 @@ def public_api_v2_commodities_list():
     )
 
 
-@app.route('/api/public/v2/commodities/all', methods=['GET'])
+@api_bp.route('/api/public/v2/commodities/all', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2794,7 +2799,7 @@ def public_api_v2_commodities_all():
     )
 
 
-@app.route('/api/public/v2/prediction-markets', methods=['GET'])
+@api_bp.route('/api/public/v2/prediction-markets', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2815,7 +2820,7 @@ def public_api_v2_prediction_markets():
     )
 
 
-@app.route('/api/public/v2/prediction-markets/exchanges', methods=['GET'])
+@api_bp.route('/api/public/v2/prediction-markets/exchanges', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2832,7 +2837,7 @@ def public_api_v2_prediction_market_exchanges():
     )
 
 
-@app.route('/api/public/v2/prediction-markets/<path:market_id>', methods=['GET'])
+@api_bp.route('/api/public/v2/prediction-markets/<path:market_id>', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2853,7 +2858,7 @@ def public_api_v2_prediction_market_detail(market_id):
     )
 
 
-@app.route('/api/public/v2/calendar/economic', methods=['GET'])
+@api_bp.route('/api/public/v2/calendar/economic', methods=['GET'])
 @limiter.limit(PUBLIC_API_GLOBAL_EMERGENCY_LIMIT, key_func=_public_api_global_limit_key)
 @limiter.limit(PUBLIC_API_FALLBACK_IP_LIMIT, key_func=get_remote_address)
 @limiter.limit(PUBLIC_API_DEFAULT_PER_HOUR_LIMIT, key_func=_public_api_rate_limit_key)
@@ -2873,7 +2878,7 @@ def public_api_v2_calendar_economic():
     )
 
 
-@app.route('/healthz', methods=['GET'])
+@api_bp.route('/healthz', methods=['GET'])
 def healthz():
     return jsonify(
         {
@@ -2884,6 +2889,12 @@ def healthz():
             "public_api_enabled": _public_api_enabled(),
         }
     ), 200
+
+
+# WSGI / module-level application instance. Built here — after every route and
+# hook has registered on api_bp above — so gunicorn (`api:app`) and `app.run`
+# below resolve it. Tests should call create_app() for an isolated instance.
+app = create_app()
 
 
 # --- Main execution ---
