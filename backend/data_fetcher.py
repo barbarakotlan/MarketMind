@@ -1,18 +1,14 @@
 """
 Data fetcher with Alpha Vantage (primary) and yfinance (fallback)
 """
-import os
 import pandas as pd
 import numpy as np
 import requests
 import yfinance as yf
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
 import time
 
-load_dotenv()
-
-ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
+from config import ALPHA_VANTAGE_API_KEY
 
 
 def fetch_stock_data(ticker, source='alpha_vantage', outputsize='full'):

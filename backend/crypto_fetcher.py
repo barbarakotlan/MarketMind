@@ -1,13 +1,9 @@
 """
 Cryptocurrency exchange data fetcher using Alpha Vantage
 """
-import os
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
-
-ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
+from config import ALPHA_VANTAGE_API_KEY
 
 
 def get_crypto_exchange_rate(from_crypto='BTC', to_currency='USD'):
