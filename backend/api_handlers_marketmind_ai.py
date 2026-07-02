@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from flask import jsonify
+
 
 def get_bootstrap_handler(
     *,
     deliverables_ready_fn,
     not_configured_response_fn,
     get_bootstrap_payload_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -22,7 +24,7 @@ def list_chats_handler(
     database_url,
     list_chats_fn,
     get_current_user_id_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -44,7 +46,7 @@ def get_chat_handler(
     get_chat_detail_fn,
     get_current_user_id_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -70,7 +72,7 @@ def delete_chat_handler(
     delete_chat_fn,
     get_current_user_id_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -97,7 +99,7 @@ def get_context_handler(
     build_context_fn,
     get_current_user_id_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -124,7 +126,7 @@ def get_retrieval_status_handler(
     get_retrieval_status_fn,
     get_current_user_id_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -155,7 +157,7 @@ def post_chat_handler(
     generate_reply_fn,
     get_current_user_id_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -188,7 +190,7 @@ def post_artifact_preflight_handler(
     create_artifact_preflight_fn,
     get_current_user_id_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -218,7 +220,7 @@ def list_artifacts_handler(
     database_url,
     list_artifacts_fn,
     get_current_user_id_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -240,7 +242,7 @@ def generate_artifact_handler(
     generate_artifact_fn,
     get_current_user_id_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -269,7 +271,7 @@ def get_artifact_handler(
     get_artifact_detail_fn,
     get_current_user_id_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -296,7 +298,7 @@ def download_artifact_handler(
     get_artifact_download_fn,
     get_current_user_id_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
     bytes_io_cls,
     send_file_fn,
     docx_mime_type,

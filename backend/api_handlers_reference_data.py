@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from flask import jsonify
+import yfinance as yf
+from datetime import datetime
+import time
+import requests
+import logging
+
 import csv
 from io import StringIO
 
@@ -7,14 +14,14 @@ from io import StringIO
 _OPENBB_MACRO_SUPPORT_CACHE = {}
 
 
-def news_api_handler(*, get_general_news_fn, jsonify_fn):
+def news_api_handler(*, get_general_news_fn, jsonify_fn=jsonify):
     try:
         return jsonify_fn(get_general_news_fn())
     except Exception as exc:
         return jsonify_fn({"error": f"Failed to fetch news: {str(exc)}"}), 500
 
 
-def forex_convert_handler(*, request_obj, get_exchange_rate_fn, jsonify_fn, logger):
+def forex_convert_handler(*, request_obj, get_exchange_rate_fn, jsonify_fn=jsonify, logger=logging.getLogger("marketmind_api")):
     try:
         from_currency = request_obj.args.get("from", "USD").upper()
         to_currency = request_obj.args.get("to", "EUR").upper()
@@ -27,7 +34,7 @@ def forex_convert_handler(*, request_obj, get_exchange_rate_fn, jsonify_fn, logg
         return jsonify_fn({"error": f"Conversion failed: {str(exc)}"}), 500
 
 
-def forex_currencies_handler(*, get_currency_list_fn, jsonify_fn, logger):
+def forex_currencies_handler(*, get_currency_list_fn, jsonify_fn=jsonify, logger=logging.getLogger("marketmind_api")):
     try:
         return jsonify_fn(get_currency_list_fn())
     except Exception as exc:
@@ -35,7 +42,7 @@ def forex_currencies_handler(*, get_currency_list_fn, jsonify_fn, logger):
         return jsonify_fn({"error": f"Failed to fetch currencies: {str(exc)}"}), 500
 
 
-def crypto_convert_handler(*, request_obj, get_crypto_exchange_rate_fn, jsonify_fn, logger):
+def crypto_convert_handler(*, request_obj, get_crypto_exchange_rate_fn, jsonify_fn=jsonify, logger=logging.getLogger("marketmind_api")):
     try:
         from_crypto = request_obj.args.get("from", "BTC").upper()
         to_currency = request_obj.args.get("to", "USD").upper()
@@ -48,7 +55,7 @@ def crypto_convert_handler(*, request_obj, get_crypto_exchange_rate_fn, jsonify_
         return jsonify_fn({"error": f"Conversion failed: {str(exc)}"}), 500
 
 
-def crypto_list_handler(*, get_crypto_list_fn, jsonify_fn, logger):
+def crypto_list_handler(*, get_crypto_list_fn, jsonify_fn=jsonify, logger=logging.getLogger("marketmind_api")):
     try:
         return jsonify_fn(get_crypto_list_fn())
     except Exception as exc:
@@ -56,7 +63,7 @@ def crypto_list_handler(*, get_crypto_list_fn, jsonify_fn, logger):
         return jsonify_fn({"error": f"Failed to fetch crypto list: {str(exc)}"}), 500
 
 
-def crypto_target_currencies_handler(*, get_target_currencies_fn, jsonify_fn, logger):
+def crypto_target_currencies_handler(*, get_target_currencies_fn, jsonify_fn=jsonify, logger=logging.getLogger("marketmind_api")):
     try:
         return jsonify_fn(get_target_currencies_fn())
     except Exception as exc:
@@ -64,7 +71,7 @@ def crypto_target_currencies_handler(*, get_target_currencies_fn, jsonify_fn, lo
         return jsonify_fn({"error": f"Failed to fetch currencies: {str(exc)}"}), 500
 
 
-def commodity_price_handler(commodity, *, request_obj, get_commodity_price_fn, jsonify_fn, logger):
+def commodity_price_handler(commodity, *, request_obj, get_commodity_price_fn, jsonify_fn=jsonify, logger=logging.getLogger("marketmind_api")):
     try:
         period = request_obj.args.get("period", "5d")
         data = get_commodity_price_fn(commodity, period)
@@ -76,7 +83,7 @@ def commodity_price_handler(commodity, *, request_obj, get_commodity_price_fn, j
         return jsonify_fn({"error": f"Failed to fetch commodity: {str(exc)}"}), 500
 
 
-def commodities_list_handler(*, get_commodity_list_fn, jsonify_fn, logger):
+def commodities_list_handler(*, get_commodity_list_fn, jsonify_fn=jsonify, logger=logging.getLogger("marketmind_api")):
     try:
         return jsonify_fn(get_commodity_list_fn())
     except Exception as exc:
@@ -84,7 +91,7 @@ def commodities_list_handler(*, get_commodity_list_fn, jsonify_fn, logger):
         return jsonify_fn({"error": f"Failed to fetch commodities: {str(exc)}"}), 500
 
 
-def commodities_all_handler(*, get_commodities_by_category_fn, jsonify_fn, logger):
+def commodities_all_handler(*, get_commodities_by_category_fn, jsonify_fn=jsonify, logger=logging.getLogger("marketmind_api")):
     try:
         return jsonify_fn(get_commodities_by_category_fn())
     except Exception as exc:
@@ -97,9 +104,9 @@ def get_fundamentals_handler(
     *,
     request_obj,
     alpha_vantage_api_key,
-    requests_module,
-    jsonify_fn,
-    logger,
+    requests_module=requests,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
     clean_value_fn,
     fundamentals_from_yfinance_fn,
     resolve_asset_fn,
@@ -210,10 +217,10 @@ def get_fundamentals_handler(
 def get_economic_calendar_handler(
     *,
     calendar_cache,
-    requests_module,
-    jsonify_fn,
-    time_module,
-    datetime_cls,
+    requests_module=requests,
+    jsonify_fn=jsonify,
+    time_module=time,
+    datetime_cls=datetime,
 ):
     current_time = time_module.time()
     if calendar_cache["data"] is not None and (current_time - calendar_cache["last_fetched"]) < 900:
@@ -281,8 +288,8 @@ def get_economic_calendar_handler(
 def get_market_sessions_handler(
     *,
     request_obj,
-    jsonify_fn,
-    logger,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
     exchange_session_service_module,
 ):
     market = str(request_obj.args.get("market", "us")).strip()
@@ -302,8 +309,8 @@ def get_financial_statements_handler(
     *,
     openbb_available,
     obb_module,
-    jsonify_fn,
-    logger,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
     obb_to_float_fn,
 ):
     if not openbb_available:
@@ -365,8 +372,8 @@ def get_sec_filings_handler(
     openbb_available,
     obb_module,
     sec_filings_service_module,
-    jsonify_fn,
-    logger,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
 ):
     sym = ticker.upper().split(":")[0]
     relevant = {"10-K", "10-Q", "8-K", "10-K/A", "10-Q/A", "DEF 14A", "S-1", "20-F", "6-K"}
@@ -408,8 +415,8 @@ def get_sec_filing_detail_handler(
     accession_number,
     *,
     sec_filings_service_module,
-    jsonify_fn,
-    logger,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
 ):
     sym = ticker.upper().split(":")[0]
     try:
@@ -433,8 +440,8 @@ def get_sec_intelligence_handler(
     ticker,
     *,
     sec_filings_service_module,
-    jsonify_fn,
-    logger,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
 ):
     sym = ticker.upper().split(":")[0]
     try:
@@ -451,9 +458,9 @@ def get_sec_intelligence_handler(
 def get_screener_handler(
     *,
     base_dir,
-    yf_module,
-    jsonify_fn,
-    logger,
+    yf_module=yf,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
     screener_query_service_module,
 ):
     try:
@@ -474,9 +481,9 @@ def get_screener_handler(
 def get_screener_presets_handler(
     *,
     base_dir,
-    yf_module,
-    jsonify_fn,
-    logger,
+    yf_module=yf,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
     screener_query_service_module,
 ):
     try:
@@ -497,10 +504,10 @@ def get_screener_presets_handler(
 def get_screener_scan_handler(
     *,
     base_dir,
-    yf_module,
+    yf_module=yf,
     request_obj,
-    jsonify_fn,
-    logger,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
     screener_query_service_module,
 ):
     try:
@@ -625,7 +632,7 @@ def _disable_openbb_macro_support(obb_module, reason):
     )
 
 
-def _fetch_macro_rows_from_fred(*, indicator, requests_module):
+def _fetch_macro_rows_from_fred(*, indicator, requests_module=requests):
     series_id = indicator.get("series_id") or indicator["symbol"]
     response = requests_module.get(
         f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}",
@@ -655,11 +662,11 @@ def get_macro_overview_handler(
     *,
     openbb_available,
     obb_module,
-    jsonify_fn,
-    logger,
-    yf_module,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
+    yf_module=yf,
     macro_indicators,
-    requests_module,
+    requests_module=requests,
     request_obj=None,
     akshare_service_module=None,
 ):

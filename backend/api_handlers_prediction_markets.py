@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from flask import jsonify
+from datetime import datetime
+import logging
+
 
 def list_prediction_markets_handler(
     *,
     request_obj,
     pm_search_markets_fn,
     pm_fetch_markets_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
     log_api_error_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     try:
         exchange = request_obj.args.get('exchange', 'polymarket')
@@ -33,7 +37,7 @@ def list_prediction_markets_handler(
         return jsonify_fn({"error": f"Failed to fetch prediction markets: {str(exc)}"}), 500
 
 
-def list_prediction_exchanges_handler(*, pm_get_exchanges_fn, jsonify_fn):
+def list_prediction_exchanges_handler(*, pm_get_exchanges_fn, jsonify_fn=jsonify):
     return jsonify_fn(pm_get_exchanges_fn())
 
 
@@ -42,9 +46,9 @@ def get_prediction_market_handler(
     *,
     request_obj,
     pm_get_market_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
     log_api_error_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     try:
         exchange = request_obj.args.get('exchange', 'polymarket')
@@ -62,9 +66,9 @@ def analyze_prediction_market_handler(
     request_obj,
     analyze_prediction_market_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
     log_api_error_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     try:
         if not request_obj.is_json:
@@ -94,9 +98,9 @@ def get_prediction_portfolio_handler(
     get_current_user_id_fn,
     load_prediction_portfolio_fn,
     pm_get_prices_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
     log_api_error_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     try:
         user_id = get_current_user_id_fn()
@@ -164,10 +168,10 @@ def buy_prediction_contract_handler(
     load_prediction_portfolio_fn,
     pm_get_market_fn,
     save_prediction_portfolio_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
     log_api_error_fn,
-    logger,
-    datetime_cls,
+    logger=logging.getLogger("marketmind_api"),
+    datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
     portfolio = load_prediction_portfolio_fn(user_id)
@@ -246,10 +250,10 @@ def sell_prediction_contract_handler(
     load_prediction_portfolio_fn,
     pm_get_market_fn,
     save_prediction_portfolio_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
     log_api_error_fn,
-    logger,
-    datetime_cls,
+    logger=logging.getLogger("marketmind_api"),
+    datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
     portfolio = load_prediction_portfolio_fn(user_id)
@@ -306,12 +310,12 @@ def sell_prediction_contract_handler(
         return jsonify_fn({"error": "Failed to execute sell order"}), 500
 
 
-def get_prediction_trade_history_handler(*, get_current_user_id_fn, load_prediction_portfolio_fn, jsonify_fn):
+def get_prediction_trade_history_handler(*, get_current_user_id_fn, load_prediction_portfolio_fn, jsonify_fn=jsonify):
     portfolio = load_prediction_portfolio_fn(get_current_user_id_fn())
     return jsonify_fn(portfolio.get('trade_history', [])[-50:])
 
 
-def reset_prediction_portfolio_handler(*, get_current_user_id_fn, save_prediction_portfolio_fn, jsonify_fn):
+def reset_prediction_portfolio_handler(*, get_current_user_id_fn, save_prediction_portfolio_fn, jsonify_fn=jsonify):
     user_id = get_current_user_id_fn()
     new_portfolio = {
         'cash': 10000.0,

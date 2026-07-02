@@ -193,7 +193,7 @@ def build_require_auth(
     token_getter,
     verify_token_fn,
     sync_authenticated_user_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
     unauthorized_response_fn,
     set_request_identity_fn,
 ):

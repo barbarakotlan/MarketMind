@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from flask import jsonify
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import logging
+
 
 def optimize_paper_portfolio_handler(
     *,
@@ -8,7 +15,7 @@ def optimize_paper_portfolio_handler(
     load_portfolio_fn,
     optimize_portfolio_fn,
     error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     user_id = get_current_user_id_fn()
     portfolio = load_portfolio_fn(user_id)
@@ -30,10 +37,10 @@ def get_paper_portfolio_handler(
     *,
     get_current_user_id_fn,
     load_portfolio_fn,
-    jsonify_fn,
-    yf_module,
-    pd_module,
-    logger,
+    jsonify_fn=jsonify,
+    yf_module=yf,
+    pd_module=pd,
+    logger=logging.getLogger("marketmind_api"),
 ):
     user_id = get_current_user_id_fn()
     portfolio = load_portfolio_fn(user_id)
@@ -180,11 +187,11 @@ def buy_stock_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
-    jsonify_fn,
-    yf_module,
+    jsonify_fn=jsonify,
+    yf_module=yf,
     log_api_error_fn,
-    logger,
-    datetime_cls,
+    logger=logging.getLogger("marketmind_api"),
+    datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
     portfolio = load_portfolio_fn(user_id)
@@ -239,11 +246,11 @@ def sell_stock_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
-    jsonify_fn,
-    yf_module,
+    jsonify_fn=jsonify,
+    yf_module=yf,
     log_api_error_fn,
-    logger,
-    datetime_cls,
+    logger=logging.getLogger("marketmind_api"),
+    datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
     portfolio = load_portfolio_fn(user_id)
@@ -300,8 +307,8 @@ def buy_option_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
-    jsonify_fn,
-    datetime_cls,
+    jsonify_fn=jsonify,
+    datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
     portfolio = load_portfolio_fn(user_id)
@@ -343,8 +350,8 @@ def sell_option_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
-    jsonify_fn,
-    datetime_cls,
+    jsonify_fn=jsonify,
+    datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
     portfolio = load_portfolio_fn(user_id)
@@ -387,12 +394,12 @@ def get_paper_history_handler(
     request_obj,
     get_current_user_id_fn,
     load_portfolio_fn,
-    jsonify_fn,
-    yf_module,
-    pd_module,
-    np_module,
-    logger,
-    datetime_cls,
+    jsonify_fn=jsonify,
+    yf_module=yf,
+    pd_module=pd,
+    np_module=np,
+    logger=logging.getLogger("marketmind_api"),
+    datetime_cls=datetime,
     date_cls,
     timedelta_cls,
 ):
@@ -538,12 +545,12 @@ def get_paper_history_handler(
         return jsonify_fn({'error': f'Failed to build history: {str(exc)}'}), 500
 
 
-def get_trade_history_handler(*, get_current_user_id_fn, load_portfolio_fn, jsonify_fn):
+def get_trade_history_handler(*, get_current_user_id_fn, load_portfolio_fn, jsonify_fn=jsonify):
     portfolio = load_portfolio_fn(get_current_user_id_fn())
     return jsonify_fn(portfolio.get('trade_history', [])[-50:])
 
 
-def reset_portfolio_handler(*, get_current_user_id_fn, save_portfolio_with_snapshot_fn, jsonify_fn):
+def reset_portfolio_handler(*, get_current_user_id_fn, save_portfolio_with_snapshot_fn, jsonify_fn=jsonify):
     user_id = get_current_user_id_fn()
     new_portfolio = {
         'cash': 100000.0,

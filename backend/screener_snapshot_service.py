@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import yfinance as yf
+
 import json
 import math
 import os
@@ -236,7 +239,7 @@ def _extract_downloaded_histories(raw_download: Any, tickers: List[str]) -> Dict
     return histories
 
 
-def _fetch_histories(*, tickers: List[str], yf_module, logger) -> Dict[str, Any]:
+def _fetch_histories(*, tickers: List[str], yf_module=yf, logger=logging.getLogger("marketmind_api")) -> Dict[str, Any]:
     histories: Dict[str, Any] = {}
     period = _history_period_for_lookback(TRADING_LOOKBACK)
 
@@ -261,7 +264,7 @@ def _fetch_histories(*, tickers: List[str], yf_module, logger) -> Dict[str, Any]
     return histories
 
 
-def _fetch_metadata(*, universe: List[Dict[str, object]], yf_module, logger) -> Dict[str, Dict[str, Any]]:
+def _fetch_metadata(*, universe: List[Dict[str, object]], yf_module=yf, logger=logging.getLogger("marketmind_api")) -> Dict[str, Dict[str, Any]]:
     metadata: Dict[str, Dict[str, Any]] = {}
 
     for record in universe:
@@ -435,7 +438,7 @@ def _build_snapshot(*, histories: Dict[str, Any], metadata: Dict[str, Dict[str, 
     return pl.DataFrame(rows), warnings
 
 
-def ensure_snapshot(*, base_dir: str, yf_module, logger, force_refresh: bool = False) -> Dict[str, Any]:
+def ensure_snapshot(*, base_dir: str, yf_module=yf, logger=logging.getLogger("marketmind_api"), force_refresh: bool = False) -> Dict[str, Any]:
     now_dt = _utcnow()
     os.makedirs(cache_dir(base_dir=base_dir), exist_ok=True)
 

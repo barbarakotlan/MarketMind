@@ -238,7 +238,6 @@ def add_security_headers(response):
         database_url=DATABASE_URL,
         increment_public_api_daily_usage_fn=increment_public_api_daily_usage_db,
         touch_public_api_key_last_used_fn=touch_public_api_key_last_used_db,
-        logger=logger,
     )
 
 @api_bp.app_errorhandler(RateLimitExceeded)
@@ -432,7 +431,6 @@ def _iter_user_ids():
         session_scope=user_state_session_scope,
         database_url=DATABASE_URL,
         list_app_user_ids_db_fn=list_app_user_ids_db,
-        logger=logger,
     )
 
 
@@ -497,7 +495,6 @@ def require_auth(f):
         token_getter=lambda: _get_clerk_bearer_token(),
         verify_token_fn=lambda token: verify_clerk_token(token),
         sync_authenticated_user_fn=lambda payload: _sync_authenticated_user(payload),
-        logger=logger,
         unauthorized_response_fn=lambda message, status: (jsonify({"error": message}), status),
         set_request_identity_fn=lambda payload: (
             setattr(g, 'current_user_id', payload['sub']),
@@ -564,7 +561,6 @@ def require_public_api_auth(route_group):
             authenticate_key_fn=_public_api_authenticate,
             get_daily_quota_fn=_public_api_daily_quota,
             get_daily_usage_total_fn=_public_api_daily_usage_total,
-            logger=logger,
             error_response_fn=_public_api_error_response,
         )
 
@@ -902,7 +898,6 @@ def get_deliverables():
         database_url=DATABASE_URL,
         list_deliverables_fn=list_deliverables,
         get_current_user_id_fn=get_current_user_id,
-        jsonify_fn=jsonify,
     )
 
 
@@ -921,7 +916,6 @@ def post_deliverable():
         create_deliverable_fn=create_deliverable,
         get_current_user_id_fn=get_current_user_id,
         deliverable_error_cls=DeliverableError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -939,7 +933,6 @@ def get_deliverable(deliverable_id):
         get_deliverable_detail_fn=get_deliverable_detail,
         get_current_user_id_fn=get_current_user_id,
         deliverable_error_cls=DeliverableError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -959,7 +952,6 @@ def patch_deliverable(deliverable_id):
         update_deliverable_fn=update_deliverable,
         get_current_user_id_fn=get_current_user_id,
         deliverable_error_cls=DeliverableError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -979,7 +971,6 @@ def put_deliverable_assumptions(deliverable_id):
         replace_deliverable_assumptions_fn=replace_deliverable_assumptions,
         get_current_user_id_fn=get_current_user_id,
         deliverable_error_cls=DeliverableError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -999,7 +990,6 @@ def post_deliverable_review(deliverable_id):
         add_deliverable_review_fn=add_deliverable_review,
         get_current_user_id_fn=get_current_user_id,
         deliverable_error_cls=DeliverableError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1017,7 +1007,6 @@ def post_deliverable_preflight(deliverable_id):
         create_deliverable_preflight_fn=create_deliverable_preflight,
         get_current_user_id_fn=get_current_user_id,
         deliverable_error_cls=DeliverableError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1035,7 +1024,6 @@ def get_deliverable_context(deliverable_id):
         build_deliverable_context_fn=build_deliverable_context,
         get_current_user_id_fn=get_current_user_id,
         deliverable_error_cls=DeliverableError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1053,7 +1041,6 @@ def get_deliverable_memos(deliverable_id):
         list_deliverable_memos_fn=list_deliverable_memos,
         get_current_user_id_fn=get_current_user_id,
         deliverable_error_cls=DeliverableError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1071,7 +1058,6 @@ def post_deliverable_generate(deliverable_id):
         generate_deliverable_memo_fn=generate_deliverable_memo,
         get_current_user_id_fn=get_current_user_id,
         deliverable_error_cls=DeliverableError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1090,7 +1076,6 @@ def download_deliverable_memo(deliverable_id, memo_id):
         get_deliverable_memo_artifact_fn=get_deliverable_memo_artifact,
         get_current_user_id_fn=get_current_user_id,
         deliverable_error_cls=DeliverableError,
-        jsonify_fn=jsonify,
         bytes_io_cls=BytesIO,
         send_file_fn=send_file,
         docx_mime_type=DOCX_MIME_TYPE,
@@ -1105,7 +1090,6 @@ def get_marketmind_ai_bootstrap():
         deliverables_ready_fn=_deliverables_ready,
         not_configured_response_fn=_marketmind_ai_not_configured_response,
         get_bootstrap_payload_fn=get_marketmind_ai_bootstrap_payload,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1121,7 +1105,6 @@ def get_marketmind_ai_chats():
         database_url=DATABASE_URL,
         list_chats_fn=list_marketmind_ai_chats,
         get_current_user_id_fn=get_current_user_id,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1139,7 +1122,6 @@ def get_marketmind_ai_chat(chat_id):
         get_chat_detail_fn=get_marketmind_ai_chat_detail,
         get_current_user_id_fn=get_current_user_id,
         error_cls=MarketMindAIError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1157,7 +1139,6 @@ def delete_marketmind_ai_chat_route(chat_id):
         delete_chat_fn=delete_marketmind_ai_chat,
         get_current_user_id_fn=get_current_user_id,
         error_cls=MarketMindAIError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1178,7 +1159,6 @@ def get_marketmind_ai_context():
         build_context_fn=build_marketmind_ai_context,
         get_current_user_id_fn=get_current_user_id,
         error_cls=MarketMindAIError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1199,7 +1179,6 @@ def get_marketmind_ai_retrieval_status_route():
         get_retrieval_status_fn=get_marketmind_ai_retrieval_status,
         get_current_user_id_fn=get_current_user_id,
         error_cls=MarketMindAIError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1218,7 +1197,6 @@ def post_marketmind_ai_chat():
         generate_reply_fn=generate_marketmind_ai_reply,
         get_current_user_id_fn=get_current_user_id,
         error_cls=MarketMindAIError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1237,7 +1215,6 @@ def post_marketmind_ai_artifact_preflight():
         create_artifact_preflight_fn=create_artifact_preflight,
         get_current_user_id_fn=get_current_user_id,
         error_cls=MarketMindAIError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1253,7 +1230,6 @@ def get_marketmind_ai_artifacts():
         database_url=DATABASE_URL,
         list_artifacts_fn=list_marketmind_ai_artifacts,
         get_current_user_id_fn=get_current_user_id,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1272,7 +1248,6 @@ def post_marketmind_ai_artifact_generate():
         generate_artifact_fn=generate_marketmind_ai_artifact,
         get_current_user_id_fn=get_current_user_id,
         error_cls=MarketMindAIError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1290,7 +1265,6 @@ def get_marketmind_ai_artifact(artifact_id):
         get_artifact_detail_fn=get_marketmind_ai_artifact_detail,
         get_current_user_id_fn=get_current_user_id,
         error_cls=MarketMindAIError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1309,7 +1283,6 @@ def download_marketmind_ai_artifact(artifact_id, version_id):
         get_artifact_download_fn=get_marketmind_ai_artifact_download,
         get_current_user_id_fn=get_current_user_id,
         error_cls=MarketMindAIError,
-        jsonify_fn=jsonify,
         bytes_io_cls=BytesIO,
         send_file_fn=send_file,
         docx_mime_type=DOCX_MIME_TYPE,
@@ -1326,7 +1299,6 @@ def get_symbol_suggestions(query):
         query,
         alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
         requests_get=requests.get,
-        logger=logger,
     )
 
 
@@ -1338,7 +1310,6 @@ def get_watchlist():
     return market_data_handlers.get_watchlist_handler(
         get_current_user_id_fn=get_current_user_id,
         load_watchlist_fn=load_watchlist,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1351,7 +1322,6 @@ def add_to_watchlist(ticker):
         get_current_user_id_fn=get_current_user_id,
         load_watchlist_fn=load_watchlist,
         save_watchlist_fn=save_watchlist,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1364,7 +1334,6 @@ def remove_from_watchlist(ticker):
         get_current_user_id_fn=get_current_user_id,
         load_watchlist_fn=load_watchlist,
         save_watchlist_fn=save_watchlist,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1377,9 +1346,6 @@ def get_stock_data(ticker):
         request_obj=request,
         alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
         yf_module=yf,
-        requests_module=requests,
-        jsonify_fn=jsonify,
-        logger=logger,
         clean_value_fn=clean_value,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
@@ -1394,8 +1360,6 @@ def get_chart_data(ticker):
         ticker,
         request_obj=request,
         yf_module=yf,
-        jsonify_fn=jsonify,
-        logger=logger,
         clean_value_fn=clean_value,
         chart_prediction_points_fn=_chart_prediction_points,
         resolve_asset_fn=_resolve_market_asset,
@@ -1409,8 +1373,6 @@ def get_query_news():
     return market_data_handlers.get_query_news_handler(
         request_obj=request,
         news_api_key=NEWS_API_KEY,
-        requests_module=requests,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1420,7 +1382,6 @@ def get_options_stock_price(ticker):
     return market_data_handlers.get_options_stock_price_handler(
         ticker,
         yf_module=yf,
-        jsonify_fn=jsonify,
         clean_value_fn=clean_value,
     )
 
@@ -1430,7 +1391,6 @@ def get_option_expirations(ticker):
     return market_data_handlers.get_option_expirations_handler(
         ticker,
         yf_module=yf,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1440,9 +1400,6 @@ def get_option_chain(ticker):
         ticker,
         request_obj=request,
         yf_module=yf,
-        jsonify_fn=jsonify,
-        math_module=math,
-        logger=logger,
     )
 
 # --- Options Suggestion Endpoint ---
@@ -1451,8 +1408,6 @@ def get_option_suggestion(ticker):
     return market_data_handlers.get_option_suggestion_handler(
         ticker,
         generate_suggestion_fn=generate_suggestion,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -1477,10 +1432,7 @@ def predict_stock(model, ticker):
         transformer_train_fn=transformer_train,
         transformer_predict_fn=transformer_predict,
         yf_module=yf,
-        jsonify_fn=jsonify,
         log_api_error_fn=log_api_error,
-        logger=logger,
-        pd_module=pd,
     )
     return response
 
@@ -1493,7 +1445,6 @@ def _live_ensemble_signal_components(sanitized_ticker):
         sanitized_ticker,
         create_dataset_fn=create_dataset,
         ensemble_predict_fn=ensemble_predict,
-        np_module=np,
     )
 
 
@@ -1501,7 +1452,6 @@ def _chart_prediction_points(sanitized_ticker):
     return api_prediction_runtime_helpers.chart_prediction_points(
         sanitized_ticker,
         live_ensemble_signal_components_fn=_live_ensemble_signal_components,
-        pd_module=pd,
     )
 
 
@@ -1515,10 +1465,6 @@ def predict_ensemble(ticker):
         future_prediction_dates_fn=prediction_service.get_future_prediction_dates,
         yf_module=yf,
         live_ensemble_signal_components_fn=_live_ensemble_signal_components,
-        jsonify_fn=jsonify,
-        logger=logger,
-        pd_module=pd,
-        np_module=np,
     )
     return response
 
@@ -1530,8 +1476,6 @@ def _record_portfolio_snapshot_legacy(portfolio_data, user_id):
         portfolio_data,
         user_id,
         get_db_fn=get_db,
-        logger=logger,
-        datetime_cls=datetime,
     )
 
 
@@ -1550,10 +1494,7 @@ def get_paper_portfolio():
     return paper_handlers.get_paper_portfolio_handler(
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
-        jsonify_fn=jsonify,
         yf_module=yf,
-        pd_module=pd,
-        logger=logger,
     )
 
 
@@ -1567,7 +1508,6 @@ def optimize_paper_portfolio():
         load_portfolio_fn=load_portfolio,
         optimize_portfolio_fn=portfolio_optimization_service.optimize_paper_portfolio,
         error_cls=portfolio_optimization_service.PortfolioOptimizationError,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1581,11 +1521,8 @@ def buy_stock():
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
-        jsonify_fn=jsonify,
         yf_module=yf,
         log_api_error_fn=log_api_error,
-        logger=logger,
-        datetime_cls=datetime,
     )
 
 
@@ -1599,11 +1536,8 @@ def sell_stock():
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
-        jsonify_fn=jsonify,
         yf_module=yf,
         log_api_error_fn=log_api_error,
-        logger=logger,
-        datetime_cls=datetime,
     )
 
 
@@ -1615,8 +1549,6 @@ def buy_option():
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
-        jsonify_fn=jsonify,
-        datetime_cls=datetime,
     )
 
 
@@ -1628,8 +1560,6 @@ def sell_option():
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
-        jsonify_fn=jsonify,
-        datetime_cls=datetime,
     )
 
 
@@ -1641,12 +1571,7 @@ def get_paper_history():
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
-        jsonify_fn=jsonify,
         yf_module=yf,
-        pd_module=pd,
-        np_module=np,
-        logger=logger,
-        datetime_cls=datetime,
         date_cls=date,
         timedelta_cls=timedelta,
     )
@@ -1658,7 +1583,6 @@ def get_trade_history():
     return paper_handlers.get_trade_history_handler(
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1668,7 +1592,6 @@ def reset_portfolio():
     return paper_handlers.reset_portfolio_handler(
         get_current_user_id_fn=get_current_user_id,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1681,10 +1604,7 @@ def handle_notifications():
         get_current_user_id_fn=get_current_user_id,
         load_notifications_fn=load_notifications,
         save_notifications_fn=save_notifications,
-        jsonify_fn=jsonify,
         yf_module=yf,
-        uuid_module=uuid,
-        datetime_cls=datetime,
     )
 
 
@@ -1696,12 +1616,7 @@ def create_smart_alert():
         get_current_user_id_fn=get_current_user_id,
         load_notifications_fn=load_notifications,
         save_notifications_fn=save_notifications,
-        jsonify_fn=jsonify,
         yf_module=yf,
-        uuid_module=uuid,
-        datetime_cls=datetime,
-        logger=logger,
-        re_module=re,
     )
 
 
@@ -1713,7 +1628,6 @@ def delete_notification(alert_id):
         get_current_user_id_fn=get_current_user_id,
         load_notifications_fn=load_notifications,
         save_notifications_fn=save_notifications,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1725,7 +1639,6 @@ def get_triggered_notifications():
         get_current_user_id_fn=get_current_user_id,
         load_notifications_fn=load_notifications,
         save_notifications_fn=save_notifications,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1737,7 +1650,6 @@ def delete_triggered_notification(alert_id):
         get_current_user_id_fn=get_current_user_id,
         load_notifications_fn=load_notifications,
         save_notifications_fn=save_notifications,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1751,9 +1663,6 @@ def _check_alerts_for_user(user_id):
         load_notifications_fn=load_notifications,
         save_notifications_fn=save_notifications,
         yf_module=yf,
-        logger=logger,
-        uuid_module=uuid,
-        datetime_cls=datetime,
     )
 
 
@@ -1761,7 +1670,6 @@ def check_alerts():
     return api_scheduler_helpers.check_alerts(
         iter_user_ids_fn=_iter_user_ids,
         check_alerts_for_user_fn=_check_alerts_for_user,
-        logger=logger,
     )
 
 
@@ -1769,7 +1677,6 @@ def run_scheduler():
     return api_scheduler_helpers.run_scheduler(
         schedule_module=schedule,
         check_alerts_fn=check_alerts,
-        time_module=time,
     )
 
 
@@ -1781,7 +1688,6 @@ def run_scheduler():
 def news_api():
     return reference_data_handlers.news_api_handler(
         get_general_news_fn=get_general_news,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1792,8 +1698,6 @@ def evaluate_models(ticker):
         ticker,
         request_obj=request,
         rolling_window_backtest_fn=rolling_window_backtest,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -1802,8 +1706,6 @@ def forex_convert():
     return reference_data_handlers.forex_convert_handler(
         request_obj=request,
         get_exchange_rate_fn=get_exchange_rate,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -1811,8 +1713,6 @@ def forex_convert():
 def forex_currencies():
     return reference_data_handlers.forex_currencies_handler(
         get_currency_list_fn=get_currency_list,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -1821,8 +1721,6 @@ def crypto_convert():
     return reference_data_handlers.crypto_convert_handler(
         request_obj=request,
         get_crypto_exchange_rate_fn=get_crypto_exchange_rate,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -1830,8 +1728,6 @@ def crypto_convert():
 def crypto_list():
     return reference_data_handlers.crypto_list_handler(
         get_crypto_list_fn=get_crypto_list,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -1839,8 +1735,6 @@ def crypto_list():
 def crypto_target_currencies():
     return reference_data_handlers.crypto_target_currencies_handler(
         get_target_currencies_fn=get_target_currencies,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -1850,8 +1744,6 @@ def commodity_price(commodity):
         commodity,
         request_obj=request,
         get_commodity_price_fn=get_commodity_price,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -1859,8 +1751,6 @@ def commodity_price(commodity):
 def commodities_list():
     return reference_data_handlers.commodities_list_handler(
         get_commodity_list_fn=get_commodity_list,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -1868,8 +1758,6 @@ def commodities_list():
 def commodities_all():
     return reference_data_handlers.commodities_all_handler(
         get_commodities_by_category_fn=get_commodities_by_category,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -1884,9 +1772,7 @@ def list_prediction_markets():
         request_obj=request,
         pm_search_markets_fn=pm_search_markets,
         pm_fetch_markets_fn=pm_fetch_markets,
-        jsonify_fn=jsonify,
         log_api_error_fn=log_api_error,
-        logger=logger,
     )
 
 
@@ -1895,7 +1781,6 @@ def list_prediction_markets():
 def list_prediction_exchanges():
     return prediction_markets_handlers.list_prediction_exchanges_handler(
         pm_get_exchanges_fn=pm_get_exchanges,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1907,9 +1792,7 @@ def analyze_prediction_market():
         request_obj=request,
         analyze_prediction_market_fn=pm_analyze_market,
         error_cls=PredictionMarketAnalysisError,
-        jsonify_fn=jsonify,
         log_api_error_fn=log_api_error,
-        logger=logger,
     )
 
 
@@ -1920,9 +1803,7 @@ def get_prediction_market(market_id):
         market_id,
         request_obj=request,
         pm_get_market_fn=pm_get_market,
-        jsonify_fn=jsonify,
         log_api_error_fn=log_api_error,
-        logger=logger,
     )
 
 
@@ -1934,9 +1815,7 @@ def get_prediction_portfolio():
         get_current_user_id_fn=get_current_user_id,
         load_prediction_portfolio_fn=load_prediction_portfolio,
         pm_get_prices_fn=pm_get_prices,
-        jsonify_fn=jsonify,
         log_api_error_fn=log_api_error,
-        logger=logger,
     )
 
 
@@ -1951,10 +1830,7 @@ def buy_prediction_contract():
         load_prediction_portfolio_fn=load_prediction_portfolio,
         pm_get_market_fn=pm_get_market,
         save_prediction_portfolio_fn=save_prediction_portfolio,
-        jsonify_fn=jsonify,
         log_api_error_fn=log_api_error,
-        logger=logger,
-        datetime_cls=datetime,
     )
 
 
@@ -1969,10 +1845,7 @@ def sell_prediction_contract():
         load_prediction_portfolio_fn=load_prediction_portfolio,
         pm_get_market_fn=pm_get_market,
         save_prediction_portfolio_fn=save_prediction_portfolio,
-        jsonify_fn=jsonify,
         log_api_error_fn=log_api_error,
-        logger=logger,
-        datetime_cls=datetime,
     )
 
 
@@ -1983,7 +1856,6 @@ def get_prediction_trade_history():
     return prediction_markets_handlers.get_prediction_trade_history_handler(
         get_current_user_id_fn=get_current_user_id,
         load_prediction_portfolio_fn=load_prediction_portfolio,
-        jsonify_fn=jsonify,
     )
 
 
@@ -1994,7 +1866,6 @@ def reset_prediction_portfolio():
     return prediction_markets_handlers.reset_prediction_portfolio_handler(
         get_current_user_id_fn=get_current_user_id,
         save_prediction_portfolio_fn=save_prediction_portfolio,
-        jsonify_fn=jsonify,
     )
 
 
@@ -2012,9 +1883,6 @@ def get_fundamentals(ticker):
         ticker,
         request_obj=request,
         alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
-        requests_module=requests,
-        jsonify_fn=jsonify,
-        logger=logger,
         clean_value_fn=clean_value,
         fundamentals_from_yfinance_fn=_fundamentals_from_yfinance,
         resolve_asset_fn=_resolve_market_asset,
@@ -2028,8 +1896,6 @@ def search_symbols():
         request_obj=request,
         get_symbol_suggestions_fn=get_symbol_suggestions,
         search_international_symbols_fn=akshare_service.search_equities,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -2045,10 +1911,6 @@ CALENDAR_CACHE = {
 def get_economic_calendar():
     return reference_data_handlers.get_economic_calendar_handler(
         calendar_cache=CALENDAR_CACHE,
-        requests_module=requests,
-        jsonify_fn=jsonify,
-        time_module=time,
-        datetime_cls=datetime,
     )
 
 
@@ -2056,8 +1918,6 @@ def get_economic_calendar():
 def get_market_sessions_calendar():
     return reference_data_handlers.get_market_sessions_handler(
         request_obj=request,
-        jsonify_fn=jsonify,
-        logger=logger,
         exchange_session_service_module=exchange_session_service,
     )
 
@@ -2075,8 +1935,6 @@ def get_financial_statements(ticker):
         ticker,
         openbb_available=OPENBB_AVAILABLE,
         obb_module=obb if OPENBB_AVAILABLE else None,
-        jsonify_fn=jsonify,
-        logger=logger,
         obb_to_float_fn=_obb_to_float,
     )
 
@@ -2088,8 +1946,6 @@ def get_sec_filings(ticker):
         openbb_available=OPENBB_AVAILABLE,
         obb_module=obb if OPENBB_AVAILABLE else None,
         sec_filings_service_module=sec_filings_service,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -2098,8 +1954,6 @@ def get_sec_intelligence(ticker):
     return reference_data_handlers.get_sec_intelligence_handler(
         ticker,
         sec_filings_service_module=sec_filings_service,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -2109,8 +1963,6 @@ def get_sec_filing_detail(ticker, accession_number):
         ticker,
         accession_number,
         sec_filings_service_module=sec_filings_service,
-        jsonify_fn=jsonify,
-        logger=logger,
     )
 
 
@@ -2119,8 +1971,6 @@ def get_screener():
     return reference_data_handlers.get_screener_handler(
         base_dir=BASE_DIR,
         yf_module=yf,
-        jsonify_fn=jsonify,
-        logger=logger,
         screener_query_service_module=screener_query_service,
     )
 
@@ -2130,8 +1980,6 @@ def get_screener_presets():
     return reference_data_handlers.get_screener_presets_handler(
         base_dir=BASE_DIR,
         yf_module=yf,
-        jsonify_fn=jsonify,
-        logger=logger,
         screener_query_service_module=screener_query_service,
     )
 
@@ -2142,8 +1990,6 @@ def get_screener_scan():
         base_dir=BASE_DIR,
         yf_module=yf,
         request_obj=request,
-        jsonify_fn=jsonify,
-        logger=logger,
         screener_query_service_module=screener_query_service,
     )
 
@@ -2159,11 +2005,8 @@ def get_macro_overview():
     return reference_data_handlers.get_macro_overview_handler(
         openbb_available=OPENBB_AVAILABLE,
         obb_module=obb if OPENBB_AVAILABLE else None,
-        jsonify_fn=jsonify,
-        logger=logger,
         yf_module=yf,
         macro_indicators=MACRO_INDICATORS,
-        requests_module=requests,
         request_obj=request,
         akshare_service_module=akshare_service,
     )
@@ -2224,8 +2067,6 @@ def public_api_stock(ticker):
         get_stock_data_handler_fn=market_data_handlers.get_stock_data_handler,
         alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
         yf_module=yf,
-        requests_module=requests,
-        logger=logger,
         clean_value_fn=clean_value,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
@@ -2249,7 +2090,6 @@ def public_api_chart(ticker):
         cache_ttl_seconds=60,
         get_chart_data_handler_fn=market_data_handlers.get_chart_data_handler,
         yf_module=yf,
-        logger=logger,
         clean_value_fn=clean_value,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
@@ -2272,7 +2112,6 @@ def public_api_news():
         get_query_news_handler_fn=market_data_handlers.get_query_news_handler,
         get_general_news_fn=get_general_news,
         news_api_key=NEWS_API_KEY,
-        requests_module=requests,
     )
 
 
@@ -2292,7 +2131,6 @@ def public_api_search_symbols():
         search_symbols_handler_fn=market_data_handlers.search_symbols_handler,
         get_symbol_suggestions_fn=get_symbol_suggestions,
         search_international_symbols_fn=lambda _query, market='us': [] if market != 'all' else [],
-        logger=logger,
     )
 
 
@@ -2314,9 +2152,6 @@ def public_api_ensemble_prediction(ticker):
         future_prediction_dates_fn=prediction_service.get_future_prediction_dates,
         yf_module=yf,
         live_ensemble_signal_components_fn=_live_ensemble_signal_components,
-        logger=logger,
-        pd_module=pd,
-        np_module=np,
     )
 
 
@@ -2336,8 +2171,6 @@ def public_api_fundamentals(ticker):
         cache_ttl_seconds=3600,
         get_fundamentals_handler_fn=reference_data_handlers.get_fundamentals_handler,
         alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
-        requests_module=requests,
-        logger=logger,
         clean_value_fn=clean_value,
         fundamentals_from_yfinance_fn=_fundamentals_from_yfinance,
         resolve_asset_fn=_resolve_market_asset,
@@ -2361,10 +2194,8 @@ def public_api_macro_overview():
         get_macro_overview_handler_fn=reference_data_handlers.get_macro_overview_handler,
         openbb_available=OPENBB_AVAILABLE,
         obb_module=obb if OPENBB_AVAILABLE else None,
-        logger=logger,
         yf_module=yf,
         macro_indicators=MACRO_INDICATORS,
-        requests_module=requests,
     )
 
 
@@ -2394,7 +2225,6 @@ def public_api_v2_search_symbols():
         search_symbols_handler_fn=market_data_handlers.search_symbols_handler,
         get_symbol_suggestions_fn=get_symbol_suggestions,
         search_international_symbols_fn=akshare_service.search_equities,
-        logger=logger,
     )
 
 
@@ -2415,8 +2245,6 @@ def public_api_v2_stock(ticker):
         get_stock_data_handler_fn=market_data_handlers.get_stock_data_handler,
         alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
         yf_module=yf,
-        requests_module=requests,
-        logger=logger,
         clean_value_fn=clean_value,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
@@ -2440,7 +2268,6 @@ def public_api_v2_chart(ticker):
         cache_ttl_seconds=60,
         get_chart_data_handler_fn=market_data_handlers.get_chart_data_handler,
         yf_module=yf,
-        logger=logger,
         clean_value_fn=clean_value,
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
@@ -2463,8 +2290,6 @@ def public_api_v2_fundamentals(ticker):
         cache_ttl_seconds=3600,
         get_fundamentals_handler_fn=reference_data_handlers.get_fundamentals_handler,
         alpha_vantage_api_key=ALPHA_VANTAGE_API_KEY,
-        requests_module=requests,
-        logger=logger,
         clean_value_fn=clean_value,
         fundamentals_from_yfinance_fn=_fundamentals_from_yfinance,
         resolve_asset_fn=_resolve_market_asset,
@@ -2489,10 +2314,8 @@ def public_api_v2_macro_overview():
         get_macro_overview_handler_fn=reference_data_handlers.get_macro_overview_handler,
         openbb_available=OPENBB_AVAILABLE,
         obb_module=obb if OPENBB_AVAILABLE else None,
-        logger=logger,
         yf_module=yf,
         macro_indicators=MACRO_INDICATORS,
-        requests_module=requests,
         akshare_service_module=akshare_service,
     )
 
@@ -2515,9 +2338,6 @@ def public_api_v2_ensemble_prediction(ticker):
         future_prediction_dates_fn=prediction_service.get_future_prediction_dates,
         yf_module=yf,
         live_ensemble_signal_components_fn=_live_ensemble_signal_components,
-        logger=logger,
-        pd_module=pd,
-        np_module=np,
     )
 
 
@@ -2537,7 +2357,6 @@ def public_api_v2_evaluations(ticker):
         cache_ttl_seconds=900,
         evaluate_models_handler_fn=market_data_handlers.evaluate_models_handler,
         rolling_window_backtest_fn=rolling_window_backtest,
-        logger=logger,
     )
 
 
@@ -2556,7 +2375,6 @@ def public_api_v2_screener_presets():
         get_screener_presets_handler_fn=reference_data_handlers.get_screener_presets_handler,
         base_dir=BASE_DIR,
         yf_module=yf,
-        logger=logger,
         screener_query_service_module=screener_query_service,
     )
 
@@ -2577,7 +2395,6 @@ def public_api_v2_screener_scan():
         get_screener_scan_handler_fn=reference_data_handlers.get_screener_scan_handler,
         base_dir=BASE_DIR,
         yf_module=yf,
-        logger=logger,
         screener_query_service_module=screener_query_service,
     )
 
@@ -2635,8 +2452,6 @@ def public_api_v2_option_chain(ticker):
         cache_ttl_seconds=60,
         get_option_chain_handler_fn=market_data_handlers.get_option_chain_handler,
         yf_module=yf,
-        math_module=math,
-        logger=logger,
     )
 
 
@@ -2655,7 +2470,6 @@ def public_api_v2_option_suggestion(ticker):
         cache_ttl_seconds=900,
         get_option_suggestion_handler_fn=market_data_handlers.get_option_suggestion_handler,
         generate_suggestion_fn=generate_suggestion,
-        logger=logger,
     )
 
 
@@ -2674,7 +2488,6 @@ def public_api_v2_forex_convert():
         cache_ttl_seconds=300,
         forex_convert_handler_fn=reference_data_handlers.forex_convert_handler,
         get_exchange_rate_fn=get_exchange_rate,
-        logger=logger,
     )
 
 
@@ -2692,7 +2505,6 @@ def public_api_v2_forex_currencies():
         cache_ttl_seconds=86400,
         forex_currencies_handler_fn=reference_data_handlers.forex_currencies_handler,
         get_currency_list_fn=get_currency_list,
-        logger=logger,
     )
 
 
@@ -2711,7 +2523,6 @@ def public_api_v2_crypto_convert():
         cache_ttl_seconds=300,
         crypto_convert_handler_fn=reference_data_handlers.crypto_convert_handler,
         get_crypto_exchange_rate_fn=get_crypto_exchange_rate,
-        logger=logger,
     )
 
 
@@ -2729,7 +2540,6 @@ def public_api_v2_crypto_list():
         cache_ttl_seconds=86400,
         crypto_list_handler_fn=reference_data_handlers.crypto_list_handler,
         get_crypto_list_fn=get_crypto_list,
-        logger=logger,
     )
 
 
@@ -2747,7 +2557,6 @@ def public_api_v2_crypto_currencies():
         cache_ttl_seconds=86400,
         crypto_target_currencies_handler_fn=reference_data_handlers.crypto_target_currencies_handler,
         get_target_currencies_fn=get_target_currencies,
-        logger=logger,
     )
 
 
@@ -2767,7 +2576,6 @@ def public_api_v2_commodity_price(commodity):
         cache_ttl_seconds=300,
         commodity_price_handler_fn=reference_data_handlers.commodity_price_handler,
         get_commodity_price_fn=get_commodity_price,
-        logger=logger,
     )
 
 
@@ -2785,7 +2593,6 @@ def public_api_v2_commodities_list():
         cache_ttl_seconds=86400,
         commodities_list_handler_fn=reference_data_handlers.commodities_list_handler,
         get_commodity_list_fn=get_commodity_list,
-        logger=logger,
     )
 
 
@@ -2803,7 +2610,6 @@ def public_api_v2_commodities_all():
         cache_ttl_seconds=86400,
         commodities_all_handler_fn=reference_data_handlers.commodities_all_handler,
         get_commodities_by_category_fn=get_commodities_by_category,
-        logger=logger,
     )
 
 
@@ -2824,7 +2630,6 @@ def public_api_v2_prediction_markets():
         pm_search_markets_fn=pm_search_markets,
         pm_fetch_markets_fn=pm_fetch_markets,
         log_api_error_fn=log_api_error,
-        logger=logger,
     )
 
 
@@ -2862,7 +2667,6 @@ def public_api_v2_prediction_market_detail(market_id):
         get_prediction_market_handler_fn=prediction_markets_handlers.get_prediction_market_handler,
         pm_get_market_fn=pm_get_market,
         log_api_error_fn=log_api_error,
-        logger=logger,
     )
 
 
@@ -2880,9 +2684,6 @@ def public_api_v2_calendar_economic():
         cache_ttl_seconds=900,
         get_economic_calendar_handler_fn=reference_data_handlers.get_economic_calendar_handler,
         calendar_cache=CALENDAR_CACHE,
-        requests_module=requests,
-        time_module=time,
-        datetime_cls=datetime,
     )
 
 

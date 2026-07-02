@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pandas as pd
+import numpy as np
+
 import prediction_service
 
 
@@ -20,7 +23,7 @@ def live_ensemble_signal_components(
     *,
     create_dataset_fn,
     ensemble_predict_fn,
-    np_module,
+    np_module=np,
 ):
     df = create_dataset_fn(sanitized_ticker, period="1y")
     if df.empty or len(df) < 30:
@@ -54,7 +57,7 @@ def chart_prediction_points(
     sanitized_ticker,
     *,
     live_ensemble_signal_components_fn,
-    pd_module,
+    pd_module=pd,
 ):
     signal_parts = live_ensemble_signal_components_fn(sanitized_ticker)
     if signal_parts is None:

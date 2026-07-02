@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from flask import jsonify
+
 
 def list_deliverables_handler(
     *,
@@ -10,7 +12,7 @@ def list_deliverables_handler(
     database_url,
     list_deliverables_fn,
     get_current_user_id_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -32,7 +34,7 @@ def create_deliverable_handler(
     create_deliverable_fn,
     get_current_user_id_fn,
     deliverable_error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -58,7 +60,7 @@ def get_deliverable_handler(
     get_deliverable_detail_fn,
     get_current_user_id_fn,
     deliverable_error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -85,7 +87,7 @@ def patch_deliverable_handler(
     update_deliverable_fn,
     get_current_user_id_fn,
     deliverable_error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -112,7 +114,7 @@ def put_deliverable_assumptions_handler(
     replace_deliverable_assumptions_fn,
     get_current_user_id_fn,
     deliverable_error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -145,7 +147,7 @@ def post_deliverable_review_handler(
     add_deliverable_review_fn,
     get_current_user_id_fn,
     deliverable_error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -171,7 +173,7 @@ def post_deliverable_preflight_handler(
     create_deliverable_preflight_fn,
     get_current_user_id_fn,
     deliverable_error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -197,7 +199,7 @@ def get_deliverable_context_handler(
     build_deliverable_context_fn,
     get_current_user_id_fn,
     deliverable_error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -223,7 +225,7 @@ def get_deliverable_memos_handler(
     list_deliverable_memos_fn,
     get_current_user_id_fn,
     deliverable_error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -249,7 +251,7 @@ def post_deliverable_generate_handler(
     generate_deliverable_memo_fn,
     get_current_user_id_fn,
     deliverable_error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     if not deliverables_ready_fn():
         return not_configured_response_fn()
@@ -279,7 +281,7 @@ def download_deliverable_memo_handler(
     get_deliverable_memo_artifact_fn,
     get_current_user_id_fn,
     deliverable_error_cls,
-    jsonify_fn,
+    jsonify_fn=jsonify,
     bytes_io_cls,
     send_file_fn,
     docx_mime_type,

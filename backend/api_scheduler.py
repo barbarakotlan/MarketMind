@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import time
+
+import yfinance as yf
+import uuid
+from datetime import datetime
+import logging
+
 
 def check_alerts_for_user(
     user_id,
     *,
     load_notifications_fn,
     save_notifications_fn,
-    yf_module,
-    logger,
-    uuid_module,
-    datetime_cls,
+    yf_module=yf,
+    logger=logging.getLogger("marketmind_api"),
+    uuid_module=uuid,
+    datetime_cls=datetime,
 ):
     notifications_data = load_notifications_fn(user_id)
     if not notifications_data["active"]:
@@ -99,7 +106,7 @@ def check_alerts_for_user(
         logger.error("Failed to check all alert prices: %s", exc)
 
 
-def check_alerts(*, iter_user_ids_fn, check_alerts_for_user_fn, logger):
+def check_alerts(*, iter_user_ids_fn, check_alerts_for_user_fn, logger=logging.getLogger("marketmind_api")):
     logger.info("Running price alert check...")
     for user_id in iter_user_ids_fn():
         try:
@@ -108,7 +115,7 @@ def check_alerts(*, iter_user_ids_fn, check_alerts_for_user_fn, logger):
             logger.error("Alert check failed for user %s: %s", user_id, exc)
 
 
-def run_scheduler(*, schedule_module, check_alerts_fn, time_module):
+def run_scheduler(*, schedule_module, check_alerts_fn, time_module=time):
     schedule_module.every(1).minutes.do(check_alerts_fn)
     while True:
         schedule_module.run_pending()
