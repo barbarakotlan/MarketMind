@@ -19,6 +19,8 @@ MarketMind brings together market data, forecasting, evaluation, and portfolio s
 
 MarketMind is structured as a browser-based frontend backed by a single Flask service. The frontend lives in [`frontend/`](./frontend/) and is organized around page-level React components for dashboard, search, predictions, evaluation, fundamentals, paper trading, news, macro data, and related workflows. [`frontend/src/App.js`](./frontend/src/App.js) acts as the page switchboard, while [`frontend/src/config/api.js`](./frontend/src/config/api.js) centralizes backend endpoint construction so the UI uses a single API boundary.
 
+Each large page is a thin orchestrator that owns its data-fetching and state, and delegates presentation to focused subcomponents grouped in a per-page folder under [`frontend/src/components/`](./frontend/src/components/): `landing/`, `getting-started/`, `search/`, `fundamentals/`, `paper/`, `marketmind-ai/`, and `prediction-markets/` each hold the cards, panels, and formatters for their page. Cross-page building blocks live in `components/ui/` and `components/charts/`. Shared application concerns sit alongside the components: navigation and theme state in [`frontend/src/context/`](./frontend/src/context/) (`NavigationContext`, `DarkModeContext`), reusable data-fetching in [`frontend/src/hooks/`](./frontend/src/hooks/) (`useApiData`), static content in [`frontend/src/data/`](./frontend/src/data/), and API/auth configuration in [`frontend/src/config/`](./frontend/src/config/).
+
 Authentication is handled with Clerk on the frontend and verified on the backend. The frontend installs a fetch interceptor through [`frontend/src/config/authFetch.js`](./frontend/src/config/authFetch.js) and [`frontend/src/components/AuthFetchBridge.js`](./frontend/src/components/AuthFetchBridge.js). That layer normalizes backend URLs, adds bearer tokens for authenticated requests, and retries once on `401` responses with a refreshed token. On the backend, [`backend/api.py`](./backend/api.py) validates Clerk tokens, attaches the current user ID to the request context, and gates user-specific routes such as watchlists, paper trading, notifications, and prediction-market portfolios.
 
 The backend is centered on [`backend/api.py`](./backend/api.py), which combines route registration, auth enforcement, rate limiting, CORS, and security headers with orchestration of domain modules. Feature-specific logic is delegated to supporting modules such as [`backend/data_fetcher.py`](./backend/data_fetcher.py) for market data preparation, [`backend/prediction_service.py`](./backend/prediction_service.py) and [`backend/models.py`](./backend/models.py) for forecasting, [`backend/professional_evaluation.py`](./backend/professional_evaluation.py) for rolling backtests, and [`backend/prediction_markets_fetcher.py`](./backend/prediction_markets_fetcher.py) for prediction-market data.
@@ -86,7 +88,19 @@ MarketMind/
 |   |-- package.json
 |   |-- src/
 |   |   |-- App.js
-|   |   |-- components/
+|   |   |-- components/            # page components + per-page subfolders
+|   |   |   |-- landing/
+|   |   |   |-- getting-started/
+|   |   |   |-- search/
+|   |   |   |-- fundamentals/
+|   |   |   |-- paper/
+|   |   |   |-- marketmind-ai/
+|   |   |   |-- prediction-markets/
+|   |   |   |-- charts/            # shared chart components
+|   |   |   `-- ui/               # shared UI building blocks
+|   |   |-- context/              # NavigationContext, DarkModeContext
+|   |   |-- hooks/                # useApiData and other shared hooks
+|   |   |-- data/                 # static content
 |   |   |-- config/api.js
 |   |   `-- config/authFetch.js
 |   `-- public/
