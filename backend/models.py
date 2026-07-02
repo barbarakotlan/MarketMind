@@ -8,10 +8,104 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 from statsmodels.tsa.ar_model import AutoReg
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
 import prediction_service
+
+# torch is a heavy dependency. It (and the nn.Module subclasses that need it at
+# class-definition time) are loaded lazily via _torch() so that `import models`
+# — and therefore `import api` — does not boot torch. Only the LSTM/Transformer
+# train/predict paths trigger the import, on first use.
+_TORCH = None
+
+
+def _torch():
+    """Lazily import torch and build the nn.Module subclasses exactly once."""
+    global _TORCH
+    if _TORCH is not None:
+        return _TORCH
+
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader, TensorDataset
+
+    class LSTM(nn.Module):
+        '''LSTM model for time series forecasting'''
+        def __init__(self, input_size, hidden_size, layer_size, output_size):
+            super(LSTM, self).__init__()
+            self.hidden_size = hidden_size
+            self.layer_size = layer_size
+            self.lstm = nn.LSTM(input_size, hidden_size, layer_size, batch_first=True)
+            self.fc = nn.Linear(hidden_size, output_size)  # output X days at once
+
+        def forward(self, x, device):
+            batch_size = x.size(0)
+            h0 = torch.zeros(self.layer_size, batch_size, self.hidden_size).to(device)
+            c0 = torch.zeros(self.layer_size, batch_size, self.hidden_size).to(device)
+            out, _ = self.lstm(x, (h0, c0))
+            out = self.fc(out[:, -1, :])  # (batch, output_size)
+            return out
+
+    class PositionalEncoding(nn.Module):
+        '''Adds positional encoding so the Transformer knows timestep order'''
+        def __init__(self, d_model, dropout=0.1, max_len=500):
+            super(PositionalEncoding, self).__init__()
+            self.dropout = nn.Dropout(p=dropout)
+
+            pe = torch.zeros(max_len, d_model)
+            position = torch.arange(0, max_len).unsqueeze(1).float()
+            div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
+
+            pe[:, 0::2] = torch.sin(position * div_term)
+            pe[:, 1::2] = torch.cos(position * div_term)
+            pe = pe.unsqueeze(0)                            # (1, max_len, d_model)
+
+            self.register_buffer('pe', pe)
+
+        def forward(self, x):
+            x = x + self.pe[:, :x.size(1), :]
+            return self.dropout(x)
+
+    class TransformerModel(nn.Module):
+        '''Transformer model for time series forecasting'''
+        def __init__(self, input_size, d_model=64, nhead=4, num_layers=2, output_size=7, dropout=0.1):
+            super(TransformerModel, self).__init__()
+
+            # Project input features into d_model dimensions
+            self.input_projection = nn.Linear(input_size, d_model)
+
+            # Positional encoding (tells model the order of timesteps)
+            self.pos_encoder = PositionalEncoding(d_model, dropout)
+
+            # Transformer encoder (stacked self-attention + feedforward layers)
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=d_model,
+                nhead=nhead,
+                dim_feedforward=d_model * 4,
+                dropout=dropout,
+                batch_first=True       # (batch, seq, features)
+            )
+            self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+            # Final output layer → predict N days ahead
+            self.fc = nn.Linear(d_model, output_size)
+
+        def forward(self, x):
+            # x shape: (batch, seq_len, input_size)
+            x = self.input_projection(x)        # → (batch, seq_len, d_model)
+            x = self.pos_encoder(x)             # → add positional info
+            x = self.transformer_encoder(x)     # → self-attention across all timesteps
+            x = self.fc(x[:, -1, :])           # → take last timestep → (batch, output_size)
+            return x
+
+    _TORCH = {
+        "torch": torch,
+        "nn": nn,
+        "DataLoader": DataLoader,
+        "TensorDataset": TensorDataset,
+        "LSTM": LSTM,
+        "PositionalEncoding": PositionalEncoding,
+        "TransformerModel": TransformerModel,
+    }
+    return _TORCH
 
 # Try to import XGBoost, fallback if not available
 try:
@@ -143,26 +237,6 @@ def ensemble_predict(df, days_ahead=7, lookback=14, seq_len=30):
 def calculate_metrics(actual, predicted):
     return prediction_service.calculate_metrics(actual, predicted)
 
-# LSTM Class
-class LSTM(nn.Module):
-    '''
-    LSTM model for time series forecasting
-    '''
-    def __init__(self, input_size, hidden_size, layer_size, output_size):
-        super(LSTM, self).__init__()
-        self.hidden_size = hidden_size
-        self.layer_size = layer_size
-        self.lstm = nn.LSTM(input_size, hidden_size, layer_size, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)  # output X days at once
-
-    def forward(self, x, device):
-        batch_size = x.size(0)
-        h0 = torch.zeros(self.layer_size, batch_size, self.hidden_size).to(device)
-        c0 = torch.zeros(self.layer_size, batch_size, self.hidden_size).to(device)
-        out, _ = self.lstm(x, (h0, c0))
-        out = self.fc(out[:, -1, :])  # (batch, output_size)
-        return out
-
 # LSTM Helper
 def create_sequences(X, y, seq_len, forecast_horizon):
     """
@@ -185,6 +259,9 @@ def create_sequences(X, y, seq_len, forecast_horizon):
 # Train LSTM model
 def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_size=2, epochs=50, batch_size=32, lr=0.001):
     '''Train an LSTM model for stock price prediction'''
+    _t = _torch()
+    torch, nn, LSTM = _t["torch"], _t["nn"], _t["LSTM"]
+    DataLoader, TensorDataset = _t["DataLoader"], _t["TensorDataset"]
     # Prepare data
     X, y, _ = prepare_ml_data(df, lookback)
     y = y.reshape(-1, 1)
@@ -233,6 +310,7 @@ def lstm_train(df, lookback=14, seq_len=30, days_ahead=7, hidden_size=64, layer_
 def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30):
     '''Predict future stock prices using the trained LSTM model'''
     try:
+        torch = _torch()["torch"]
         model.eval()
 
         # Build features
@@ -260,68 +338,12 @@ def lstm_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30)
         print(f"LSTM error: {e}")
         return None
 
-# Transformer Class
-class TransformerModel(nn.Module):
-    '''
-    Transformer model for time series forecasting
-    '''
-    def __init__(self, input_size, d_model=64, nhead=4, num_layers=2, output_size=7, dropout=0.1):
-        super(TransformerModel, self).__init__()
-
-        # Project input features into d_model dimensions
-        self.input_projection = nn.Linear(input_size, d_model)
-
-        # Positional encoding (tells model the order of timesteps)
-        self.pos_encoder = PositionalEncoding(d_model, dropout)
-
-        # Transformer encoder (stacked self-attention + feedforward layers)
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=d_model * 4,
-            dropout=dropout,
-            batch_first=True       # (batch, seq, features)
-        )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-
-        # Final output layer → predict N days ahead
-        self.fc = nn.Linear(d_model, output_size)
-
-    def forward(self, x):
-        # x shape: (batch, seq_len, input_size)
-        x = self.input_projection(x)        # → (batch, seq_len, d_model)
-        x = self.pos_encoder(x)             # → add positional info
-        x = self.transformer_encoder(x)     # → self-attention across all timesteps
-        x = self.fc(x[:, -1, :])           # → take last timestep → (batch, output_size)
-        return x
-
-# Positional Encoding
-# Adds order information since Transformer has no built-in sense of sequence order
-class PositionalEncoding(nn.Module):
-    '''
-    Adds positional encoding to the input so the Transformer knows the order of timesteps
-    '''
-    def __init__(self, d_model, dropout=0.1, max_len=500):
-        super(PositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
-
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len).unsqueeze(1).float()
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
-
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)                            # (1, max_len, d_model)
-
-        self.register_buffer('pe', pe)
-
-    def forward(self, x):
-        x = x + self.pe[:, :x.size(1), :]
-        return self.dropout(x)
-
 # Train Transformer model
 def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhead=4, num_layers=2, epochs=50, batch_size=32, lr=0.001):
     '''Train a Transformer model for stock price prediction'''
+    _t = _torch()
+    torch, nn, TransformerModel = _t["torch"], _t["nn"], _t["TransformerModel"]
+    DataLoader, TensorDataset = _t["DataLoader"], _t["TensorDataset"]
    # Prepare data
     X, y, _ = prepare_ml_data(df, lookback)
     y = y.reshape(-1, 1)
@@ -374,6 +396,7 @@ def transformer_train(df, lookback=14, seq_len=30, days_ahead=7, d_model=64, nhe
 def transformer_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_len=30):
     '''Predict future stock prices using the trained Transformer model'''
     try:
+        torch = _torch()["torch"]
         model.eval()
 
         # Build features
