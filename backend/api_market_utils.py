@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import pandas as pd
+import logging
+import yfinance as yf
+import numpy as np
 
-def clean_value(val, *, pd_module, np_module):
+
+def clean_value(val, *, pd_module=pd, np_module=np):
     if val is None or pd_module.isna(val):
         return None
     if isinstance(val, (np_module.int64, np_module.int32, np_module.int16, np_module.int8)):
@@ -11,7 +16,7 @@ def clean_value(val, *, pd_module, np_module):
     return val
 
 
-def get_symbol_suggestions(query, *, alpha_vantage_api_key, requests_get, logger):
+def get_symbol_suggestions(query, *, alpha_vantage_api_key, requests_get, logger=logging.getLogger("marketmind_api")):
     if not alpha_vantage_api_key:
         logger.warning("Alpha Vantage key not configured. Cannot get suggestions.")
         return []
@@ -53,7 +58,7 @@ def obb_to_float(val):
         return None
 
 
-def fundamentals_from_yfinance(sym, *, yf_module, logger):
+def fundamentals_from_yfinance(sym, *, yf_module=yf, logger=logging.getLogger("marketmind_api")):
     try:
         info = yf_module.Ticker(sym).info
         if not info or info.get("quoteType") not in ("EQUITY", "ETF", "MUTUALFUND"):

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime
+
+import logging
+
 import json
 import os
 import re
 
 
-def normalize_persistence_mode(mode, *, logger):
+def normalize_persistence_mode(mode, *, logger=logging.getLogger("marketmind_api")):
     normalized = str(mode or "json").strip().lower()
     if normalized not in {"json", "dual", "postgres"}:
         logger.warning("Unknown PERSISTENCE_MODE '%s'; defaulting to json", normalized)
@@ -13,15 +17,15 @@ def normalize_persistence_mode(mode, *, logger):
     return normalized
 
 
-def current_persistence_mode(mode, *, logger):
+def current_persistence_mode(mode, *, logger=logging.getLogger("marketmind_api")):
     return normalize_persistence_mode(mode, logger=logger)
 
 
-def sql_persistence_enabled(mode, *, logger):
+def sql_persistence_enabled(mode, *, logger=logging.getLogger("marketmind_api")):
     return current_persistence_mode(mode, logger=logger) in {"dual", "postgres"}
 
 
-def json_mirror_enabled(mode, *, logger):
+def json_mirror_enabled(mode, *, logger=logging.getLogger("marketmind_api")):
     return current_persistence_mode(mode, logger=logger) == "dual"
 
 
@@ -30,7 +34,7 @@ def ensure_user_state_storage_ready(*, sql_enabled, ensure_database_ready_fn, da
         ensure_database_ready_fn(database_url)
 
 
-def init_history_db(*, get_db_fn, logger):
+def init_history_db(*, get_db_fn, logger=logging.getLogger("marketmind_api")):
     conn = None
     try:
         conn = get_db_fn()
@@ -76,7 +80,7 @@ def iter_user_ids(
     session_scope,
     database_url,
     list_app_user_ids_db_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     user_ids = set()
     if os.path.isdir(user_data_dir):
@@ -466,7 +470,7 @@ def save_watchlist(
     )
 
 
-def record_portfolio_snapshot_legacy(portfolio_data, user_id, *, get_db_fn, logger, datetime_cls):
+def record_portfolio_snapshot_legacy(portfolio_data, user_id, *, get_db_fn, logger=logging.getLogger("marketmind_api"), datetime_cls=datetime):
     total_value = portfolio_data["cash"]
     for _, pos in portfolio_data.get("positions", {}).items():
         total_value += pos["shares"] * pos["avg_cost"]

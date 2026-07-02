@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from flask import jsonify
+import yfinance as yf
+import uuid
+from datetime import datetime
+import re
+import logging
+
 
 def handle_notifications_handler(
     *,
@@ -7,10 +14,10 @@ def handle_notifications_handler(
     get_current_user_id_fn,
     load_notifications_fn,
     save_notifications_fn,
-    jsonify_fn,
-    yf_module,
-    uuid_module,
-    datetime_cls,
+    jsonify_fn=jsonify,
+    yf_module=yf,
+    uuid_module=uuid,
+    datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
     notifications = load_notifications_fn(user_id)
@@ -50,12 +57,12 @@ def create_smart_alert_handler(
     get_current_user_id_fn,
     load_notifications_fn,
     save_notifications_fn,
-    jsonify_fn,
-    yf_module,
-    uuid_module,
-    datetime_cls,
-    logger,
-    re_module,
+    jsonify_fn=jsonify,
+    yf_module=yf,
+    uuid_module=uuid,
+    datetime_cls=datetime,
+    logger=logging.getLogger("marketmind_api"),
+    re_module=re,
 ):
     try:
         user_id = get_current_user_id_fn()
@@ -166,7 +173,7 @@ def delete_notification_handler(
     get_current_user_id_fn,
     load_notifications_fn,
     save_notifications_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     user_id = get_current_user_id_fn()
     notifications = load_notifications_fn(user_id)
@@ -181,7 +188,7 @@ def get_triggered_notifications_handler(
     get_current_user_id_fn,
     load_notifications_fn,
     save_notifications_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     user_id = get_current_user_id_fn()
     notifications = load_notifications_fn(user_id)
@@ -211,7 +218,7 @@ def delete_triggered_notification_handler(
     get_current_user_id_fn,
     load_notifications_fn,
     save_notifications_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     user_id = get_current_user_id_fn()
     notifications = load_notifications_fn(user_id)

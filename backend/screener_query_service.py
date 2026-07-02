@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import yfinance as yf
+import logging
+
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -203,8 +206,8 @@ def _sanitize_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def scan(
     *,
     base_dir: str,
-    yf_module,
-    logger,
+    yf_module=yf,
+    logger=logging.getLogger("marketmind_api"),
     preset: str = "gainers",
     filters: Optional[Dict[str, Any]] = None,
     sort: Optional[str] = None,
@@ -269,7 +272,7 @@ def scan(
     }
 
 
-def movers_payload(*, base_dir: str, yf_module, logger, limit: int = 8) -> Dict[str, Any]:
+def movers_payload(*, base_dir: str, yf_module=yf, logger=logging.getLogger("marketmind_api"), limit: int = 8) -> Dict[str, Any]:
     gainers = scan(base_dir=base_dir, yf_module=yf_module, logger=logger, preset="gainers", limit=limit, offset=0)
     losers = scan(base_dir=base_dir, yf_module=yf_module, logger=logger, preset="losers", limit=limit, offset=0)
     active = scan(base_dir=base_dir, yf_module=yf_module, logger=logger, preset="active", limit=limit, offset=0)

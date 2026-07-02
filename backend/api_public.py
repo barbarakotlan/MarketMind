@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import hashlib
 import hmac
 import json
@@ -198,7 +200,7 @@ def build_public_cache_key(route_group: str, *, path_params: Dict[str, Any] | No
     return f"marketmind-public:{payload['route_group']}:{digest}"
 
 
-def get_public_cache(cache_url: str | None, *, logger) -> Any:
+def get_public_cache(cache_url: str | None, *, logger=logging.getLogger("marketmind_api")) -> Any:
     global _PUBLIC_CACHE_BACKEND, _PUBLIC_CACHE_BACKEND_KEY
     cache_key = str(cache_url or "").strip()
     if _PUBLIC_CACHE_BACKEND is not None and _PUBLIC_CACHE_BACKEND_KEY == cache_key:
@@ -292,7 +294,7 @@ def build_require_public_api_auth(
     authenticate_key_fn: Callable[[str | None], Dict[str, Any]],
     get_daily_quota_fn: Callable[[Dict[str, Any]], int],
     get_daily_usage_total_fn: Callable[[Dict[str, Any], date], int],
-    logger,
+    logger=logging.getLogger("marketmind_api"),
     error_response_fn: Callable[[int, str, str], Any],
 ):
     def wrapper(*args, **kwargs):
@@ -341,7 +343,7 @@ def finalize_public_response(
     database_url: str,
     increment_public_api_daily_usage_fn,
     touch_public_api_key_last_used_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     if not is_public_api_request(getattr(request, "path", "")):
         return response

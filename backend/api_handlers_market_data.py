@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import math
+
+from flask import jsonify
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import requests
+import logging
+
 import sentiment_service
 
 
-def get_watchlist_handler(*, get_current_user_id_fn, load_watchlist_fn, jsonify_fn):
+def get_watchlist_handler(*, get_current_user_id_fn, load_watchlist_fn, jsonify_fn=jsonify):
     return jsonify_fn(load_watchlist_fn(get_current_user_id_fn()))
 
 
@@ -13,7 +22,7 @@ def add_to_watchlist_handler(
     get_current_user_id_fn,
     load_watchlist_fn,
     save_watchlist_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     user_id = get_current_user_id_fn()
     current_watchlist = load_watchlist_fn(user_id)
@@ -30,7 +39,7 @@ def remove_from_watchlist_handler(
     get_current_user_id_fn,
     load_watchlist_fn,
     save_watchlist_fn,
-    jsonify_fn,
+    jsonify_fn=jsonify,
 ):
     user_id = get_current_user_id_fn()
     normalized_ticker = ticker.upper()
@@ -44,10 +53,10 @@ def get_stock_data_handler(
     *,
     request_obj,
     alpha_vantage_api_key,
-    yf_module,
-    requests_module,
-    jsonify_fn,
-    logger,
+    yf_module=yf,
+    requests_module=requests,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
     clean_value_fn,
     resolve_asset_fn,
     akshare_service_module,
@@ -189,9 +198,9 @@ def get_chart_data_handler(
     ticker,
     *,
     request_obj,
-    yf_module,
-    jsonify_fn,
-    logger,
+    yf_module=yf,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
     clean_value_fn,
     chart_prediction_points_fn,
     resolve_asset_fn,
@@ -246,7 +255,7 @@ def get_chart_data_handler(
         return jsonify_fn({"error": f"An error occurred while fetching chart data: {str(exc)}"}), 500
 
 
-def get_query_news_handler(*, request_obj, news_api_key, requests_module, jsonify_fn):
+def get_query_news_handler(*, request_obj, news_api_key, requests_module=requests, jsonify_fn=jsonify):
     query = request_obj.args.get("q")
     if not query:
         return jsonify_fn({"error": "A search query ('q') is required."}), 400
@@ -279,7 +288,7 @@ def get_query_news_handler(*, request_obj, news_api_key, requests_module, jsonif
         return jsonify_fn({"error": f"An error occurred while fetching news: {str(exc)}"}), 500
 
 
-def get_options_stock_price_handler(ticker, *, yf_module, jsonify_fn, clean_value_fn):
+def get_options_stock_price_handler(ticker, *, yf_module=yf, jsonify_fn=jsonify, clean_value_fn):
     try:
         sanitized_ticker = ticker.split(":")[0]
         stock = yf_module.Ticker(sanitized_ticker)
@@ -292,7 +301,7 @@ def get_options_stock_price_handler(ticker, *, yf_module, jsonify_fn, clean_valu
         return jsonify_fn({"error": str(exc)}), 500
 
 
-def get_option_expirations_handler(ticker, *, yf_module, jsonify_fn):
+def get_option_expirations_handler(ticker, *, yf_module=yf, jsonify_fn=jsonify):
     try:
         sanitized_ticker = ticker.split(":")[0]
         stock = yf_module.Ticker(sanitized_ticker)
@@ -304,7 +313,7 @@ def get_option_expirations_handler(ticker, *, yf_module, jsonify_fn):
         return jsonify_fn({"error": str(exc)}), 500
 
 
-def get_option_chain_handler(ticker, *, request_obj, yf_module, jsonify_fn, math_module, logger):
+def get_option_chain_handler(ticker, *, request_obj, yf_module=yf, jsonify_fn=jsonify, math_module=math, logger=logging.getLogger("marketmind_api")):
     try:
         option_date = request_obj.args.get("date")
         stock = yf_module.Ticker(ticker)
@@ -352,7 +361,7 @@ def get_option_chain_handler(ticker, *, request_obj, yf_module, jsonify_fn, math
         return jsonify_fn({"error": str(exc)}), 500
 
 
-def get_option_suggestion_handler(ticker, *, generate_suggestion_fn, jsonify_fn, logger):
+def get_option_suggestion_handler(ticker, *, generate_suggestion_fn, jsonify_fn=jsonify, logger=logging.getLogger("marketmind_api")):
     try:
         sanitized_ticker = ticker.split(":")[0].upper()
         suggestion = generate_suggestion_fn(sanitized_ticker)
@@ -380,11 +389,11 @@ def predict_stock_handler(
     lstm_predict_fn=None,
     transformer_train_fn=None,
     transformer_predict_fn=None,
-    yf_module,
-    jsonify_fn,
+    yf_module=yf,
+    jsonify_fn=jsonify,
     log_api_error_fn,
-    logger,
-    pd_module,
+    logger=logging.getLogger("marketmind_api"),
+    pd_module=pd,
 ):
     try:
         sanitized_ticker = ticker.split(":")[0]
@@ -465,12 +474,12 @@ def predict_ensemble_handler(
     *,
     request_obj,
     future_prediction_dates_fn,
-    yf_module,
+    yf_module=yf,
     live_ensemble_signal_components_fn,
-    jsonify_fn,
-    logger,
-    pd_module,
-    np_module,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
+    pd_module=pd,
+    np_module=np,
 ):
     try:
         sanitized_ticker = ticker.split(":")[0]
@@ -525,8 +534,8 @@ def evaluate_models_handler(
     *,
     request_obj,
     rolling_window_backtest_fn,
-    jsonify_fn,
-    logger,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
 ):
     try:
         sanitized_ticker = ticker.split(":")[0]
@@ -562,8 +571,8 @@ def search_symbols_handler(
     request_obj,
     get_symbol_suggestions_fn,
     search_international_symbols_fn,
-    jsonify_fn,
-    logger,
+    jsonify_fn=jsonify,
+    logger=logging.getLogger("marketmind_api"),
 ):
     query = request_obj.args.get("q")
     if not query:

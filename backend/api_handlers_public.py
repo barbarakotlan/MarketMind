@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import math
+import time
+import requests
+import logging
+
 from types import SimpleNamespace
 from typing import Any
 
@@ -110,9 +119,9 @@ def stock_handler(
     cache_ttl_seconds: int,
     get_stock_data_handler_fn,
     alpha_vantage_api_key,
-    yf_module,
-    requests_module,
-    logger,
+    yf_module=yf,
+    requests_module=requests,
+    logger=logging.getLogger("marketmind_api"),
     clean_value_fn,
     resolve_asset_fn,
     akshare_service_module,
@@ -168,9 +177,9 @@ def stock_handler_v2(
     cache_ttl_seconds: int,
     get_stock_data_handler_fn,
     alpha_vantage_api_key,
-    yf_module,
-    requests_module,
-    logger,
+    yf_module=yf,
+    requests_module=requests,
+    logger=logging.getLogger("marketmind_api"),
     clean_value_fn,
     resolve_asset_fn,
     akshare_service_module,
@@ -231,8 +240,8 @@ def chart_handler(
     cache_key: str,
     cache_ttl_seconds: int,
     get_chart_data_handler_fn,
-    yf_module,
-    logger,
+    yf_module=yf,
+    logger=logging.getLogger("marketmind_api"),
     clean_value_fn,
     resolve_asset_fn,
     akshare_service_module,
@@ -282,8 +291,8 @@ def chart_handler_v2(
     cache_key: str,
     cache_ttl_seconds: int,
     get_chart_data_handler_fn,
-    yf_module,
-    logger,
+    yf_module=yf,
+    logger=logging.getLogger("marketmind_api"),
     clean_value_fn,
     resolve_asset_fn,
     akshare_service_module,
@@ -338,7 +347,7 @@ def news_handler(
     get_query_news_handler_fn,
     get_general_news_fn,
     news_api_key,
-    requests_module,
+    requests_module=requests,
 ):
     def producer():
         query = str(request_obj.args.get("q", "")).strip()
@@ -383,7 +392,7 @@ def search_symbols_handler(
     search_symbols_handler_fn,
     get_symbol_suggestions_fn,
     search_international_symbols_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         query = str(request_obj.args.get("q", "")).strip()
@@ -419,7 +428,7 @@ def search_symbols_handler_v2(
     search_symbols_handler_fn,
     get_symbol_suggestions_fn,
     search_international_symbols_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         query = str(request_obj.args.get("q", "")).strip()
@@ -457,11 +466,11 @@ def ensemble_prediction_handler(
     cache_ttl_seconds: int,
     predict_ensemble_handler_fn,
     future_prediction_dates_fn,
-    yf_module,
+    yf_module=yf,
     live_ensemble_signal_components_fn,
-    logger,
-    pd_module,
-    np_module,
+    logger=logging.getLogger("marketmind_api"),
+    pd_module=pd,
+    np_module=np,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -524,7 +533,7 @@ def evaluation_summary_handler(
     cache_ttl_seconds: int,
     evaluate_models_handler_fn,
     rolling_window_backtest_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         safe_request = _public_request_subset(request_obj, allowed_args=("test_days", "fast_mode"))
@@ -590,8 +599,8 @@ def screener_presets_public_handler(
     cache_ttl_seconds: int,
     get_screener_presets_handler_fn,
     base_dir,
-    yf_module,
-    logger,
+    yf_module=yf,
+    logger=logging.getLogger("marketmind_api"),
     screener_query_service_module,
 ):
     def producer():
@@ -626,8 +635,8 @@ def screener_scan_public_handler(
     cache_ttl_seconds: int,
     get_screener_scan_handler_fn,
     base_dir,
-    yf_module,
-    logger,
+    yf_module=yf,
+    logger=logging.getLogger("marketmind_api"),
     screener_query_service_module,
 ):
     def producer():
@@ -664,8 +673,8 @@ def fundamentals_handler(
     cache_ttl_seconds: int,
     get_fundamentals_handler_fn,
     alpha_vantage_api_key,
-    requests_module,
-    logger,
+    requests_module=requests,
+    logger=logging.getLogger("marketmind_api"),
     clean_value_fn,
     fundamentals_from_yfinance_fn,
     resolve_asset_fn,
@@ -713,8 +722,8 @@ def fundamentals_handler_v2(
     cache_ttl_seconds: int,
     get_fundamentals_handler_fn,
     alpha_vantage_api_key,
-    requests_module,
-    logger,
+    requests_module=requests,
+    logger=logging.getLogger("marketmind_api"),
     clean_value_fn,
     fundamentals_from_yfinance_fn,
     resolve_asset_fn,
@@ -761,10 +770,10 @@ def macro_overview_handler(
     get_macro_overview_handler_fn,
     openbb_available,
     obb_module,
-    logger,
-    yf_module,
+    logger=logging.getLogger("marketmind_api"),
+    yf_module=yf,
     macro_indicators,
-    requests_module,
+    requests_module=requests,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -814,10 +823,10 @@ def macro_overview_handler_v2(
     get_macro_overview_handler_fn,
     openbb_available,
     obb_module,
-    logger,
-    yf_module,
+    logger=logging.getLogger("marketmind_api"),
+    yf_module=yf,
     macro_indicators,
-    requests_module,
+    requests_module=requests,
     akshare_service_module,
 ):
     def producer():
@@ -892,7 +901,7 @@ def options_stock_price_handler(
     cache_key: str,
     cache_ttl_seconds: int,
     get_options_stock_price_handler_fn,
-    yf_module,
+    yf_module=yf,
     clean_value_fn,
 ):
     def producer():
@@ -923,7 +932,7 @@ def option_expirations_handler(
     cache_key: str,
     cache_ttl_seconds: int,
     get_option_expirations_handler_fn,
-    yf_module,
+    yf_module=yf,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -955,9 +964,9 @@ def option_chain_handler(
     cache_key: str,
     cache_ttl_seconds: int,
     get_option_chain_handler_fn,
-    yf_module,
-    math_module,
-    logger,
+    yf_module=yf,
+    math_module=math,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -999,7 +1008,7 @@ def option_suggestion_handler(
     cache_ttl_seconds: int,
     get_option_suggestion_handler_fn,
     generate_suggestion_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1032,7 +1041,7 @@ def forex_convert_public_handler(
     cache_ttl_seconds: int,
     forex_convert_handler_fn,
     get_exchange_rate_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1064,7 +1073,7 @@ def forex_currencies_public_handler(
     cache_ttl_seconds: int,
     forex_currencies_handler_fn,
     get_currency_list_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1094,7 +1103,7 @@ def crypto_convert_public_handler(
     cache_ttl_seconds: int,
     crypto_convert_handler_fn,
     get_crypto_exchange_rate_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1126,7 +1135,7 @@ def crypto_list_public_handler(
     cache_ttl_seconds: int,
     crypto_list_handler_fn,
     get_crypto_list_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1155,7 +1164,7 @@ def crypto_currencies_public_handler(
     cache_ttl_seconds: int,
     crypto_target_currencies_handler_fn,
     get_target_currencies_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1186,7 +1195,7 @@ def commodity_price_public_handler(
     cache_ttl_seconds: int,
     commodity_price_handler_fn,
     get_commodity_price_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1219,7 +1228,7 @@ def commodities_list_public_handler(
     cache_ttl_seconds: int,
     commodities_list_handler_fn,
     get_commodity_list_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1248,7 +1257,7 @@ def commodities_all_public_handler(
     cache_ttl_seconds: int,
     commodities_all_handler_fn,
     get_commodities_by_category_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1280,7 +1289,7 @@ def prediction_markets_list_public_handler(
     pm_search_markets_fn,
     pm_fetch_markets_fn,
     log_api_error_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1344,7 +1353,7 @@ def prediction_market_detail_public_handler(
     get_prediction_market_handler_fn,
     pm_get_market_fn,
     log_api_error_fn,
-    logger,
+    logger=logging.getLogger("marketmind_api"),
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
@@ -1378,9 +1387,9 @@ def economic_calendar_public_handler(
     cache_ttl_seconds: int,
     get_economic_calendar_handler_fn,
     calendar_cache,
-    requests_module,
-    time_module,
-    datetime_cls,
+    requests_module=requests,
+    time_module=time,
+    datetime_cls=datetime,
 ):
     def producer():
         raw_payload, status_code = unwrap_handler_result(
