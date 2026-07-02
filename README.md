@@ -21,7 +21,7 @@ MarketMind is structured as a browser-based frontend backed by a single Flask se
 
 Authentication is handled with Clerk on the frontend and verified on the backend. The frontend installs a fetch interceptor through [`frontend/src/config/authFetch.js`](./frontend/src/config/authFetch.js) and [`frontend/src/components/AuthFetchBridge.js`](./frontend/src/components/AuthFetchBridge.js). That layer normalizes backend URLs, adds bearer tokens for authenticated requests, and retries once on `401` responses with a refreshed token. On the backend, [`backend/api.py`](./backend/api.py) validates Clerk tokens, attaches the current user ID to the request context, and gates user-specific routes such as watchlists, paper trading, notifications, and prediction-market portfolios.
 
-The backend is centered on [`backend/api.py`](./backend/api.py), which combines route registration, auth enforcement, rate limiting, CORS, and security headers with orchestration of domain modules. Feature-specific logic is delegated to supporting modules such as [`backend/data_fetcher.py`](./backend/data_fetcher.py) for market data preparation, [`backend/ensemble_model.py`](./backend/ensemble_model.py) and [`backend/model.py`](./backend/model.py) for forecasting, [`backend/professional_evaluation.py`](./backend/professional_evaluation.py) for rolling backtests, and [`backend/prediction_markets_fetcher.py`](./backend/prediction_markets_fetcher.py) for prediction-market data.
+The backend is centered on [`backend/api.py`](./backend/api.py), which combines route registration, auth enforcement, rate limiting, CORS, and security headers with orchestration of domain modules. Feature-specific logic is delegated to supporting modules such as [`backend/data_fetcher.py`](./backend/data_fetcher.py) for market data preparation, [`backend/prediction_service.py`](./backend/prediction_service.py) and [`backend/models.py`](./backend/models.py) for forecasting, [`backend/professional_evaluation.py`](./backend/professional_evaluation.py) for rolling backtests, and [`backend/prediction_markets_fetcher.py`](./backend/prediction_markets_fetcher.py) for prediction-market data.
 
 At runtime, the Flask service sits between the frontend and several external providers. Market and historical pricing data primarily come from yfinance, with Alpha Vantage used for selected data workflows and fallback behavior. News retrieval uses Finnhub, and some fundamentals, filings, screener, and macro functionality can use optional OpenBB integrations where available. This makes the backend the single integration layer for third-party services, rather than having the frontend call providers directly.
 
@@ -40,7 +40,7 @@ The high-level request path looks like this:
 +--------------------+                          +-------------------------+
 | Clerk session      |                          | Domain modules          |
 | token retrieval    |                          | data_fetcher.py         |
-+--------------------+                          | ensemble_model.py       |
++--------------------+                          | prediction_service.py   |
           |                                     | professional_evaluation |
           | Bearer token via                    | prediction_markets_*    |
           | authFetch interceptor               | prediction_markets_*    |
@@ -146,7 +146,7 @@ If you are new to the repository, the fastest way to get oriented is to follow o
 - Review [`frontend/src/config/api.js`](./frontend/src/config/api.js) to understand how the frontend addresses backend routes.
 - Review [`frontend/src/config/authFetch.js`](./frontend/src/config/authFetch.js) and [`frontend/src/components/AuthFetchBridge.js`](./frontend/src/components/AuthFetchBridge.js) to understand how authenticated requests are sent.
 - Use [`backend/api.py`](./backend/api.py) as the backend entrypoint for most feature work, since many routes and orchestration paths are defined there.
-- For prediction and evaluation logic, read [`backend/professional_evaluation.py`](./backend/professional_evaluation.py), [`backend/ensemble_model.py`](./backend/ensemble_model.py), and [`backend/model.py`](./backend/model.py).
+- For prediction and evaluation logic, read [`backend/professional_evaluation.py`](./backend/professional_evaluation.py), [`backend/prediction_service.py`](./backend/prediction_service.py), and [`backend/models.py`](./backend/models.py).
 
 Common development workflow:
 
@@ -193,7 +193,6 @@ Keep local secrets out of version control and review provider-specific setup bef
 - [Monthly user journey simulation](./docs/operations/MONTHLY_USER_JOURNEY_SIMULATION.md)
 - [Production deployment checklist](./docs/operations/PRODUCTION_DEPLOYMENT_CHECKLIST.md)
 - [Production roadmap](./docs/product/PRODUCTION_ROADMAP.md)
-- [Monetization brainstorm](./docs/product/MONETIZATION_BRAINSTORM.md)
 - [Code of conduct](./CODE_OF_CONDUCT.md)
 - [License](./LICENSE)
 

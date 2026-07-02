@@ -2,7 +2,7 @@
 
 ## 1. Authentication (Clerk)
 
-**Current state**: No auth — API is open to anyone.
+**Current state**: Implemented. Clerk authentication is live — frontend sign-in via `@clerk/clerk-react` and backend JWT/JWKS verification in `api_auth.py`, with user-scoped routes. The notes below record the original plan.
 
 **Plan**: Use [Clerk](https://clerk.com) for authentication (OAuth with Google/GitHub, email/password, etc.).
 
