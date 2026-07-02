@@ -331,7 +331,7 @@ class PublicApiV2Tests(unittest.TestCase):
             [
                 {"date": "2026-03-28 00:00:00", "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 10},
                 {"date": "2026-03-29 00:00:00", "open": 1.5, "high": 2.1, "low": 1.0, "close": 1.8, "volume": 12},
-                {"date": f"2026-03-30 00:00:00", "open": 1.8, "high": 2.4, "low": 1.6, "close": 2.2 if base == 'AAPL' else 2.0, "volume": 15},
+                {"date": "2026-03-30 00:00:00", "open": 1.8, "high": 2.4, "low": 1.6, "close": 2.2 if base == 'AAPL' else 2.0, "volume": 15},
             ]
         )
 

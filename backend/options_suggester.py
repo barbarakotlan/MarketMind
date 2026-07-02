@@ -1,10 +1,8 @@
 import yfinance as yf
-import pandas as pd
-import numpy as np
 import requests # Import for NewsAPI
 import os # Import for API Key
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # --- MODIFIED IMPORT ---
 # We now import from our new, dedicated model

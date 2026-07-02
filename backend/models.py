@@ -1,13 +1,7 @@
 import warnings
 warnings.filterwarnings('ignore')
-import yfinance as yf
-import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
-from statsmodels.tsa.ar_model import AutoReg
 import prediction_service
 
 # torch is a heavy dependency. It (and the nn.Module subclasses that need it at
@@ -109,7 +103,7 @@ def _torch():
 
 # Try to import XGBoost, fallback if not available
 try:
-    import xgboost as xgb
+    import xgboost as xgb  # noqa: F401  (availability probe; consolidated in B10)
     XGBOOST_AVAILABLE = True
 except ImportError:
     XGBOOST_AVAILABLE = False

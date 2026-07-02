@@ -1,12 +1,11 @@
 import yfinance as yf
 import pandas as pd
-import numpy as np
 import requests
 import os
 import math
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from sklearn.ensemble import RandomForestClassifier
-from datetime import datetime, timedelta
+from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -142,7 +141,7 @@ def get_technical_signal(hist_df):
         if score > 0.5: signal['direction'] = 'Buy'
         if score < -0.5: signal['direction'] = 'Sell'
         return signal
-    except Exception as e:
+    except Exception:
         return {'direction': 'Neutral'}
 
 def get_sentiment_signal(ticker):
@@ -163,7 +162,7 @@ def get_sentiment_signal(ticker):
         
         direction = 'Buy' if avg_score > 0.15 else ('Sell' if avg_score < -0.15 else 'Neutral')
         return {'direction': direction, 'score': round(avg_score, 3)}
-    except Exception as e:
+    except Exception:
         return {'direction': 'Neutral', 'score': 0}
 
 
@@ -186,8 +185,8 @@ def analyze_signals(ti, sentiment, ml):
     if buy_score == 2: return {'direction': 'Buy', 'confidence': 'Medium', 'reason': f"Majority 'Buy' signal. (ML: {ml['direction']}, Sentiment: {sentiment['direction']}, TI: {ti['direction']})"}
     if sell_score == 2: return {'direction': 'Sell', 'confidence': 'Medium', 'reason': f"Majority 'Sell' signal. (ML: {ml['direction']}, Sentiment: {sentiment['direction']}, TI: {ti['direction']})"}
     
-    if buy_score == 1: return {'direction': 'Buy', 'confidence': 'Low', 'reason': f"Weak 'Buy' signal. Check macro environment before trading."}
-    if sell_score == 1: return {'direction': 'Sell', 'confidence': 'Low', 'reason': f"Weak 'Sell' signal. Check macro environment before trading."}
+    if buy_score == 1: return {'direction': 'Buy', 'confidence': 'Low', 'reason': "Weak 'Buy' signal. Check macro environment before trading."}
+    if sell_score == 1: return {'direction': 'Sell', 'confidence': 'Low', 'reason': "Weak 'Sell' signal. Check macro environment before trading."}
 
     return {'direction': 'Hold', 'confidence': 'Low', 'reason': "All signals are currently neutral. Wait for a better setup."}
 

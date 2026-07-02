@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from threading import RLock
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict
 
 from flask import g, request
 

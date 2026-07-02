@@ -79,7 +79,7 @@ def check_hardcoded_secrets():
                                     })
                                     print(f"  ⚠️  {filepath}:{i}")
                                     print(f"     {line.strip()[:80]}")
-                except Exception as e:
+                except Exception:
                     pass
     
     return found_issues

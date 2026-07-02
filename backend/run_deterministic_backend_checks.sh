@@ -10,6 +10,13 @@ export DATABASE_URL="${DATABASE_URL:-}"
 export PERSISTENCE_MODE="${PERSISTENCE_MODE:-json}"
 export PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX:-/tmp/marketmind_pycache}"
 
+# Lint the backend (pyflakes rules via ruff; config in pyproject.toml).
+if command -v ruff >/dev/null 2>&1; then
+  ruff check backend/
+else
+  "$PYTHON_BIN" -m ruff check backend/
+fi
+
 "$PYTHON_BIN" -m py_compile \
   backend/api.py \
   backend/user_journey_state.py \

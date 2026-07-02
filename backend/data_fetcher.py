@@ -2,11 +2,8 @@
 Data fetcher with Alpha Vantage (primary) and yfinance (fallback)
 """
 import pandas as pd
-import numpy as np
 import requests
 import yfinance as yf
-from datetime import datetime, timedelta
-import time
 
 from config import ALPHA_VANTAGE_API_KEY
 
@@ -42,7 +39,7 @@ def fetch_from_alpha_vantage(ticker, outputsize='full'):
     For adjusted prices, we fall back to yfinance which auto-adjusts
     """
     try:
-        url = f'https://www.alphavantage.co/query'
+        url = 'https://www.alphavantage.co/query'
         params = {
             'function': 'TIME_SERIES_DAILY',
             'symbol': ticker,
@@ -148,15 +145,15 @@ def get_stock_data_with_fallback(ticker, min_days=300):
     df = fetch_from_yfinance(ticker, period='2y')
     
     if df is not None and len(df) >= min_days:
-        print(f"✓ Using yfinance data (adjusted prices)")
+        print("✓ Using yfinance data (adjusted prices)")
         return df
     
     # Fallback to Alpha Vantage for more history
-    print(f"Trying Alpha Vantage for more historical data...")
+    print("Trying Alpha Vantage for more historical data...")
     df = fetch_from_alpha_vantage(ticker, outputsize='full')
     
     if df is not None and len(df) >= min_days:
-        print(f"⚠️  Using Alpha Vantage data (unadjusted - may affect accuracy)")
+        print("⚠️  Using Alpha Vantage data (unadjusted - may affect accuracy)")
         return df
     
     return None

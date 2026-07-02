@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """Test database integration and API endpoints"""
 
-import sys
 import requests
-import json
-import time
 
 # Test API endpoints
 base_url = 'http://localhost:5001'
