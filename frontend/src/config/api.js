@@ -35,36 +35,6 @@ const withOptionalMarket = (params = {}, market) => (
         : params
 );
 
-const upgradeSuggestion = 'Upgrade to Pro to unlock higher limits.';
-
-const isSubscriptionLimitPayload = (payload) => (
-    payload && payload.code === 'subscription_limit_reached'
-);
-
-const buildSubscriptionLimitMessage = (payload) => {
-    const baseMessage = String(payload?.error || 'Free limit reached.').trim();
-    if (baseMessage.toLowerCase().includes('upgrade to pro')) {
-        return baseMessage;
-    }
-    return `${baseMessage} ${upgradeSuggestion}`;
-};
-
-const dispatchSubscriptionLimitNotice = (payload) => {
-    if (typeof window === 'undefined') {
-        return;
-    }
-
-    window.dispatchEvent(new CustomEvent('marketmind:subscription-limit', {
-        detail: {
-            message: buildSubscriptionLimitMessage(payload),
-            code: payload.code,
-            plan: payload.plan,
-            limitKey: payload.limitKey,
-            limit: payload.limit,
-        },
-    }));
-};
-
 /**
  * API Endpoints Configuration
  * All API endpoints are defined here for consistency
@@ -73,10 +43,6 @@ export const API_ENDPOINTS = {
     // Authentication
     AUTH_ME: `${API_BASE_URL}/auth/me`,
 
-    // Checkout
-    CHECKOUT_CREATE_SUBSCRIPTION: `${API_BASE_URL}/checkout/create-subscription`,
-    CHECKOUT_CANCEL_SUBSCRIPTION: `${API_BASE_URL}/checkout/cancel-subscription`,
-    CHECKOUT_PLAN_STATUS: `${API_BASE_URL}/checkout/plan-status`,
     // Stock & Market Data
     STOCK: (ticker, market = 'us') =>
         buildApiUrl(`/stock/${encodeURIComponent(ticker)}`, withOptionalMarket({}, market)),
@@ -215,21 +181,12 @@ export const apiRequest = async (url, options = {}) => {
         
         if (!response.ok) {
             const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-            const resolvedMessage = isSubscriptionLimitPayload(error)
-                ? buildSubscriptionLimitMessage(error)
-                : (error.error || `HTTP ${response.status}: ${response.statusText}`);
+            const resolvedMessage = error.error || `HTTP ${response.status}: ${response.statusText}`;
 
             const apiError = new Error(resolvedMessage);
             apiError.status = response.status;
             apiError.code = error.code;
-            apiError.plan = error.plan;
-            apiError.limitKey = error.limitKey;
-            apiError.limit = error.limit;
             apiError.rawMessage = error.error || resolvedMessage;
-
-            if (isSubscriptionLimitPayload(error)) {
-                dispatchSubscriptionLimitNotice(error);
-            }
 
             throw apiError;
         }

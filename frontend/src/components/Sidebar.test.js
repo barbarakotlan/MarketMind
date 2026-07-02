@@ -17,7 +17,6 @@ jest.mock('../config/api', () => ({
     API_ENDPOINTS: {
         MARKETMIND_AI_CHATS: '/marketmind-ai/chats',
         MARKETMIND_AI_CHAT_DELETE: jest.fn((chatId) => `/marketmind-ai/chats/${chatId}`),
-        CHECKOUT_PLAN_STATUS: '/checkout/plan-status',
         NOTIFICATIONS_TRIGGERED: jest.fn((all = false) =>
             all ? '/notifications/triggered?all=true' : '/notifications/triggered'
         ),
@@ -31,10 +30,7 @@ describe('Sidebar alert badge polling', () => {
             all ? '/notifications/triggered?all=true' : '/notifications/triggered'
         );
         API_ENDPOINTS.MARKETMIND_AI_CHAT_DELETE.mockImplementation((chatId) => `/marketmind-ai/chats/${chatId}`);
-        apiRequest.mockImplementation((url) => {
-            if (url === '/checkout/plan-status') {
-                return Promise.resolve({ plan: 'free' });
-            }
+        apiRequest.mockImplementation(() => {
             return Promise.resolve([]);
         });
     });
@@ -87,9 +83,6 @@ describe('Sidebar alert badge polling', () => {
         apiRequest.mockImplementation((url, options = {}) => {
             if (url === '/notifications/triggered?all=true') {
                 return Promise.resolve([]);
-            }
-            if (url === '/checkout/plan-status') {
-                return Promise.resolve({ plan: 'free' });
             }
             if (url === '/marketmind-ai/chats' && !options.method) {
                 return Promise.resolve(chats);

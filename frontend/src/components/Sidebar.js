@@ -3,7 +3,7 @@ import { UserButton } from '@clerk/clerk-react';
 import { useDarkMode } from '../context/DarkModeContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 import {
-    LayoutDashboard, Crown, Search, Star, Briefcase, Building2,
+    LayoutDashboard, Search, Star, Briefcase, Building2,
     TrendingUp, Target, BarChart3, DollarSign, Bitcoin,
     Layers, Newspaper, Bell, BookOpen, Sun, Moon,
     ChevronLeft, ChevronRight, Boxes, Calendar, SlidersHorizontal, Globe, Bot, Trash2
@@ -58,7 +58,6 @@ const NAV_GROUPS = [
         label: 'Learn',
         items: [
             { page: 'gettingStarted', icon: BookOpen, label: 'Learn' },
-            {page: 'plan', icon: Crown, label: 'Upgrade Plan' },
         ],
     },
 ];
@@ -66,7 +65,6 @@ const NAV_GROUPS = [
 const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) => {
     const { isDarkMode, toggleDarkMode } = useDarkMode();
     const [newAlertCount, setNewAlertCount] = useState(0);
-    const [plan, setPlan] = useState(null);
     const [recentAiChats, setRecentAiChats] = useState([]);
     const [activeAiChatId, setActiveAiChatId] = useState(null);
 
@@ -91,11 +89,6 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
         const interval = setInterval(checkAlerts, 15000);
         return () => clearInterval(interval);
     }, []);
-    useEffect(() => {
-    apiRequest(API_ENDPOINTS.CHECKOUT_PLAN_STATUS)
-        .then(data => setPlan(data.plan))
-        .catch(() => {});
-}, []);
 
     useEffect(() => {
         loadRecentAiChats();
@@ -271,16 +264,6 @@ const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) =
             <div className="flex-shrink-0 border-t border-mm-border p-2">
                 <div className={`w-full flex items-center ${isCollapsed ? 'justify-center gap-2' : 'justify-between px-1'}`}>
                     <UserButton afterSignOutUrl="/" />
-                  
-{plan && (
-    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-        plan === 'pro' 
-            ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' 
-            : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-    }`}>
-        {plan === 'pro' ? '⚡ Pro' : 'Free'}
-    </span>
-)}
                     <button
                         onClick={toggleDarkMode}
                         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-mm-text-secondary transition-colors duration-150 hover:bg-mm-surface-subtle hover:text-mm-text-primary"
