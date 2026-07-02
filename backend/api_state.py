@@ -164,6 +164,51 @@ def save_prediction_portfolio_json(portfolio, user_id=None, *, get_prediction_po
     save_json_fn(get_prediction_portfolio_file_fn(user_id), portfolio)
 
 
+# --- Shared PERSISTENCE_MODE (json/dual/postgres) dispatch ---------------------
+# Every user-state domain (portfolio, prediction_portfolio, notifications,
+# watchlist) loads/saves with the identical mode logic. These two helpers hold
+# that logic once; the per-domain functions below are thin bindings that keep
+# their existing public signatures so callers (api.py) are unaffected.
+
+def _dispatch_load(
+    user_id,
+    *,
+    sql_enabled,
+    ensure_user_state_storage_ready_fn,
+    session_scope,
+    database_url,
+    load_db_fn,
+    load_json_fn,
+):
+    if user_id and sql_enabled:
+        ensure_user_state_storage_ready_fn()
+        with session_scope(database_url) as session:
+            return load_db_fn(session, user_id)
+    return load_json_fn(user_id)
+
+
+def _dispatch_save(
+    payload,
+    user_id,
+    *,
+    sql_enabled,
+    ensure_user_state_storage_ready_fn,
+    session_scope,
+    database_url,
+    save_db_fn,
+    json_mirror_enabled,
+    save_json_fn,
+):
+    if user_id and sql_enabled:
+        ensure_user_state_storage_ready_fn()
+        with session_scope(database_url) as session:
+            save_db_fn(session, user_id, payload)
+        if json_mirror_enabled:
+            save_json_fn(payload, user_id)
+        return
+    save_json_fn(payload, user_id)
+
+
 def load_prediction_portfolio(
     user_id=None,
     *,
@@ -174,11 +219,15 @@ def load_prediction_portfolio(
     load_prediction_portfolio_db_fn,
     load_prediction_portfolio_json_fn,
 ):
-    if user_id and sql_enabled:
-        ensure_user_state_storage_ready_fn()
-        with session_scope(database_url) as session:
-            return load_prediction_portfolio_db_fn(session, user_id)
-    return load_prediction_portfolio_json_fn(user_id)
+    return _dispatch_load(
+        user_id,
+        sql_enabled=sql_enabled,
+        ensure_user_state_storage_ready_fn=ensure_user_state_storage_ready_fn,
+        session_scope=session_scope,
+        database_url=database_url,
+        load_db_fn=load_prediction_portfolio_db_fn,
+        load_json_fn=load_prediction_portfolio_json_fn,
+    )
 
 
 def save_prediction_portfolio(
@@ -193,14 +242,17 @@ def save_prediction_portfolio(
     json_mirror_enabled,
     save_prediction_portfolio_json_fn,
 ):
-    if user_id and sql_enabled:
-        ensure_user_state_storage_ready_fn()
-        with session_scope(database_url) as session:
-            save_prediction_portfolio_db_fn(session, user_id, portfolio)
-        if json_mirror_enabled:
-            save_prediction_portfolio_json_fn(portfolio, user_id)
-        return
-    save_prediction_portfolio_json_fn(portfolio, user_id)
+    _dispatch_save(
+        portfolio,
+        user_id,
+        sql_enabled=sql_enabled,
+        ensure_user_state_storage_ready_fn=ensure_user_state_storage_ready_fn,
+        session_scope=session_scope,
+        database_url=database_url,
+        save_db_fn=save_prediction_portfolio_db_fn,
+        json_mirror_enabled=json_mirror_enabled,
+        save_json_fn=save_prediction_portfolio_json_fn,
+    )
 
 
 def load_portfolio_json(
@@ -239,11 +291,15 @@ def load_portfolio(
     load_portfolio_db_fn,
     load_portfolio_json_fn,
 ):
-    if user_id and sql_enabled:
-        ensure_user_state_storage_ready_fn()
-        with session_scope(database_url) as session:
-            return load_portfolio_db_fn(session, user_id)
-    return load_portfolio_json_fn(user_id)
+    return _dispatch_load(
+        user_id,
+        sql_enabled=sql_enabled,
+        ensure_user_state_storage_ready_fn=ensure_user_state_storage_ready_fn,
+        session_scope=session_scope,
+        database_url=database_url,
+        load_db_fn=load_portfolio_db_fn,
+        load_json_fn=load_portfolio_json_fn,
+    )
 
 
 def save_portfolio(
@@ -258,14 +314,17 @@ def save_portfolio(
     json_mirror_enabled,
     save_portfolio_json_fn,
 ):
-    if user_id and sql_enabled:
-        ensure_user_state_storage_ready_fn()
-        with session_scope(database_url) as session:
-            save_portfolio_db_fn(session, user_id, portfolio)
-        if json_mirror_enabled:
-            save_portfolio_json_fn(portfolio, user_id)
-        return
-    save_portfolio_json_fn(portfolio, user_id)
+    _dispatch_save(
+        portfolio,
+        user_id,
+        sql_enabled=sql_enabled,
+        ensure_user_state_storage_ready_fn=ensure_user_state_storage_ready_fn,
+        session_scope=session_scope,
+        database_url=database_url,
+        save_db_fn=save_portfolio_db_fn,
+        json_mirror_enabled=json_mirror_enabled,
+        save_json_fn=save_portfolio_json_fn,
+    )
 
 
 def load_notifications_json(
@@ -300,11 +359,15 @@ def load_notifications(
     load_notifications_db_fn,
     load_notifications_json_fn,
 ):
-    if user_id and sql_enabled:
-        ensure_user_state_storage_ready_fn()
-        with session_scope(database_url) as session:
-            return load_notifications_db_fn(session, user_id)
-    return load_notifications_json_fn(user_id)
+    return _dispatch_load(
+        user_id,
+        sql_enabled=sql_enabled,
+        ensure_user_state_storage_ready_fn=ensure_user_state_storage_ready_fn,
+        session_scope=session_scope,
+        database_url=database_url,
+        load_db_fn=load_notifications_db_fn,
+        load_json_fn=load_notifications_json_fn,
+    )
 
 
 def save_notifications(
@@ -319,14 +382,17 @@ def save_notifications(
     json_mirror_enabled,
     save_notifications_json_fn,
 ):
-    if user_id and sql_enabled:
-        ensure_user_state_storage_ready_fn()
-        with session_scope(database_url) as session:
-            save_notifications_db_fn(session, user_id, notifications)
-        if json_mirror_enabled:
-            save_notifications_json_fn(notifications, user_id)
-        return
-    save_notifications_json_fn(notifications, user_id)
+    _dispatch_save(
+        notifications,
+        user_id,
+        sql_enabled=sql_enabled,
+        ensure_user_state_storage_ready_fn=ensure_user_state_storage_ready_fn,
+        session_scope=session_scope,
+        database_url=database_url,
+        save_db_fn=save_notifications_db_fn,
+        json_mirror_enabled=json_mirror_enabled,
+        save_json_fn=save_notifications_json_fn,
+    )
 
 
 def load_watchlist_json(
@@ -363,11 +429,15 @@ def load_watchlist(
     load_watchlist_db_fn,
     load_watchlist_json_fn,
 ):
-    if user_id and sql_enabled:
-        ensure_user_state_storage_ready_fn()
-        with session_scope(database_url) as session:
-            return load_watchlist_db_fn(session, user_id)
-    return load_watchlist_json_fn(user_id)
+    return _dispatch_load(
+        user_id,
+        sql_enabled=sql_enabled,
+        ensure_user_state_storage_ready_fn=ensure_user_state_storage_ready_fn,
+        session_scope=session_scope,
+        database_url=database_url,
+        load_db_fn=load_watchlist_db_fn,
+        load_json_fn=load_watchlist_json_fn,
+    )
 
 
 def save_watchlist(
@@ -383,14 +453,17 @@ def save_watchlist(
     save_watchlist_json_fn,
 ):
     normalized = sorted(list({str(t).upper() for t in tickers if str(t).strip()}))
-    if user_id and sql_enabled:
-        ensure_user_state_storage_ready_fn()
-        with session_scope(database_url) as session:
-            save_watchlist_db_fn(session, user_id, normalized)
-        if json_mirror_enabled:
-            save_watchlist_json_fn(normalized, user_id)
-        return
-    save_watchlist_json_fn(normalized, user_id)
+    _dispatch_save(
+        normalized,
+        user_id,
+        sql_enabled=sql_enabled,
+        ensure_user_state_storage_ready_fn=ensure_user_state_storage_ready_fn,
+        session_scope=session_scope,
+        database_url=database_url,
+        save_db_fn=save_watchlist_db_fn,
+        json_mirror_enabled=json_mirror_enabled,
+        save_json_fn=save_watchlist_json_fn,
+    )
 
 
 def record_portfolio_snapshot_legacy(portfolio_data, user_id, *, get_db_fn, logger, datetime_cls):
