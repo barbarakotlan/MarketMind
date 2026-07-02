@@ -22,14 +22,10 @@ import math
 from io import BytesIO
 from functools import wraps
 
-# --- DOTENV MUST BE FIRST ---
-from dotenv import load_dotenv
-
-CURRENT_FILE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT_DIR = os.path.dirname(CURRENT_FILE_DIR)
-load_dotenv(os.path.join(PROJECT_ROOT_DIR, '.env'))
-load_dotenv(os.path.join(CURRENT_FILE_DIR, '.env'), override=True)
-# --- END FIX ---
+# Load environment variables (project-root .env then backend/.env override).
+# Importing config performs the dotenv load once for the whole backend, so this
+# must come before any later import/read of environment-derived values.
+import config
 
 # --- OpenBB (optional, used for financials/filings/screener/macro) ---
 try:
@@ -264,8 +260,8 @@ def create_app(config=None):
     return app
 
 # --- CONFIGURATION ---
-NEWS_API_KEY = os.getenv('NEWS_API_KEY')
-ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
+NEWS_API_KEY = config.NEWS_API_KEY
+ALPHA_VANTAGE_API_KEY = config.ALPHA_VANTAGE_API_KEY
 
 # Validate required environment variables in production
 if IS_PRODUCTION:

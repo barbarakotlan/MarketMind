@@ -1,10 +1,7 @@
-import os
 import finnhub
-from dotenv import load_dotenv
 import sentiment_service
 
-# Load environment variables from .env file
-load_dotenv()
+from config import FINNHUB_API_KEY
 
 def get_general_news(category='general', count=15):
     """
@@ -18,7 +15,7 @@ def get_general_news(category='general', count=15):
         list: A list of news article dictionaries, or an empty list if an error occurs.
     """
     try:
-        api_key = os.getenv('FINNHUB_API_KEY')
+        api_key = FINNHUB_API_KEY
         if not api_key:
             raise ValueError("FINNHUB_API_KEY not found in environment variables.")
 

@@ -1,13 +1,9 @@
 """
 Forex (Foreign Exchange) data fetcher using Alpha Vantage
 """
-import os
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
-
-ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
+from config import ALPHA_VANTAGE_API_KEY
 
 
 def get_exchange_rate(from_currency='USD', to_currency='EUR'):
