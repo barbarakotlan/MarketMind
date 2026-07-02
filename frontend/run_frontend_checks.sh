@@ -8,5 +8,6 @@ cd "$ROOT_DIR/frontend"
 export CI="${CI:-true}"
 export REACT_APP_CLERK_PUBLISHABLE_KEY="${REACT_APP_CLERK_PUBLISHABLE_KEY:-pk_test_dummy}"
 
+npm run lint
 npm test -- --watchAll=false
 npm run build
