@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUpIcon, TrendingDownIcon } from '../Icons';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 import {
     getMarketSessionLabel,
     getMarketSessionSummary,
@@ -74,7 +74,7 @@ const StockDataCard = ({ data, onAddToWatchlist, canAddToWatchlist = true }) => 
                 </div>
                 <div className="text-right">
                     <div className={`flex items-center justify-end text-lg font-semibold ${changeColor}`}>
-                         {isPositive ? <TrendingUpIcon className="h-6 w-6 mr-1" /> : <TrendingDownIcon className="h-6 w-6 mr-1" />}
+                         {isPositive ? <TrendingUp className="h-6 w-6 mr-1" /> : <TrendingDown className="h-6 w-6 mr-1" />}
                         <span>{formatNum(data.change)} ({formatNum(data.changePercent)}%)</span>
                     </div>
                     {canAddToWatchlist ? (

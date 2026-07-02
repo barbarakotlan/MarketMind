@@ -384,7 +384,7 @@ const holdingsEmptyClass = 'ui-panel-subtle border-dashed py-20 text-center';
 const positionCardClass = 'ui-panel p-6 transition-all';
 
 // --- MAIN APPLICATION COMPONENT ---
-export default function App({ initialTicker, onConsumeInitialTicker }) {
+export default function PaperTradingPage({ initialTicker, onConsumeInitialTicker }) {
     const [portfolio, setPortfolio] = useState(null);
     const [stockPositions, setStockPositions] = useState([]);
     const [optionsPositions, setOptionsPositions] = useState([]);
