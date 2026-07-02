@@ -5,12 +5,12 @@ on:
     paths:
       - ".github/workflows/backend-deterministic-checks.yml"
       - "backend/**"
-      - "MONTHLY_USER_JOURNEY_SIMULATION.md"
+      - "docs/operations/MONTHLY_USER_JOURNEY_SIMULATION.md"
   pull_request:
     paths:
       - ".github/workflows/backend-deterministic-checks.yml"
       - "backend/**"
-      - "MONTHLY_USER_JOURNEY_SIMULATION.md"
+      - "docs/operations/MONTHLY_USER_JOURNEY_SIMULATION.md"
 
 jobs:
   backend-deterministic-checks:

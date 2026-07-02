@@ -31,4 +31,7 @@ fi
   backend.tests.test_user_journey_state \
   backend.tests.test_user_journey_harness \
   backend.tests.test_user_state_persistence_modes \
-  backend.tests.test_backfill_postgres
+  backend.tests.test_backfill_postgres \
+  backend.tests.test_import_is_ml_free \
+  backend.tests.test_app_factory \
+  backend.tests.test_route_registration_smoke
