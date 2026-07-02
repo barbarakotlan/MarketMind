@@ -8,9 +8,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import shap
-from mlforecast import MLForecast
-from mlforecast.lag_transforms import RollingMean, RollingStd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.linear_model import LinearRegression
@@ -20,8 +17,14 @@ from sklearn.metrics import (
     mean_squared_error,
     r2_score,
 )
-from statsforecast import StatsForecast
-from statsforecast.models import AutoARIMA, Naive, SeasonalNaive
+
+# NOTE: shap, mlforecast and statsforecast are heavy optional-at-import
+# dependencies. They are imported lazily inside the functions that use them
+# (_summarize_shap_explainability, _build_mlforecast, _build_statsforecast) so
+# that `import prediction_service` (and therefore `import api`) stays cheap and
+# does not boot the full ML stack. Return-type annotations referencing these
+# libraries remain valid because this module uses `from __future__ import
+# annotations` (annotations are never evaluated at runtime).
 
 import exchange_session_service
 from data_fetcher import fetch_from_yfinance, get_stock_data_with_fallback, prepare_data_for_ml
@@ -235,6 +238,9 @@ def _build_future_exogenous(long_df: pd.DataFrame, future_dates: List[pd.Timesta
 
 
 def _build_mlforecast(models: Dict[str, Any]) -> MLForecast:
+    from mlforecast import MLForecast
+    from mlforecast.lag_transforms import RollingMean, RollingStd
+
     return MLForecast(
         models=models,
         freq=1,
@@ -299,6 +305,9 @@ def _build_ml_models() -> Dict[str, Any]:
 
 
 def _build_statsforecast() -> StatsForecast:
+    from statsforecast import StatsForecast
+    from statsforecast.models import AutoARIMA, Naive, SeasonalNaive
+
     return StatsForecast(
         models=[
             Naive(alias="naive"),
@@ -698,6 +707,8 @@ def _summarize_shap_explainability(
     if feature_frame is None or feature_frame.empty or latest_features is None or latest_features.empty:
         return None
     try:
+        import shap
+
         background = feature_frame.tail(min(len(feature_frame), 200))
         if model_name == "linear_regression":
             explainer = shap.LinearExplainer(model, background)
