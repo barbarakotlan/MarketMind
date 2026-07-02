@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Search, TrendingUp, Zap, Globe, RefreshCw, Filter } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import { useApiData } from '../hooks/useApiData';
 import { getSentimentLabel, getSentimentToneClasses } from './ui/sentimentUtils';
 
 const NEWS_IMAGE_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
@@ -17,11 +18,24 @@ const NEWS_IMAGE_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,${encodeURIComp
 `)}`;
 
 const NewsPage = () => {
-    const [articles, setArticles] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [activeCategory, setActiveCategory] = useState('General');
+
+    const newsFetcher = useCallback((query = '', category = 'General') => {
+        const useSearch = query || category !== 'General';
+        const endpoint = useSearch ? API_ENDPOINTS.NEWS(query || category) : API_ENDPOINTS.NEWS();
+        return apiRequest(endpoint).then((data) =>
+            (Array.isArray(data) ? data : []).map(normalizeArticle)
+        );
+        // normalizeArticle is a stable pure transform defined in this component.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const { data: articles, loading, error, refetch: fetchNews } = useApiData(
+        newsFetcher,
+        [],
+        { initialData: [], clearOnFetch: true }
+    );
 
     const categories = [
         { id: 'General', label: 'Top Stories', icon: Globe },
@@ -64,34 +78,6 @@ const NewsPage = () => {
             sentiment: article.sentiment || null,
         };
     };
-
-    const fetchNews = async (query = '', category = 'General') => {
-        setLoading(true);
-        setError('');
-        setArticles([]);
-
-        try {
-            let data;
-            if (query || category !== 'General') {
-                const searchTerm = query || category;
-                data = await apiRequest(API_ENDPOINTS.NEWS(searchTerm));
-            } else {
-                data = await apiRequest(API_ENDPOINTS.NEWS());
-            }
-
-            const rawArticles = Array.isArray(data) ? data : [];
-            setArticles(rawArticles.map(normalizeArticle));
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchNews();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
     const handleSearchSubmit = (e) => {
         e.preventDefault();
