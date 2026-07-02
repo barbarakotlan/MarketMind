@@ -53,6 +53,7 @@ function PortfolioGrowthChart({ onDataFetched }) {
     // Fetch data on component mount
     useEffect(() => {
         fetchHistory(activePeriod);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Memoize chart configuration
