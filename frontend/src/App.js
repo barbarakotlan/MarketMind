@@ -53,14 +53,12 @@ function AppShell() {
     return (
         <div className="app-shell flex h-screen overflow-hidden">
             <Sidebar
-                activePage={activePage}
-                setActivePage={setActivePage}
                 isCollapsed={sidebarCollapsed}
                 onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
             />
 
             <main className={`app-shell-main flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
-                {activePage === 'dashboard' && <DashboardPage setActivePage={setActivePage} />}
+                {activePage === 'dashboard' && <DashboardPage />}
                 {activePage === 'search' && (
                     <SearchPage
                         initialTicker={sharedTicker}
@@ -71,12 +69,7 @@ function AppShell() {
                         }}
                     />
                 )}
-                {activePage === 'screener' && (
-                    <ScreenerPage
-                        onSearchTicker={screenerNav}
-                        onScreenerAction={screenerAction}
-                    />
-                )}
+                {activePage === 'screener' && <ScreenerPage />}
                 {activePage === 'macro' && <MacroPage />}
                 {activePage === 'watchlist' && <WatchlistPage />}
                 {activePage === 'portfolio' && (

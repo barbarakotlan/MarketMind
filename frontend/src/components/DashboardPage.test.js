@@ -1,6 +1,14 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import DashboardPage from './DashboardPage';
+import NavigationContext from '../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+
+const renderDashboard = () =>
+    render(
+        <NavigationContext.Provider value={{ setActivePage: () => {} }}>
+            <DashboardPage />
+        </NavigationContext.Provider>
+    );
 
 jest.mock('../config/api', () => ({
     API_ENDPOINTS: {
@@ -54,7 +62,7 @@ describe('DashboardPage portfolio summary', () => {
     });
 
     test('treats options positions as active positions in the portfolio summary card', async () => {
-        render(<DashboardPage setActivePage={() => {}} />);
+        renderDashboard();
 
         await waitFor(() => {
             expect(screen.getByText('$100,250.00')).toBeInTheDocument();
@@ -94,7 +102,7 @@ describe('DashboardPage portfolio summary', () => {
             return Promise.resolve([]);
         });
 
-        render(<DashboardPage setActivePage={() => {}} />);
+        renderDashboard();
 
         await waitFor(() => {
             expect(screen.getByText('No active positions')).toBeInTheDocument();

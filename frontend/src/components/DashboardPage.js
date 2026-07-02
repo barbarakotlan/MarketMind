@@ -4,6 +4,7 @@ import {
     DollarSign, Newspaper, Bell, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import { useNavigation } from '../context/NavigationContext';
 
 const MARKET_TICKERS = [
     { ticker: 'SPY', label: 'S&P 500' },
@@ -274,7 +275,8 @@ function TopNewsSection({ setActivePage }) {
     );
 }
 
-const DashboardPage = ({ setActivePage }) => {
+const DashboardPage = () => {
+    const { setActivePage } = useNavigation();
     return (
         <div className="ui-page animate-fade-in space-y-2">
             <div className="ui-page-header">
