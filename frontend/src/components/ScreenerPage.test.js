@@ -1,6 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ScreenerPage from './ScreenerPage';
+import NavigationContext from '../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+
+const renderScreener = ({ screenerNav = jest.fn(), screenerAction = jest.fn() } = {}) =>
+    render(
+        <NavigationContext.Provider value={{ screenerNav, screenerAction }}>
+            <ScreenerPage />
+        </NavigationContext.Provider>
+    );
 
 jest.mock('../config/api', () => {
     const actual = jest.requireActual('../config/api');
@@ -104,7 +112,7 @@ describe('ScreenerPage', () => {
             throw new Error(`Unhandled request: ${url}`);
         });
 
-        render(<ScreenerPage onSearchTicker={onSearchTicker} onScreenerAction={onScreenerAction} />);
+        renderScreener({ screenerNav: onSearchTicker, screenerAction: onScreenerAction });
 
         expect(await screen.findByText('Apple Inc.')).toBeInTheDocument();
         expect(screen.getByText('Momentum Leaders')).toBeInTheDocument();
@@ -151,7 +159,7 @@ describe('ScreenerPage', () => {
             throw new Error(`Unhandled request: ${url}`);
         });
 
-        render(<ScreenerPage />);
+        renderScreener();
 
         await screen.findByText('Apple Inc.');
 

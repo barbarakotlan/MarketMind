@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigation } from '../context/NavigationContext';
 import {
   Briefcase,
   TrendingUp,
@@ -384,7 +385,8 @@ const holdingsEmptyClass = 'ui-panel-subtle border-dashed py-20 text-center';
 const positionCardClass = 'ui-panel p-6 transition-all';
 
 // --- MAIN APPLICATION COMPONENT ---
-export default function PaperTradingPage({ initialTicker, onConsumeInitialTicker }) {
+export default function PaperTradingPage() {
+    const { sharedTicker: initialTicker, clearTicker: onConsumeInitialTicker } = useNavigation();
     const [portfolio, setPortfolio] = useState(null);
     const [stockPositions, setStockPositions] = useState([]);
     const [optionsPositions, setOptionsPositions] = useState([]);

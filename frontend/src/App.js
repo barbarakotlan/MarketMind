@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
+import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import AuthFetchBridge from './components/AuthFetchBridge';
@@ -34,14 +35,45 @@ const shouldHideLandingByDefault = () => {
     return window.localStorage.getItem(LANDING_VISIBILITY_KEY) === 'true';
 };
 
+function AppShell() {
+    const { activePage } = useNavigation();
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+    return (
+        <div className="app-shell flex h-screen overflow-hidden">
+            <Sidebar
+                isCollapsed={sidebarCollapsed}
+                onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
+            />
+
+            <main className={`app-shell-main flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
+                {activePage === 'dashboard' && <DashboardPage />}
+                {activePage === 'search' && <SearchPage />}
+                {activePage === 'screener' && <ScreenerPage />}
+                {activePage === 'macro' && <MacroPage />}
+                {activePage === 'watchlist' && <WatchlistPage />}
+                {activePage === 'portfolio' && <PaperTradingPage />}
+                {activePage === 'fundamentals' && <FundamentalsPage />}
+                {activePage === 'predictions' && <PredictionsPage />}
+                {activePage === 'performance' && <ModelPerformancePage />}
+                {activePage === 'options' && <OptionsPage />}
+                {activePage === 'forex' && <ForexPage />}
+                {activePage === 'crypto' && <CryptoPage />}
+                {activePage === 'commodities' && <CommoditiesPage />}
+                {activePage === 'news' && <NewsPage />}
+                {activePage === 'notifications' && <NotificationsPage />}
+                {activePage === 'predictionMarkets' && <PredictionMarketsPage />}
+                {activePage === 'marketmindAI' && <MarketMindAIPage />}
+                {activePage === 'gettingStarted' && <GettingStartedPage />}
+                {activePage === 'calendar' && <MarketCalendarPage />}
+            </main>
+        </div>
+    );
+}
+
 function App() {
     const { isLoaded, isSignedIn } = useAuth();
     const [showLanding, setShowLanding] = useState(() => !shouldHideLandingByDefault());
-    const [activePage, setActivePage] = useState('screener');
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const [sharedTicker, setSharedTicker] = useState(null);
-    const [sharedCompareTicker, setSharedCompareTicker] = useState(null);
-    const [sharedAiPrompt, setSharedAiPrompt] = useState('');
     useEffect(() => {
         if (!isLoaded || !isSignedIn || typeof window === 'undefined') {
             return;
@@ -50,47 +82,6 @@ function App() {
         window.localStorage.setItem(LANDING_VISIBILITY_KEY, 'true');
         setShowLanding(false);
     }, [isLoaded, isSignedIn]);
-
-    const handleScreenerNav = (ticker) => {
-        setSharedTicker(ticker);
-        setSharedCompareTicker(null);
-        setActivePage('search');
-    };
-
-    const handleScreenerAction = ({ action, ticker, compareTicker }) => {
-        const normalizedTicker = String(ticker || '').trim().toUpperCase();
-        const normalizedCompareTicker = String(compareTicker || '').trim().toUpperCase();
-        if (!normalizedTicker) return;
-
-        setSharedTicker(normalizedTicker);
-        setSharedCompareTicker(null);
-        setSharedAiPrompt('');
-
-        if (action === 'predictions') {
-            setActivePage('predictions');
-            return;
-        }
-        if (action === 'fundamentals') {
-            setActivePage('fundamentals');
-            return;
-        }
-        if (action === 'paper') {
-            setActivePage('portfolio');
-            return;
-        }
-        if (action === 'ai') {
-            setSharedAiPrompt(`Analyze ${normalizedTicker} from the Screener. Summarize why it surfaced, what to validate next, and what risks to check before acting.`);
-            setActivePage('marketmindAI');
-            return;
-        }
-        if (action === 'compare' && normalizedCompareTicker) {
-            setSharedCompareTicker(normalizedCompareTicker);
-            setActivePage('search');
-            return;
-        }
-
-        setActivePage('search');
-    };
 
     const handleEnterApp = () => {
         if (typeof window !== 'undefined') {
@@ -118,70 +109,9 @@ function App() {
             </SignedOut>
 
             <SignedIn>
-                <div className="app-shell flex h-screen overflow-hidden">
-                    <Sidebar
-                        activePage={activePage}
-                        setActivePage={setActivePage}
-                        isCollapsed={sidebarCollapsed}
-                        onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
-                    />
-
-                    <main className={`app-shell-main flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
-                        {activePage === 'dashboard' && <DashboardPage setActivePage={setActivePage} />}
-                        {activePage === 'search' && (
-                            <SearchPage
-                                initialTicker={sharedTicker}
-                                initialCompareTicker={sharedCompareTicker}
-                                onClearInitialTicker={() => {
-                                    setSharedTicker(null);
-                                    setSharedCompareTicker(null);
-                                }}
-                            />
-                        )}
-                        {activePage === 'screener' && (
-                            <ScreenerPage
-                                onSearchTicker={handleScreenerNav}
-                                onScreenerAction={handleScreenerAction}
-                            />
-                        )}
-                        {activePage === 'macro' && <MacroPage />}
-                        {activePage === 'watchlist' && <WatchlistPage />}
-                        {activePage === 'portfolio' && (
-                            <PaperTradingPage
-                                initialTicker={sharedTicker}
-                                onConsumeInitialTicker={() => setSharedTicker(null)}
-                            />
-                        )}
-                        {activePage === 'fundamentals' && (
-                            <FundamentalsPage
-                                initialTicker={sharedTicker}
-                                onConsumeInitialTicker={() => setSharedTicker(null)}
-                            />
-                        )}
-                        {activePage === 'predictions' && (
-                            <PredictionsPage
-                                initialTicker={sharedTicker}
-                                onConsumeInitialTicker={() => setSharedTicker(null)}
-                            />
-                        )}
-                        {activePage === 'performance' && <ModelPerformancePage />}
-                        {activePage === 'options' && <OptionsPage />}
-                        {activePage === 'forex' && <ForexPage />}
-                        {activePage === 'crypto' && <CryptoPage />}
-                        {activePage === 'commodities' && <CommoditiesPage />}
-                        {activePage === 'news' && <NewsPage />}
-                        {activePage === 'notifications' && <NotificationsPage />}
-                        {activePage === 'predictionMarkets' && <PredictionMarketsPage />}
-                        {activePage === 'marketmindAI' && (
-                            <MarketMindAIPage
-                                initialPrompt={sharedAiPrompt}
-                                onConsumeInitialPrompt={() => setSharedAiPrompt('')}
-                            />
-                        )}
-                        {activePage === 'gettingStarted' && <GettingStartedPage />}
-                        {activePage === 'calendar' && <MarketCalendarPage />}
-                    </main>
-                </div>
+                <NavigationProvider>
+                    <AppShell />
+                </NavigationProvider>
             </SignedIn>
         </>
     );

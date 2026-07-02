@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserButton } from '@clerk/clerk-react';
 import { useDarkMode } from '../context/DarkModeContext';
+import { useNavigation } from '../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 import {
     LayoutDashboard, Search, Star, Briefcase, Building2,
@@ -62,7 +63,8 @@ const NAV_GROUPS = [
     },
 ];
 
-const Sidebar = ({ activePage, setActivePage, isCollapsed, onToggleCollapse }) => {
+const Sidebar = ({ isCollapsed, onToggleCollapse }) => {
+    const { activePage, setActivePage } = useNavigation();
     const { isDarkMode, toggleDarkMode } = useDarkMode();
     const [newAlertCount, setNewAlertCount] = useState(0);
     const [recentAiChats, setRecentAiChats] = useState([]);

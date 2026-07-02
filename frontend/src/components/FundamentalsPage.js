@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigation } from '../context/NavigationContext';
 import {
     Building2,
     Search,
@@ -266,7 +267,8 @@ const AnnouncementsPanel = ({ items }) => {
     );
 };
 
-const FundamentalsPage = ({ initialTicker, onConsumeInitialTicker }) => {
+const FundamentalsPage = () => {
+    const { sharedTicker: initialTicker, clearTicker: onConsumeInitialTicker } = useNavigation();
     const [ticker, setTicker] = useState('');
     const [selectedMarket, setSelectedMarket] = useState('us');
     const [resolvedAsset, setResolvedAsset] = useState(null);

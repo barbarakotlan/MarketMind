@@ -1,6 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import Sidebar from './Sidebar';
+import NavigationContext from '../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+
+const renderSidebar = (activePage = 'dashboard') =>
+    render(
+        <NavigationContext.Provider value={{ activePage, setActivePage: jest.fn() }}>
+            <Sidebar isCollapsed={false} onToggleCollapse={jest.fn()} />
+        </NavigationContext.Provider>
+    );
 
 jest.mock('@clerk/clerk-react', () => ({
     UserButton: () => <div>User Button</div>,
@@ -40,14 +48,7 @@ describe('Sidebar alert badge polling', () => {
     });
 
     test('checks triggered alerts with the non-destructive all=true query', async () => {
-        render(
-            <Sidebar
-                activePage="dashboard"
-                setActivePage={jest.fn()}
-                isCollapsed={false}
-                onToggleCollapse={jest.fn()}
-            />
-        );
+        renderSidebar('dashboard');
 
         await waitFor(() => {
             expect(API_ENDPOINTS.NOTIFICATIONS_TRIGGERED).toHaveBeenCalledWith(true);
@@ -57,14 +58,7 @@ describe('Sidebar alert badge polling', () => {
     });
 
     test('renders the workflow-first navigation groups', async () => {
-        render(
-            <Sidebar
-                activePage="dashboard"
-                setActivePage={jest.fn()}
-                isCollapsed={false}
-                onToggleCollapse={jest.fn()}
-            />
-        );
+        renderSidebar('dashboard');
 
         await waitFor(() => {
             expect(screen.getByText('Research')).toBeInTheDocument();
@@ -94,14 +88,7 @@ describe('Sidebar alert badge polling', () => {
             throw new Error(`Unhandled url ${url}`);
         });
 
-        render(
-            <Sidebar
-                activePage="marketmindAI"
-                setActivePage={jest.fn()}
-                isCollapsed={false}
-                onToggleCollapse={jest.fn()}
-            />
-        );
+        renderSidebar('marketmindAI');
 
         expect(await screen.findByText(/Analyze AAPL/i)).toBeInTheDocument();
 

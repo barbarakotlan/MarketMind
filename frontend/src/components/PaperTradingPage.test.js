@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import PaperTradingPage from './PaperTradingPage';
+import { NavigationProvider } from '../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 jest.mock('react-chartjs-2', () => ({
@@ -157,7 +158,7 @@ describe('PaperTradingPage', () => {
             throw new Error(`Unhandled request: ${url}`);
         });
 
-        render(<PaperTradingPage />);
+        render(<NavigationProvider><PaperTradingPage /></NavigationProvider>);
 
         expect(await screen.findByText('Rebalance Suggestions')).toBeInTheDocument();
         expect(await screen.findByText('Option positions are excluded from portfolio optimization v1.')).toBeInTheDocument();
@@ -193,7 +194,7 @@ describe('PaperTradingPage', () => {
             throw new Error(`Unhandled request: ${url}`);
         });
 
-        render(<PaperTradingPage />);
+        render(<NavigationProvider><PaperTradingPage /></NavigationProvider>);
 
         expect(await screen.findByText('Rebalance Suggestions')).toBeInTheDocument();
         expect(screen.getByText('Add at least two U.S. stock holdings to generate a portfolio rebalance plan.')).toBeInTheDocument();

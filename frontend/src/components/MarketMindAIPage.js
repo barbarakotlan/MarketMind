@@ -1,5 +1,6 @@
 import React, { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { useNavigation } from '../context/NavigationContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -283,7 +284,8 @@ const ArtifactPreview = ({ artifact, version }) => {
     );
 };
 
-const MarketMindAIPage = ({ initialPrompt, onConsumeInitialPrompt }) => {
+const MarketMindAIPage = () => {
+    const { sharedAiPrompt: initialPrompt, clearAiPrompt: onConsumeInitialPrompt } = useNavigation();
     const { isLoaded, isSignedIn } = useAuth();
     const [bootstrap, setBootstrap] = useState({ starterPrompts: [], templates: [] });
     const [activeChatId, setActiveChatId] = useState(null);

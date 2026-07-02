@@ -35,14 +35,20 @@ jest.mock('./components/AuthPage', () => ({ onBack }) => (
 
 jest.mock('./components/AuthFetchBridge', () => () => <div data-testid="auth-fetch-bridge" />);
 
-jest.mock('./components/Sidebar', () => ({ setActivePage }) => (
-    <div>
-        <p>Sidebar</p>
-        <button onClick={() => setActivePage('dashboard')}>Go Dashboard</button>
-        <button onClick={() => setActivePage('screener')}>Go Screener</button>
-        <button onClick={() => setActivePage('search')}>Go Search</button>
-    </div>
-));
+jest.mock('./components/Sidebar', () => {
+    const { useNavigation } = require('./context/NavigationContext');
+    return function SidebarMock() {
+        const { setActivePage } = useNavigation();
+        return (
+            <div>
+                <p>Sidebar</p>
+                <button onClick={() => setActivePage('dashboard')}>Go Dashboard</button>
+                <button onClick={() => setActivePage('screener')}>Go Screener</button>
+                <button onClick={() => setActivePage('search')}>Go Search</button>
+            </div>
+        );
+    };
+});
 
 jest.mock('./components/DashboardPage', () => () => <div>Dashboard Page</div>);
 jest.mock('./components/GettingStartedPage', () => () => <div>Getting Started Page</div>);
@@ -62,16 +68,26 @@ jest.mock('./components/MarketCalendarPage', () => () => <div>Market Calendar Pa
 jest.mock('./components/MacroPage', () => () => <div>Macro Page</div>);
 jest.mock('./components/MarketMindAIPage', () => () => <div>MarketMindAI Page</div>);
 
-jest.mock('./components/ScreenerPage', () => ({ onSearchTicker }) => (
-    <div>
-        <p>Screener Page</p>
-        <button onClick={() => onSearchTicker('AAPL')}>Pick AAPL</button>
-    </div>
-));
+jest.mock('./components/ScreenerPage', () => {
+    const { useNavigation } = require('./context/NavigationContext');
+    return function ScreenerMock() {
+        const { screenerNav } = useNavigation();
+        return (
+            <div>
+                <p>Screener Page</p>
+                <button onClick={() => screenerNav('AAPL')}>Pick AAPL</button>
+            </div>
+        );
+    };
+});
 
-jest.mock('./components/SearchPage', () => ({ initialTicker }) => (
-    <div>Search Page {initialTicker ? `for ${initialTicker}` : ''}</div>
-));
+jest.mock('./components/SearchPage', () => {
+    const { useNavigation } = require('./context/NavigationContext');
+    return function SearchMock() {
+        const { sharedTicker } = useNavigation();
+        return <div>Search Page {sharedTicker ? `for ${sharedTicker}` : ''}</div>;
+    };
+});
 
 describe('App', () => {
     beforeEach(() => {

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigation } from '../context/NavigationContext';
 import {
     Activity,
     ArrowUpDown,
@@ -70,7 +71,8 @@ const columns = [
     { key: 'year_low', label: '52W Low', formatter: (value) => (value === null || value === undefined ? '—' : `$${Number(value).toFixed(2)}`) },
 ];
 
-const ScreenerPage = ({ onSearchTicker, onScreenerAction }) => {
+const ScreenerPage = () => {
+    const { screenerNav: onSearchTicker, screenerAction: onScreenerAction } = useNavigation();
     const [presets, setPresets] = useState([]);
     const [sectors, setSectors] = useState([]);
     const [activePreset, setActivePreset] = useState('gainers');
