@@ -126,8 +126,15 @@ from user_state_store import (
 import sys
 import io
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+# Force UTF-8 stdout/stderr so emoji log lines don't blow up under servers
+# whose default streams aren't UTF-8. Guarded because test runners (and other
+# harnesses) replace sys.stdout with a capture object that has no .buffer;
+# rewrapping it would break output capture, so we skip the rewrap there.
+try:
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+except (AttributeError, ValueError):
+    pass
 
 # --- New Imports for Options Suggester ---
 from options_suggester import generate_suggestion
