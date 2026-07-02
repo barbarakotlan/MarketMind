@@ -15,6 +15,18 @@ beforeAll(() => {
     };
 });
 
+// The page has timer-driven animations (e.g. the terminal typer). Fake timers
+// keep them from firing async state updates after the synchronous assertions,
+// making the render deterministic.
+beforeEach(() => {
+    jest.useFakeTimers();
+});
+
+afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+});
+
 describe('LandingPage', () => {
     test('renders the nav and hero and triggers onEnterApp from the CTA', () => {
         const onEnterApp = jest.fn();
