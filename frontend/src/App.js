@@ -36,18 +36,7 @@ const shouldHideLandingByDefault = () => {
 };
 
 function AppShell() {
-    const {
-        activePage,
-        setActivePage,
-        sharedTicker,
-        sharedCompareTicker,
-        sharedAiPrompt,
-        clearTicker,
-        clearCompareTicker,
-        clearAiPrompt,
-        screenerNav,
-        screenerAction,
-    } = useNavigation();
+    const { activePage } = useNavigation();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
     return (
@@ -59,37 +48,13 @@ function AppShell() {
 
             <main className={`app-shell-main flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-56'}`}>
                 {activePage === 'dashboard' && <DashboardPage />}
-                {activePage === 'search' && (
-                    <SearchPage
-                        initialTicker={sharedTicker}
-                        initialCompareTicker={sharedCompareTicker}
-                        onClearInitialTicker={() => {
-                            clearTicker();
-                            clearCompareTicker();
-                        }}
-                    />
-                )}
+                {activePage === 'search' && <SearchPage />}
                 {activePage === 'screener' && <ScreenerPage />}
                 {activePage === 'macro' && <MacroPage />}
                 {activePage === 'watchlist' && <WatchlistPage />}
-                {activePage === 'portfolio' && (
-                    <PaperTradingPage
-                        initialTicker={sharedTicker}
-                        onConsumeInitialTicker={clearTicker}
-                    />
-                )}
-                {activePage === 'fundamentals' && (
-                    <FundamentalsPage
-                        initialTicker={sharedTicker}
-                        onConsumeInitialTicker={clearTicker}
-                    />
-                )}
-                {activePage === 'predictions' && (
-                    <PredictionsPage
-                        initialTicker={sharedTicker}
-                        onConsumeInitialTicker={clearTicker}
-                    />
-                )}
+                {activePage === 'portfolio' && <PaperTradingPage />}
+                {activePage === 'fundamentals' && <FundamentalsPage />}
+                {activePage === 'predictions' && <PredictionsPage />}
                 {activePage === 'performance' && <ModelPerformancePage />}
                 {activePage === 'options' && <OptionsPage />}
                 {activePage === 'forex' && <ForexPage />}
@@ -98,12 +63,7 @@ function AppShell() {
                 {activePage === 'news' && <NewsPage />}
                 {activePage === 'notifications' && <NotificationsPage />}
                 {activePage === 'predictionMarkets' && <PredictionMarketsPage />}
-                {activePage === 'marketmindAI' && (
-                    <MarketMindAIPage
-                        initialPrompt={sharedAiPrompt}
-                        onConsumeInitialPrompt={clearAiPrompt}
-                    />
-                )}
+                {activePage === 'marketmindAI' && <MarketMindAIPage />}
                 {activePage === 'gettingStarted' && <GettingStartedPage />}
                 {activePage === 'calendar' && <MarketCalendarPage />}
             </main>

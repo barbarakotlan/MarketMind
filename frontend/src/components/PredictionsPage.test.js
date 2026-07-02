@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import PredictionsPage from './PredictionsPage';
+import { NavigationProvider } from '../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 jest.mock('./ui/StockPredictionCard', () => () => <div data-testid="stock-prediction-card" />);
@@ -29,7 +30,7 @@ describe('PredictionsPage', () => {
     });
 
     test('uses the ensemble endpoint by default', async () => {
-        render(<PredictionsPage />);
+        render(<NavigationProvider><PredictionsPage /></NavigationProvider>);
 
         expect(screen.getByText(/7 trading-session price predictions/i)).toBeInTheDocument();
 
@@ -46,7 +47,7 @@ describe('PredictionsPage', () => {
     });
 
     test('uses a valid default model in single-model mode', async () => {
-        render(<PredictionsPage />);
+        render(<NavigationProvider><PredictionsPage /></NavigationProvider>);
 
         fireEvent.change(screen.getByPlaceholderText(/enter stock ticker/i), {
             target: { value: 'AAPL' },
@@ -62,7 +63,7 @@ describe('PredictionsPage', () => {
     });
 
     test('uses the selected single model', async () => {
-        render(<PredictionsPage />);
+        render(<NavigationProvider><PredictionsPage /></NavigationProvider>);
 
         fireEvent.change(screen.getByPlaceholderText(/enter stock ticker/i), {
             target: { value: 'AAPL' },

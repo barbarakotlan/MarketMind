@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MarketMindAIPage from './MarketMindAIPage';
+import { NavigationProvider } from '../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 jest.mock('react-markdown', () => ({ children }) => <div>{children}</div>);
@@ -87,7 +88,7 @@ describe('MarketMindAIPage', () => {
             throw new Error(`Unhandled url ${url}`);
         });
 
-        render(<MarketMindAIPage />);
+        render(<NavigationProvider><MarketMindAIPage /></NavigationProvider>);
 
         expect(await screen.findByRole('button', { name: /New chat/i })).toBeInTheDocument();
         expect(await screen.findByText(/What are the biggest risks to AAPL/i)).toBeInTheDocument();
@@ -236,7 +237,7 @@ describe('MarketMindAIPage', () => {
             throw new Error(`Unhandled url ${url}`);
         });
 
-        render(<MarketMindAIPage />);
+        render(<NavigationProvider><MarketMindAIPage /></NavigationProvider>);
 
         fireEvent.change(screen.getByPlaceholderText(/Ask MarketMindAI about a ticker/i), {
             target: { value: 'Summarize the current setup for NVDA using predictions, news, and fundamentals.' },
@@ -386,7 +387,7 @@ describe('MarketMindAIPage', () => {
             throw new Error(`Unhandled url ${url}`);
         });
 
-        render(<MarketMindAIPage />);
+        render(<NavigationProvider><MarketMindAIPage /></NavigationProvider>);
 
         window.dispatchEvent(new CustomEvent('marketmindai:select-chat', { detail: { chatId: 'chat-good' } }));
 
@@ -448,7 +449,7 @@ describe('MarketMindAIPage', () => {
             throw new Error(`Unhandled url ${url}`);
         });
 
-        render(<MarketMindAIPage />);
+        render(<NavigationProvider><MarketMindAIPage /></NavigationProvider>);
 
         fireEvent.change(screen.getByPlaceholderText(/Ask MarketMindAI about a ticker/i), {
             target: { value: 'Compare MSFT vs GOOGL using predictions, news, and fundamentals.' },
@@ -509,7 +510,7 @@ describe('MarketMindAIPage', () => {
             throw new Error(`Unhandled url ${url}`);
         });
 
-        render(<MarketMindAIPage />);
+        render(<NavigationProvider><MarketMindAIPage /></NavigationProvider>);
 
         fireEvent.change(screen.getByPlaceholderText(/Ask MarketMindAI about a ticker/i), {
             target: { value: 'Tell me about GOOGL.' },

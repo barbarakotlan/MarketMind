@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigation } from '../context/NavigationContext';
 import { Search, TrendingUp, TrendingDown, Activity, Building, ChevronDown, ChevronUp } from 'lucide-react';
 import StockDataCard from './ui/StockDataCard';
 import StockChart from './charts/StockChart';
@@ -279,7 +280,17 @@ const mapScreenerSuggestion = (stock = {}) => ({
     volume: typeof stock.volume === 'number' ? stock.volume : 0,
 });
 
-const SearchPage = ({ onNavigateToPredictions, initialTicker, initialCompareTicker, onClearInitialTicker }) => {
+const SearchPage = ({ onNavigateToPredictions }) => {
+    const {
+        sharedTicker: initialTicker,
+        sharedCompareTicker: initialCompareTicker,
+        clearTicker,
+        clearCompareTicker,
+    } = useNavigation();
+    const onClearInitialTicker = () => {
+        clearTicker();
+        clearCompareTicker();
+    };
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [expandedSectors, setExpandedSectors] = useState({});
     // --- NEW: Autocomplete states ---

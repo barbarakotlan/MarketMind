@@ -3,10 +3,12 @@ import StockPredictionCard from './ui/StockPredictionCard';
 import PredictionChart from './charts/PredictionChart';
 import ModelComparisonCard from './ui/ModelComparisonCard';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
+import { useNavigation } from '../context/NavigationContext';
 
 const DEFAULT_SINGLE_MODEL = 'LinReg';
 
-const PredictionsPage = ({ initialTicker, onConsumeInitialTicker }) => {
+const PredictionsPage = () => {
+    const { sharedTicker: initialTicker, clearTicker: onConsumeInitialTicker } = useNavigation();
     const [ticker, setTicker] = useState('');
     const [predictionData, setPredictionData] = useState(null);
     const [loading, setLoading] = useState(false);

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import SearchPage from './SearchPage';
+import { NavigationProvider } from '../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 jest.mock('./ui/StockDataCard', () => ({ data }) => (
@@ -128,7 +129,7 @@ describe('SearchPage', () => {
             }
         });
 
-        render(<SearchPage />);
+        render(<NavigationProvider><SearchPage /></NavigationProvider>);
 
         fireEvent.click(await screen.findByRole('button', { name: /AAPL/i }));
         fireEvent.click(screen.getByRole('button', { name: /MSFT/i }));
@@ -183,7 +184,7 @@ describe('SearchPage', () => {
             }
         });
 
-        render(<SearchPage />);
+        render(<NavigationProvider><SearchPage /></NavigationProvider>);
 
         fireEvent.click(await screen.findByRole('button', { name: /AAPL/i }));
         fireEvent.click(screen.getByRole('button', { name: /MSFT/i }));
@@ -226,7 +227,7 @@ describe('SearchPage', () => {
             }
         });
 
-        render(<SearchPage />);
+        render(<NavigationProvider><SearchPage /></NavigationProvider>);
 
         fireEvent.change(screen.getByPlaceholderText('e.g., AAPL, HK:00700, CN:600519'), { target: { value: 'nv' } });
         fireEvent.mouseDown(await screen.findByText('NVDA'));
@@ -273,7 +274,7 @@ describe('SearchPage', () => {
             }
         });
 
-        render(<SearchPage />);
+        render(<NavigationProvider><SearchPage /></NavigationProvider>);
 
         fireEvent.click(await screen.findByRole('button', { name: 'TSLA' }));
         expect(await screen.findByTestId('stock-data')).toHaveTextContent('Tesla (TSLA)');
@@ -313,7 +314,7 @@ describe('SearchPage', () => {
             }
         });
 
-        render(<SearchPage />);
+        render(<NavigationProvider><SearchPage /></NavigationProvider>);
 
         fireEvent.change(screen.getByPlaceholderText('e.g., AAPL, HK:00700, CN:600519'), { target: { value: 'NVDA' } });
         fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -344,7 +345,7 @@ describe('SearchPage', () => {
             }
         });
 
-        render(<SearchPage />);
+        render(<NavigationProvider><SearchPage /></NavigationProvider>);
 
         fireEvent.click(screen.getByRole('button', { name: 'All' }));
         fireEvent.change(screen.getByPlaceholderText('e.g., AAPL, HK:00700, CN:600519'), { target: { value: '70' } });

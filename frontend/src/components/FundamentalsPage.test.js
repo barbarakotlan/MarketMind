@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import FundamentalsPage from './FundamentalsPage';
+import { NavigationProvider } from '../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
 
 jest.mock('../config/api', () => ({
@@ -204,7 +205,7 @@ describe('FundamentalsPage', () => {
             .mockResolvedValueOnce(secIntelligencePayload)
             .mockResolvedValueOnce(filingDetailPayload);
 
-        render(<FundamentalsPage />);
+        render(<NavigationProvider><FundamentalsPage /></NavigationProvider>);
 
         fireEvent.change(screen.getByPlaceholderText(/Enter ticker/i), { target: { value: 'AAPL' } });
         fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -244,7 +245,7 @@ describe('FundamentalsPage', () => {
             .mockRejectedValueOnce(new Error('detail unavailable'))
             .mockRejectedValueOnce(new Error('detail unavailable'));
 
-        render(<FundamentalsPage />);
+        render(<NavigationProvider><FundamentalsPage /></NavigationProvider>);
 
         fireEvent.change(screen.getByPlaceholderText(/Enter ticker/i), { target: { value: 'AAPL' } });
         fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -267,7 +268,7 @@ describe('FundamentalsPage', () => {
     test('uses Akshare-backed company research mode for HK assets without calling SEC routes', async () => {
         apiRequest.mockResolvedValueOnce(hkFundamentalsPayload);
 
-        render(<FundamentalsPage />);
+        render(<NavigationProvider><FundamentalsPage /></NavigationProvider>);
 
         fireEvent.click(screen.getByRole('button', { name: 'HK' }));
         fireEvent.change(screen.getByPlaceholderText(/Enter ticker/i), { target: { value: '00700' } });
