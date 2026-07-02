@@ -36,7 +36,19 @@ except ImportError:
 
 # --- Imports ---
 from news_fetcher import get_general_news
-from models import create_dataset, ensemble_predict, linear_regression_predict, random_forest_predict, xgboost_predict, gradient_boosting_predict, lightgbm_predict, catboost_predict, lstm_train, lstm_predict, transformer_train, transformer_predict
+# Base ML predictors come from prediction_service (single source of truth);
+# the deep-learning models (LSTM/Transformer) and the extended ensemble live in
+# models.py, layered on top of prediction_service.
+from prediction_service import (
+    create_dataset,
+    linear_regression_predict,
+    random_forest_predict,
+    xgboost_predict,
+    gradient_boosting_predict,
+    lightgbm_predict,
+    catboost_predict,
+)
+from models import ensemble_predict, lstm_train, lstm_predict, transformer_train, transformer_predict
 from professional_evaluation import rolling_window_backtest
 from forex_fetcher import get_exchange_rate, get_currency_list
 from crypto_fetcher import get_crypto_exchange_rate, get_crypto_list, get_target_currencies

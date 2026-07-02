@@ -1,3 +1,12 @@
+"""Deep-learning forecasting extension.
+
+prediction_service.py is the single source of truth for the base ML stack
+(ARIMA / linear / random-forest / xgboost / gradient-boosting / lightgbm /
+catboost and the base ensemble). This module adds the deep-learning models on
+top of it: the LSTM and Transformer networks (with their feature preparation)
+and ``ensemble_predict``, an extended ensemble that averages the base ensemble
+together with the LSTM and Transformer predictions.
+"""
 import warnings
 warnings.filterwarnings('ignore')
 import numpy as np
@@ -101,19 +110,6 @@ def _torch():
     }
     return _TORCH
 
-# Try to import XGBoost, fallback if not available
-try:
-    import xgboost as xgb  # noqa: F401  (availability probe; consolidated in B10)
-    XGBOOST_AVAILABLE = True
-except ImportError:
-    XGBOOST_AVAILABLE = False
-    print("XGBoost not available. Install with: pip install xgboost")
-
-# Creating a dataset based on ticker and period
-def create_dataset(ticker, period):
-    return prediction_service.create_dataset(ticker, period=period)
-
-
 def create_features(df, lookback=14):
     """
     Create features for ML models including lagged prices and basic technical indicators
@@ -154,45 +150,6 @@ def prepare_ml_data(df, lookback=14):
 
     return X, y, df_features
 
-# General function to prepare data for models that require training
-def prepare_model_data(df, lookback=14):
-    """
-    Prepare data for all models
-    """
-    # Split prices, before any feature engineering
-    split_idx = int(len(df) * 0.8)
-    train_df = df.iloc[:split_idx]
-    test_df = df.iloc[split_idx:]
-
-    # Build features separately on each split
-    X_train_feat, _, train_features = prepare_ml_data(train_df, lookback)
-    X_test_feat,  _, test_features  = prepare_ml_data(test_df,  lookback)
-
-    y_train_vals = train_features[['Close']].values
-    y_test_vals  = test_features[['Close']].values
-
-    # For LSTM/Transformer, we will create sequences later
-    return X_train_feat, y_train_vals, X_test_feat, y_test_vals
-
-def linear_regression_predict(df, days_ahead=7):
-    return prediction_service.linear_regression_predict(df, days_ahead=days_ahead)
-
-
-def random_forest_predict(df, days_ahead=7, lookback=14):
-    return prediction_service.random_forest_predict(df, days_ahead=days_ahead, lookback=lookback)
-
-def xgboost_predict(df, days_ahead=7, lookback=14):
-    return prediction_service.xgboost_predict(df, days_ahead=days_ahead, lookback=lookback)
-
-def gradient_boosting_predict(df, days_ahead=7, lookback=14):
-    return prediction_service.gradient_boosting_predict(df, days_ahead=days_ahead, lookback=lookback)
-
-def lightgbm_predict(df, days_ahead=7, lookback=14):
-    return prediction_service.lightgbm_predict(df, days_ahead=days_ahead, lookback=lookback)
-
-def catboost_predict(df, days_ahead=7, lookback=14):
-    return prediction_service.catboost_predict(df, days_ahead=days_ahead, lookback=lookback)
-
 def ensemble_predict(df, days_ahead=7, lookback=14, seq_len=30):
     """
     Extended ensemble that includes LSTM and Transformer
@@ -227,9 +184,6 @@ def ensemble_predict(df, days_ahead=7, lookback=14, seq_len=30):
 
     return full_ensemble, all_predictions
 
-
-def calculate_metrics(actual, predicted):
-    return prediction_service.calculate_metrics(actual, predicted)
 
 # LSTM Helper
 def create_sequences(X, y, seq_len, forecast_horizon):
@@ -419,7 +373,7 @@ def transformer_predict(df, model, scaler_X, scaler_y, device, lookback=14, seq_
 # Main for testing individual models and the full ensemble
 if __name__ == "__main__":
     ticker = 'AAPL'
-    df = create_dataset(ticker, period="2y")
+    df = prediction_service.create_dataset(ticker, period="2y")
 
     days_ahead = 7
     lookback = 14
@@ -430,10 +384,10 @@ if __name__ == "__main__":
     future_dates = prediction_service.get_future_prediction_dates(df, days_ahead)
 
     for name, pred in [
-        ("Linear Regression", linear_regression_predict(df, days_ahead)),
-        ("Random Forest",     random_forest_predict(df, days_ahead)),
-        ("XGBoost",           xgboost_predict(df, days_ahead)),
-        ("Gradient Boosting", gradient_boosting_predict(df, days_ahead)),
+        ("Linear Regression", prediction_service.linear_regression_predict(df, days_ahead)),
+        ("Random Forest",     prediction_service.random_forest_predict(df, days_ahead)),
+        ("XGBoost",           prediction_service.xgboost_predict(df, days_ahead)),
+        ("Gradient Boosting", prediction_service.gradient_boosting_predict(df, days_ahead)),
     ]:
         if pred is not None:
             print(f"\n{name}:")
