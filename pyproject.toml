@@ -1,0 +1,25 @@
+# Ruff configuration for the Python backend.
+# Scope is intentionally conservative: the pyflakes ("F") rules catch real
+# defects (unused imports, undefined names, unused variables) with low noise,
+# without imposing a full-codebase reformat. Style/formatting rules and
+# import-sorting can be layered on later.
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F"]
+# First pass enforces the high-value pyflakes rules (unused imports, undefined
+# names, redefinitions, empty f-strings). A handful of pre-existing unused-local
+# (F841) and loop-variable-shadow (F402) findings are grandfathered for now and
+# can be cleaned up and re-enabled in a follow-up.
+ignore = ["F841", "F402"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests import symbols for monkeypatching/fixtures and sometimes bind unused
+# locals for readability; don't fail the gate on those.
+"backend/tests/*" = ["F401", "F811", "F841"]
+# api.py deliberately re-exports ~30 user_state_store functions as a public
+# namespace/test seam (accessed as `api.<name>` by tests), so "unused in this
+# file" does not mean unused. Re-enable F401 here once routes are split out.
+"backend/api.py" = ["F401"]

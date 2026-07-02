@@ -1,4 +1,7 @@
 -r requirements.txt
 
+# Linting (matches the version pinned in CI)
+ruff==0.11.4
+
 # Optional local profiling / debugging tooling
 memray==1.19.2

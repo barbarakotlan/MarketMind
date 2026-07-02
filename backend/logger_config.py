@@ -190,7 +190,7 @@ if __name__ == "__main__":
     except Exception as e:
         log_api_error(test_logger, '/predict/AAPL', e, 'AAPL')
     
-    print(f"\nLogs written to:")
+    print("\nLogs written to:")
     print(f"  - {INFO_LOG}")
     print(f"  - {ERROR_LOG}")
     print(f"  - {DEBUG_LOG}")

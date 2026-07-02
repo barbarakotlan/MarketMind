@@ -88,7 +88,7 @@ Non-2xx responses throw `MarketMindApiError` with:
 
 ## Type generation
 
-The package generates API types directly from [`/Users/tazeemmahashin/MarketMind/backend/public_api_openapi_v2.yaml`](/Users/tazeemmahashin/MarketMind/backend/public_api_openapi_v2.yaml):
+The package generates API types directly from [`backend/public_api_openapi_v2.yaml`](../../backend/public_api_openapi_v2.yaml):
 
 ```bash
 npm run generate:types

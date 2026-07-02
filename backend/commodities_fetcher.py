@@ -3,7 +3,6 @@ Commodities data fetcher using yfinance for commodity ETFs and futures
 Provides real-time and historical price data for major commodities
 """
 import yfinance as yf
-from datetime import datetime, timedelta
 
 # Commodity ETF/Future ticker mappings with metadata
 COMMODITIES_INFO = {

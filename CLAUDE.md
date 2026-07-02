@@ -50,7 +50,7 @@ Key vars: `REACT_APP_API_URL` and `REACT_APP_CLERK_PUBLISHABLE_KEY` (frontend); 
 `backend/api.py` is the composition root — a large module that registers routes and wires together auth, rate limiting, CORS, security headers, the background scheduler, and domain modules. It is intentionally the hub; feature logic lives in separate modules it imports.
 
 - **Route handlers** are grouped in `api_handlers_*.py` (market_data, marketmind_ai, notifications, paper, prediction_markets, public, reference_data). `api.py` registers them.
-- **Domain services** are standalone modules: `data_fetcher.py` (market data prep), `models.py` + `ensemble_model.py` + `model.py` (forecasting stack — linear/RF/XGB/GBM/LightGBM/CatBoost/LSTM/transformer), `professional_evaluation.py` (rolling-window backtests), `*_fetcher.py` (forex/crypto/commodities/news/prediction_markets), `portfolio_optimization_service.py`, `sec_filings_service.py`, `screener_query_service.py`, `research_*` (RAG: document builder, embeddings, vector store, retrieval).
+- **Domain services** are standalone modules: `data_fetcher.py` (market data prep), `prediction_service.py` (authoritative forecasting/ensemble stack) + `models.py` (LSTM/transformer + thin shims) — linear/RF/XGB/GBM/LightGBM/CatBoost/LSTM/transformer, `professional_evaluation.py` (rolling-window backtests), `*_fetcher.py` (forex/crypto/commodities/news/prediction_markets), `portfolio_optimization_service.py`, `sec_filings_service.py`, `screener_query_service.py`, `research_*` (RAG: document builder, embeddings, vector store, retrieval).
 - **Public API** (`api_public.py`, `public_api_admin.py`) is a separate versioned surface documented by `backend/public_api_openapi_v{1,2}.yaml`; it requires `PERSISTENCE_MODE=postgres`.
 
 ### Auth

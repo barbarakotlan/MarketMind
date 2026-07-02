@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any
 
 from flask import g
 from werkzeug.datastructures import MultiDict

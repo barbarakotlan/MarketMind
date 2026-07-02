@@ -3,8 +3,14 @@ from __future__ import annotations
 import copy
 import math
 import time
-from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    # Imported only for return-type annotations; the real imports are done
+    # lazily inside _build_mlforecast/_build_statsforecast (see B3). Safe because
+    # this module uses `from __future__ import annotations`.
+    from mlforecast import MLForecast
+    from statsforecast import StatsForecast
 
 import numpy as np
 import pandas as pd

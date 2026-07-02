@@ -7,7 +7,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from threading import RLock
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 import polars as pl
 
