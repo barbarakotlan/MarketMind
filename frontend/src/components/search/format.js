@@ -1,7 +1,6 @@
 // Pure display formatters for search result cards.
 
-export // --- Helpers for Jimmy's cards ---
-const formatLargeNumber = (num) => {
+export const formatLargeNumber = (num) => {
     if (!num || isNaN(num)) return 'N/A';
     if (num >= 1e12) return `${(num / 1e12).toFixed(2)}T`;
     if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
