@@ -23,7 +23,12 @@ class FakeResponse:
             raise fetcher.requests.HTTPError(f"HTTP {self.status_code}")
 
 
+_POLYMARKET_AVAILABLE = "polymarket" in fetcher.SUPPORTED_EXCHANGES
+_POLYMARKET_SKIP_REASON = "requires polymarket support (dr_manhattan optional dependency)"
+
+
 class PredictionMarketAnalysisUnitTests(unittest.TestCase):
+    @unittest.skipUnless(_POLYMARKET_AVAILABLE, _POLYMARKET_SKIP_REASON)
     def test_resolve_market_for_analysis_falls_back_from_market_slug_to_event_slug(self):
         responses = [
             FakeResponse(404, {"error": "not found"}),
@@ -60,6 +65,7 @@ class PredictionMarketAnalysisUnitTests(unittest.TestCase):
         self.assertAlmostEqual(market["current_probability"], 0.61)
         self.assertEqual(market["source_url"], "https://polymarket.com/event/candidate-a-2028")
 
+    @unittest.skipUnless(_POLYMARKET_AVAILABLE, _POLYMARKET_SKIP_REASON)
     def test_resolve_market_for_analysis_rejects_non_polymarket_urls(self):
         with self.assertRaises(fetcher.PredictionMarketLookupError) as ctx:
             fetcher.resolve_market_for_analysis(
