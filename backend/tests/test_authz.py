@@ -82,5 +82,42 @@ class ApiPrincipalWiringTests(unittest.TestCase):
         self.assertEqual(principal.capabilities, authz.USER_CAPABILITIES)
 
 
+class RequireCapabilityTests(unittest.TestCase):
+    """Phase A2: the enforcement point. A full 'user' passes (behavior-preserving);
+    a principal lacking the capability, or none at all, is denied 403."""
+
+    def setUp(self):
+        import api as backend_api
+
+        self.api = backend_api
+        self.app = backend_api.app
+
+    def _call_guarded(self, capability, principal):
+        from flask import g
+
+        with self.app.test_request_context("/"):
+            if principal is not None:
+                g.principal = principal
+
+            @self.api.require_capability(capability)
+            def handler():
+                return "ok"
+
+            return handler()
+
+    def test_full_user_is_allowed(self):
+        principal = authz.principal_for_user("u1", {"sub": "u1"})
+        self.assertEqual(self._call_guarded(Capabilities.PAPER_TRADE, principal), "ok")
+
+    def test_principal_missing_capability_is_forbidden(self):
+        limited = Principal(id="u2", capabilities=frozenset({Capabilities.WATCHLIST_READ}))
+        result = self._call_guarded(Capabilities.PAPER_TRADE, limited)
+        self.assertEqual(result[1], 403)
+
+    def test_no_principal_is_forbidden(self):
+        result = self._call_guarded(Capabilities.PAPER_READ, None)
+        self.assertEqual(result[1], 403)
+
+
 if __name__ == "__main__":
     unittest.main()
