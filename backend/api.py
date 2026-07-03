@@ -495,6 +495,25 @@ def get_current_principal():
     return getattr(g, 'principal', None)
 
 
+def require_capability(capability):
+    """Guard a route on a single capability (phase A2).
+
+    Assumes ``@require_auth`` runs first (outer decorator), which populates
+    ``g.principal``. Every signed-in user currently holds the base ``user`` role,
+    which grants every non-admin capability, so this is behavior-preserving for
+    those routes — but the enforcement point now exists.
+    """
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            principal = get_current_principal()
+            if principal is None or not principal.has(capability):
+                return jsonify({"error": "You do not have access to this action."}), 403
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 def require_auth(f):
     return api_auth_helpers.build_require_auth(
         f,
@@ -878,6 +897,7 @@ def save_watchlist(tickers, user_id=None):
 
 @api_bp.route('/auth/me', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.ACCOUNT_READ)
 @limiter.limit(RateLimits.LIGHT)
 def auth_me():
     payload = getattr(g, 'auth_payload', {})
@@ -898,6 +918,7 @@ def _marketmind_ai_not_configured_response():
 
 @api_bp.route('/deliverables', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_deliverables():
     return deliverables_handlers.list_deliverables_handler(
@@ -913,6 +934,7 @@ def get_deliverables():
 
 @api_bp.route('/deliverables', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
 def post_deliverable():
     payload = request.get_json(silent=True) or {}
@@ -931,6 +953,7 @@ def post_deliverable():
 
 @api_bp.route('/deliverables/<string:deliverable_id>', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_deliverable(deliverable_id):
     return deliverables_handlers.get_deliverable_handler(
@@ -948,6 +971,7 @@ def get_deliverable(deliverable_id):
 
 @api_bp.route('/deliverables/<string:deliverable_id>', methods=['PATCH'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
 def patch_deliverable(deliverable_id):
     payload = request.get_json(silent=True) or {}
@@ -967,6 +991,7 @@ def patch_deliverable(deliverable_id):
 
 @api_bp.route('/deliverables/<string:deliverable_id>/assumptions', methods=['PUT'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
 def put_deliverable_assumptions(deliverable_id):
     payload = request.get_json(silent=True) or {}
@@ -986,6 +1011,7 @@ def put_deliverable_assumptions(deliverable_id):
 
 @api_bp.route('/deliverables/<string:deliverable_id>/reviews', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
 def post_deliverable_review(deliverable_id):
     payload = request.get_json(silent=True) or {}
@@ -1005,6 +1031,7 @@ def post_deliverable_review(deliverable_id):
 
 @api_bp.route('/deliverables/<string:deliverable_id>/preflight', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
 def post_deliverable_preflight(deliverable_id):
     return deliverables_handlers.post_deliverable_preflight_handler(
@@ -1022,6 +1049,7 @@ def post_deliverable_preflight(deliverable_id):
 
 @api_bp.route('/deliverables/<string:deliverable_id>/context', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_deliverable_context(deliverable_id):
     return deliverables_handlers.get_deliverable_context_handler(
@@ -1039,6 +1067,7 @@ def get_deliverable_context(deliverable_id):
 
 @api_bp.route('/deliverables/<string:deliverable_id>/memos', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_deliverable_memos(deliverable_id):
     return deliverables_handlers.get_deliverable_memos_handler(
@@ -1056,6 +1085,7 @@ def get_deliverable_memos(deliverable_id):
 
 @api_bp.route('/deliverables/<string:deliverable_id>/memos/generate', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.HEAVY)
 def post_deliverable_generate(deliverable_id):
     return deliverables_handlers.post_deliverable_generate_handler(
@@ -1073,6 +1103,7 @@ def post_deliverable_generate(deliverable_id):
 
 @api_bp.route('/deliverables/<string:deliverable_id>/memos/<string:memo_id>/download', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.DELIVERABLES_READ)
 @limiter.limit(RateLimits.LIGHT)
 def download_deliverable_memo(deliverable_id, memo_id):
     return deliverables_handlers.download_deliverable_memo_handler(
@@ -1094,6 +1125,7 @@ def download_deliverable_memo(deliverable_id, memo_id):
 
 @api_bp.route('/marketmind-ai/bootstrap', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.AI_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_bootstrap():
     return marketmind_ai_handlers.get_bootstrap_handler(
@@ -1105,6 +1137,7 @@ def get_marketmind_ai_bootstrap():
 
 @api_bp.route('/marketmind-ai/chats', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.AI_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_chats():
     return marketmind_ai_handlers.list_chats_handler(
@@ -1120,6 +1153,7 @@ def get_marketmind_ai_chats():
 
 @api_bp.route('/marketmind-ai/chats/<string:chat_id>', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.AI_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_chat(chat_id):
     return marketmind_ai_handlers.get_chat_handler(
@@ -1137,6 +1171,7 @@ def get_marketmind_ai_chat(chat_id):
 
 @api_bp.route('/marketmind-ai/chats/<string:chat_id>', methods=['DELETE'])
 @require_auth
+@require_capability(authz.Capabilities.AI_WRITE)
 @limiter.limit(RateLimits.WRITE)
 def delete_marketmind_ai_chat_route(chat_id):
     return marketmind_ai_handlers.delete_chat_handler(
@@ -1154,6 +1189,7 @@ def delete_marketmind_ai_chat_route(chat_id):
 
 @api_bp.route('/marketmind-ai/context', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.AI_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_context():
     ticker = request.args.get('ticker', '').strip().upper()
@@ -1174,6 +1210,7 @@ def get_marketmind_ai_context():
 
 @api_bp.route('/marketmind-ai/retrieval-status', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.AI_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_retrieval_status_route():
     ticker = request.args.get('ticker', '').strip().upper()
@@ -1194,6 +1231,7 @@ def get_marketmind_ai_retrieval_status_route():
 
 @api_bp.route('/marketmind-ai/chat', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.AI_WRITE)
 @limiter.limit(RateLimits.HEAVY)
 def post_marketmind_ai_chat():
     payload = request.get_json(silent=True) or {}
@@ -1212,6 +1250,7 @@ def post_marketmind_ai_chat():
 
 @api_bp.route('/marketmind-ai/artifacts/preflight', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.AI_WRITE)
 @limiter.limit(RateLimits.WRITE)
 def post_marketmind_ai_artifact_preflight():
     payload = request.get_json(silent=True) or {}
@@ -1230,6 +1269,7 @@ def post_marketmind_ai_artifact_preflight():
 
 @api_bp.route('/marketmind-ai/artifacts', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.AI_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_artifacts():
     return marketmind_ai_handlers.list_artifacts_handler(
@@ -1245,6 +1285,7 @@ def get_marketmind_ai_artifacts():
 
 @api_bp.route('/marketmind-ai/artifacts', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.AI_WRITE)
 @limiter.limit(RateLimits.HEAVY)
 def post_marketmind_ai_artifact_generate():
     payload = request.get_json(silent=True) or {}
@@ -1263,6 +1304,7 @@ def post_marketmind_ai_artifact_generate():
 
 @api_bp.route('/marketmind-ai/artifacts/<string:artifact_id>', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.AI_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_marketmind_ai_artifact(artifact_id):
     return marketmind_ai_handlers.get_artifact_handler(
@@ -1280,6 +1322,7 @@ def get_marketmind_ai_artifact(artifact_id):
 
 @api_bp.route('/marketmind-ai/artifacts/<string:artifact_id>/versions/<string:version_id>/download', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.AI_READ)
 @limiter.limit(RateLimits.LIGHT)
 def download_marketmind_ai_artifact(artifact_id, version_id):
     return marketmind_ai_handlers.download_artifact_handler(
@@ -1315,6 +1358,7 @@ def get_symbol_suggestions(query):
 # --- Watchlist Endpoints ---
 @api_bp.route('/watchlist', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.WATCHLIST_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_watchlist():
     return market_data_handlers.get_watchlist_handler(
@@ -1325,6 +1369,7 @@ def get_watchlist():
 
 @api_bp.route('/watchlist/<string:ticker>', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.WATCHLIST_WRITE)
 @limiter.limit(RateLimits.WRITE)
 def add_to_watchlist(ticker):
     return market_data_handlers.add_to_watchlist_handler(
@@ -1337,6 +1382,7 @@ def add_to_watchlist(ticker):
 
 @api_bp.route('/watchlist/<string:ticker>', methods=['DELETE'])
 @require_auth
+@require_capability(authz.Capabilities.WATCHLIST_WRITE)
 @limiter.limit(RateLimits.WRITE)
 def remove_from_watchlist(ticker):
     return market_data_handlers.remove_from_watchlist_handler(
@@ -1500,6 +1546,7 @@ def record_portfolio_snapshot(portfolio_data, user_id):
 
 @api_bp.route('/paper/portfolio', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.PAPER_READ)
 def get_paper_portfolio():
     return paper_handlers.get_paper_portfolio_handler(
         get_current_user_id_fn=get_current_user_id,
@@ -1510,6 +1557,7 @@ def get_paper_portfolio():
 
 @api_bp.route('/paper/portfolio/optimize', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.STANDARD)
 def optimize_paper_portfolio():
     return paper_handlers.optimize_paper_portfolio_handler(
@@ -1523,6 +1571,7 @@ def optimize_paper_portfolio():
 
 @api_bp.route('/paper/buy', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
 def buy_stock():
@@ -1538,6 +1587,7 @@ def buy_stock():
 
 @api_bp.route('/paper/sell', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['ticker', 'shares'])
 def sell_stock():
@@ -1553,6 +1603,7 @@ def sell_stock():
 
 @api_bp.route('/paper/options/buy', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.PAPER_TRADE)
 def buy_option():
     return paper_handlers.buy_option_handler(
         request_obj=request,
@@ -1564,6 +1615,7 @@ def buy_option():
 
 @api_bp.route('/paper/options/sell', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.PAPER_TRADE)
 def sell_option():
     return paper_handlers.sell_option_handler(
         request_obj=request,
@@ -1576,6 +1628,7 @@ def sell_option():
 # --- This is YOUR corrected portfolio history endpoint ---
 @api_bp.route('/paper/history', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.PAPER_READ)
 def get_paper_history():
     return paper_handlers.get_paper_history_handler(
         request_obj=request,
@@ -1589,6 +1642,7 @@ def get_paper_history():
 
 @api_bp.route('/paper/transactions', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.PAPER_READ)
 def get_trade_history():
     return paper_handlers.get_trade_history_handler(
         get_current_user_id_fn=get_current_user_id,
@@ -1598,6 +1652,7 @@ def get_trade_history():
 
 @api_bp.route('/paper/reset', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.PAPER_TRADE)
 def reset_portfolio():
     return paper_handlers.reset_portfolio_handler(
         get_current_user_id_fn=get_current_user_id,
@@ -1608,6 +1663,7 @@ def reset_portfolio():
 # --- NEW: Notification Endpoints ---
 @api_bp.route('/notifications', methods=['GET', 'POST'])
 @require_auth
+@require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
 def handle_notifications():
     return notification_handlers.handle_notifications_handler(
         request_obj=request,
@@ -1620,6 +1676,7 @@ def handle_notifications():
 
 @api_bp.route('/notifications/smart', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
 def create_smart_alert():
     return notification_handlers.create_smart_alert_handler(
         request_obj=request,
@@ -1632,6 +1689,7 @@ def create_smart_alert():
 
 @api_bp.route('/notifications/<string:alert_id>', methods=['DELETE'])
 @require_auth
+@require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
 def delete_notification(alert_id):
     return notification_handlers.delete_notification_handler(
         alert_id,
@@ -1643,6 +1701,7 @@ def delete_notification(alert_id):
 
 @api_bp.route('/notifications/triggered', methods=['GET', 'DELETE'])
 @require_auth
+@require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
 def get_triggered_notifications():
     return notification_handlers.get_triggered_notifications_handler(
         request_obj=request,
@@ -1654,6 +1713,7 @@ def get_triggered_notifications():
 
 @api_bp.route('/notifications/triggered/<string:alert_id>', methods=['DELETE'])
 @require_auth
+@require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
 def delete_triggered_notification(alert_id):
     return notification_handlers.delete_triggered_notification_handler(
         alert_id,
@@ -1796,6 +1856,7 @@ def list_prediction_exchanges():
 
 @api_bp.route('/prediction-markets/analyze', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.PREDICTION_MARKETS_TRADE)
 @limiter.limit(RateLimits.WRITE)
 def analyze_prediction_market():
     return prediction_markets_handlers.analyze_prediction_market_handler(
@@ -1819,6 +1880,7 @@ def get_prediction_market(market_id):
 
 @api_bp.route('/prediction-markets/portfolio', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.PREDICTION_MARKETS_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_prediction_portfolio():
     return prediction_markets_handlers.get_prediction_portfolio_handler(
@@ -1831,6 +1893,7 @@ def get_prediction_portfolio():
 
 @api_bp.route('/prediction-markets/buy', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.PREDICTION_MARKETS_TRADE)
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['market_id', 'outcome', 'contracts'])
 def buy_prediction_contract():
@@ -1846,6 +1909,7 @@ def buy_prediction_contract():
 
 @api_bp.route('/prediction-markets/sell', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.PREDICTION_MARKETS_TRADE)
 @limiter.limit(RateLimits.WRITE)
 @validate_request_json(['market_id', 'outcome', 'contracts'])
 def sell_prediction_contract():
@@ -1861,6 +1925,7 @@ def sell_prediction_contract():
 
 @api_bp.route('/prediction-markets/history', methods=['GET'])
 @require_auth
+@require_capability(authz.Capabilities.PREDICTION_MARKETS_READ)
 @limiter.limit(RateLimits.LIGHT)
 def get_prediction_trade_history():
     return prediction_markets_handlers.get_prediction_trade_history_handler(
@@ -1871,6 +1936,7 @@ def get_prediction_trade_history():
 
 @api_bp.route('/prediction-markets/reset', methods=['POST'])
 @require_auth
+@require_capability(authz.Capabilities.PREDICTION_MARKETS_TRADE)
 @limiter.limit(RateLimits.WRITE)
 def reset_prediction_portfolio():
     return prediction_markets_handlers.reset_prediction_portfolio_handler(
