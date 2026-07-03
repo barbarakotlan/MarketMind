@@ -45,6 +45,7 @@ fi
   backend.tests.test_app_factory \
   backend.tests.test_asset_identity \
   backend.tests.test_auth_isolation \
+  backend.tests.test_authz \
   backend.tests.test_backfill_postgres \
   backend.tests.test_chart_prediction_append \
   backend.tests.test_deliverables_api \
