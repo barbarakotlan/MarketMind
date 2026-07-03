@@ -147,6 +147,7 @@ except (AttributeError, ValueError):
 # --- New Imports for Options Suggester ---
 from options_suggester import generate_suggestion
 import api_auth as api_auth_helpers
+import authz
 import api_handlers_deliverables as deliverables_handlers
 import api_handlers_market_data as market_data_handlers
 import api_handlers_marketmind_ai as marketmind_ai_handlers
@@ -489,6 +490,11 @@ def get_current_user_id():
     return getattr(g, 'current_user_id', None)
 
 
+def get_current_principal():
+    """The authorization Principal for the current request (None if unauthenticated)."""
+    return getattr(g, 'principal', None)
+
+
 def require_auth(f):
     return api_auth_helpers.build_require_auth(
         f,
@@ -499,6 +505,10 @@ def require_auth(f):
         set_request_identity_fn=lambda payload: (
             setattr(g, 'current_user_id', payload['sub']),
             setattr(g, 'auth_payload', payload),
+            # Authorization Principal (phase A1): informational for now — routes
+            # begin asserting capabilities in a later phase. Every user gets the
+            # base ``user`` role, so this is behavior-preserving.
+            setattr(g, 'principal', authz.principal_for_user(payload['sub'], payload)),
         ),
     )
 
