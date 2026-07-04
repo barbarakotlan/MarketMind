@@ -52,6 +52,8 @@ class Capabilities:
     PREDICTION_MARKETS_TRADE = "prediction_markets.trade"
     # Admin-only.
     ADMIN_PUBLIC_API = "admin.public_api"
+    # Developer public-API access (granted to API-key principals).
+    PUBLIC_API_READ = "public_api.read"
 
 
 # Everything a normal signed-in user can do today (full app access). Admin-only
@@ -87,8 +89,14 @@ ROLES: Dict[str, FrozenSet[str]] = {
 
 DEFAULT_ROLE = "user"
 
-# The full set of known capabilities (union across all roles).
-ALL_CAPABILITIES: FrozenSet[str] = frozenset().union(*ROLES.values())
+# Default capabilities for a developer-API-key principal. The public API is
+# read-only; per-key scoping can narrow/extend this later.
+PUBLIC_API_CAPABILITIES: FrozenSet[str] = frozenset({Capabilities.PUBLIC_API_READ})
+
+# The full set of known capabilities (union across all roles + API-key defaults).
+ALL_CAPABILITIES: FrozenSet[str] = frozenset().union(
+    *ROLES.values(), PUBLIC_API_CAPABILITIES
+)
 
 
 @dataclass(frozen=True)
@@ -143,4 +151,24 @@ def principal_for_user(user_id: str, claims: Optional[Dict[str, Any]] = None) ->
         roles=roles,
         capabilities=capabilities_for_roles(roles),
         claims=claims or {},
+    )
+
+
+def principal_for_api_key(
+    identity: Dict[str, Any],
+    capabilities: Optional[Iterable[str]] = None,
+) -> Principal:
+    """Build a Principal for a developer-API-key request.
+
+    ``identity`` is the authenticated public-API context (client/key metadata).
+    Defaults to the read-only public-API capability set; a later phase can derive
+    a narrower/wider set from per-key scopes.
+    """
+    caps = frozenset(capabilities) if capabilities is not None else PUBLIC_API_CAPABILITIES
+    return Principal(
+        id=str((identity or {}).get("client_id") or ""),
+        kind="api_key",
+        roles=frozenset(),
+        capabilities=caps,
+        claims=dict(identity or {}),
     )

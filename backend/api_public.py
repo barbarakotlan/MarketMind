@@ -296,6 +296,7 @@ def build_require_public_api_auth(
     get_daily_usage_total_fn: Callable[[Dict[str, Any], date], int],
     logger=logging.getLogger("marketmind_api"),
     error_response_fn: Callable[[int, str, str], Any],
+    set_principal_fn: Callable[[Dict[str, Any]], None] | None = None,
 ):
     def wrapper(*args, **kwargs):
         g.public_api_route_group = route_group
@@ -312,6 +313,11 @@ def build_require_public_api_auth(
         except PublicApiError as exc:
             logger.info("public_api auth failed route=%s code=%s", route_group, exc.code)
             return error_response_fn(exc.status_code, exc.code, exc.message)
+
+        # Attach the unified authorization Principal for API-key requests
+        # (informational; the auth/quota flow below is unchanged).
+        if set_principal_fn is not None:
+            set_principal_fn(identity)
 
         today = datetime.now(timezone.utc).date()
         daily_quota = max(int(get_daily_quota_fn(identity)), 1)
