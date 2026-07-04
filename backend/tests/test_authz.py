@@ -63,6 +63,21 @@ class AuthzModelTests(unittest.TestCase):
         self.assertIn("admin", principal.roles)
         self.assertTrue(principal.has(Capabilities.ADMIN_PUBLIC_API))
 
+    def test_principal_for_api_key_defaults_to_public_read(self):
+        identity = {"client_id": "client_9", "client_name": "Acme", "api_key_id": "k1"}
+        principal = authz.principal_for_api_key(identity)
+        self.assertEqual(principal.id, "client_9")
+        self.assertEqual(principal.kind, "api_key")
+        self.assertEqual(principal.capabilities, authz.PUBLIC_API_CAPABILITIES)
+        self.assertTrue(principal.has(Capabilities.PUBLIC_API_READ))
+        # An API key is not a user role and holds no app-user capabilities.
+        self.assertEqual(principal.roles, frozenset())
+        self.assertFalse(principal.has(Capabilities.PAPER_TRADE))
+
+    def test_principal_for_api_key_accepts_explicit_capabilities(self):
+        principal = authz.principal_for_api_key({"client_id": "c"}, capabilities=[Capabilities.AI_READ])
+        self.assertEqual(principal.capabilities, frozenset({Capabilities.AI_READ}))
+
     def test_principal_has_any(self):
         principal = Principal(
             id="u", capabilities=frozenset({Capabilities.WATCHLIST_READ})

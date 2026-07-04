@@ -591,6 +591,9 @@ def require_public_api_auth(route_group):
             get_daily_quota_fn=_public_api_daily_quota,
             get_daily_usage_total_fn=_public_api_daily_usage_total,
             error_response_fn=_public_api_error_response,
+            set_principal_fn=lambda identity: setattr(
+                g, 'principal', authz.principal_for_api_key(identity)
+            ),
         )
 
     return decorator
