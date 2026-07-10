@@ -1,10 +1,10 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '../../auth';
 import { useNavigation } from '../../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../../config/api';
 import useMarketMindAIData from './useMarketMindAIData';
 
-jest.mock('@clerk/clerk-react', () => ({ useAuth: jest.fn() }));
+jest.mock('../../auth', () => ({ useAuth: jest.fn() }));
 jest.mock('../../context/NavigationContext', () => ({ useNavigation: jest.fn() }));
 jest.mock('../../config/api', () => ({
     ...jest.requireActual('../../config/api'),

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useEffectEvent } from 'react';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '../../auth';
 import { useNavigation } from '../../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../../config/api';
 

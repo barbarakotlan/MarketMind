@@ -7,7 +7,7 @@ let mockAuthState = {
     isSignedIn: true,
 };
 
-jest.mock('@clerk/clerk-react', () => ({
+jest.mock('../auth', () => ({
     useAuth: () => mockAuthState,
 }));
 

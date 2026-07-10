@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '../auth';
 import {
     clearAuthTokenGetter,
     installAuthFetchInterceptor,
@@ -38,7 +38,7 @@ const AuthFetchBridge = () => {
                     }
                     return await getToken(Object.keys(opts).length ? opts : undefined);
                 } catch (e) {
-                    console.error('Failed to get Clerk token for API request:', e);
+                    console.error('Failed to get auth token for API request:', e);
                     return null;
                 }
             });

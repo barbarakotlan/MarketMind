@@ -312,6 +312,12 @@ CLERK_ISSUER = os.getenv('CLERK_ISSUER', '').strip()
 CLERK_AUDIENCE = os.getenv('CLERK_AUDIENCE', '').strip()
 CLERK_JWKS_CACHE_TTL_SECONDS = int(os.getenv('CLERK_JWKS_CACHE_TTL_SECONDS', '3600'))
 _JWKS_CACHE = {}
+AUTH_MODE = api_auth_helpers.validate_auth_mode(
+    os.getenv('AUTH_MODE', 'clerk'),
+    is_production=IS_PRODUCTION,
+)
+LOCAL_AUTH_TOKEN = os.getenv('LOCAL_AUTH_TOKEN', 'marketmind-local-development')
+LOCAL_AUTH_USER_ID = os.getenv('LOCAL_AUTH_USER_ID', 'local_development_user').strip()
 
 
 def validate_production_runtime_security(
@@ -399,7 +405,7 @@ def _try_authenticate_optional_request():
     if not token:
         return
     try:
-        payload = verify_clerk_token(token)
+        payload = _verify_auth_token(token)
     except Exception:
         return
     setattr(g, 'current_user_id', payload['sub'])
@@ -486,6 +492,17 @@ def verify_clerk_token(token):
     )
 
 
+def _verify_auth_token(token):
+    return api_auth_helpers.verify_auth_token(
+        token,
+        auth_mode=AUTH_MODE,
+        is_production=IS_PRODUCTION,
+        local_auth_token=LOCAL_AUTH_TOKEN,
+        local_user_id=LOCAL_AUTH_USER_ID,
+        verify_clerk_token_fn=verify_clerk_token,
+    )
+
+
 def get_current_user_id():
     return getattr(g, 'current_user_id', None)
 
@@ -518,7 +535,7 @@ def require_auth(f):
     return api_auth_helpers.build_require_auth(
         f,
         token_getter=lambda: _get_clerk_bearer_token(),
-        verify_token_fn=lambda token: verify_clerk_token(token),
+        verify_token_fn=lambda token: _verify_auth_token(token),
         sync_authenticated_user_fn=lambda payload: _sync_authenticated_user(payload),
         unauthorized_response_fn=lambda message, status: (jsonify({"error": message}), status),
         set_request_identity_fn=lambda payload: (
@@ -908,6 +925,7 @@ def auth_me():
         "user_id": get_current_user_id(),
         "email": payload.get('email'),
         "username": payload.get('username'),
+        "auth_mode": payload.get('auth_mode', 'clerk'),
     })
 
 
@@ -2773,6 +2791,7 @@ def healthz():
             "status": "ok",
             "service": "marketmind-backend",
             "environment": FLASK_ENV,
+            "auth_mode": AUTH_MODE,
             "persistence_mode": PERSISTENCE_MODE,
             "public_api_enabled": _public_api_enabled(),
         }

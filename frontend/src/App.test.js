@@ -7,15 +7,12 @@ let mockIsLoaded = true;
 jest.mock('react-markdown', () => ({ children }) => <div>{children}</div>);
 jest.mock('remark-gfm', () => () => null);
 
-jest.mock('@clerk/clerk-react', () => ({
+jest.mock('./auth', () => ({
     SignedIn: ({ children }) => (mockIsSignedIn ? children : null),
     SignedOut: ({ children }) => (mockIsSignedIn ? null : children),
     useAuth: () => ({
         isLoaded: mockIsLoaded,
         isSignedIn: mockIsSignedIn,
-    }),
-    useUser: () => ({
-        user: null,
     }),
 }));
 

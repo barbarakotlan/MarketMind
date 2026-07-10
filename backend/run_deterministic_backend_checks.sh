@@ -8,6 +8,7 @@ cd "$ROOT_DIR"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 export DATABASE_URL="${DATABASE_URL:-}"
 export PERSISTENCE_MODE="${PERSISTENCE_MODE:-json}"
+export AUTH_MODE="clerk"
 export PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX:-/tmp/marketmind_pycache}"
 
 # Raise the flask-limiter route limits so business-logic tests that legitimately

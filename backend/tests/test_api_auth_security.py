@@ -45,6 +45,39 @@ class _FakeJWTModule:
 
 
 class ApiAuthSecurityTests(unittest.TestCase):
+    def test_local_auth_mode_is_development_only(self):
+        self.assertEqual(
+            api_auth_helpers.validate_auth_mode("local", is_production=False),
+            "local",
+        )
+        with self.assertRaisesRegex(ValueError, "not allowed in production"):
+            api_auth_helpers.validate_auth_mode("local", is_production=True)
+
+    def test_local_auth_token_resolves_a_fixed_non_admin_user(self):
+        payload = api_auth_helpers.verify_auth_token(
+            "local-token",
+            auth_mode="local",
+            is_production=False,
+            local_auth_token="local-token",
+            local_user_id="local_user",
+            verify_clerk_token_fn=lambda _token: self.fail("Clerk verifier should not run"),
+        )
+
+        self.assertEqual(payload["sub"], "local_user")
+        self.assertEqual(payload["auth_mode"], "local")
+        self.assertNotIn("roles", payload)
+
+    def test_local_auth_rejects_the_wrong_token(self):
+        with self.assertRaisesRegex(ValueError, "Invalid local development token"):
+            api_auth_helpers.verify_auth_token(
+                "wrong-token",
+                auth_mode="local",
+                is_production=False,
+                local_auth_token="local-token",
+                local_user_id="local_user",
+                verify_clerk_token_fn=lambda _token: self.fail("Clerk verifier should not run"),
+            )
+
     def test_validate_production_runtime_security_requires_pinned_clerk_and_seed_disabled(self):
         with self.assertRaises(ValueError) as exc:
             backend_api.validate_production_runtime_security(

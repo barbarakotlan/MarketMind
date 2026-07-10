@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SignIn, SignUp } from '@clerk/clerk-react';
+import { SignIn, SignUp } from '../auth';
 import { ArrowLeft, LineChart } from 'lucide-react';
 import { useDarkMode } from '../context/DarkModeContext';
 

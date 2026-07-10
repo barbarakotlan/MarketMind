@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, useAuth } from './auth';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';

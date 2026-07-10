@@ -10,7 +10,7 @@ const renderSidebar = (activePage = 'dashboard') =>
         </NavigationContext.Provider>
     );
 
-jest.mock('@clerk/clerk-react', () => ({
+jest.mock('../auth', () => ({
     UserButton: () => <div>User Button</div>,
 }));
 

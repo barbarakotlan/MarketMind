@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserButton } from '@clerk/clerk-react';
+import { UserButton } from '../auth';
 import { useDarkMode } from '../context/DarkModeContext';
 import { useNavigation } from '../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../config/api';
