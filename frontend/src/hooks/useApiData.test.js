@@ -3,7 +3,7 @@ import { useApiData } from './useApiData';
 
 describe('useApiData', () => {
     test('immediate fetch: loading is true then resolves with data', async () => {
-        const fetcher = jest.fn().mockResolvedValue({ ok: 1 });
+        const fetcher = vi.fn().mockResolvedValue({ ok: 1 });
         const { result } = renderHook(() => useApiData(fetcher, []));
 
         expect(result.current.loading).toBe(true);
@@ -15,7 +15,7 @@ describe('useApiData', () => {
     });
 
     test('error path surfaces the thrown message and leaves data at initial', async () => {
-        const fetcher = jest.fn().mockRejectedValue(new Error('boom'));
+        const fetcher = vi.fn().mockRejectedValue(new Error('boom'));
         const { result } = renderHook(() => useApiData(fetcher, [], { initialData: [] }));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
@@ -24,7 +24,7 @@ describe('useApiData', () => {
     });
 
     test('immediate:false does not fetch on mount', () => {
-        const fetcher = jest.fn().mockResolvedValue(1);
+        const fetcher = vi.fn().mockResolvedValue(1);
         const { result } = renderHook(() => useApiData(fetcher, [], { immediate: false }));
 
         expect(result.current.loading).toBe(false);
@@ -32,7 +32,7 @@ describe('useApiData', () => {
     });
 
     test('refetch forwards arguments to the fetcher and returns the result', async () => {
-        const fetcher = jest.fn((q) => Promise.resolve(`r:${q}`));
+        const fetcher = vi.fn((q) => Promise.resolve(`r:${q}`));
         const { result } = renderHook(() => useApiData(fetcher, [], { immediate: false }));
 
         let returned;
@@ -47,7 +47,7 @@ describe('useApiData', () => {
     });
 
     test('clearOnFetch resets stale data when a subsequent fetch fails', async () => {
-        const fetcher = jest
+        const fetcher = vi
             .fn()
             .mockResolvedValueOnce(['seed'])
             .mockRejectedValueOnce(new Error('later failure'));
@@ -70,7 +70,7 @@ describe('useApiData', () => {
     });
 
     test('changing deps triggers a refetch', async () => {
-        const fetcher = jest.fn().mockResolvedValue(1);
+        const fetcher = vi.fn().mockResolvedValue(1);
         const { rerender } = renderHook(({ dep }) => useApiData(fetcher, [dep]), {
             initialProps: { dep: 'a' },
         });
@@ -82,7 +82,7 @@ describe('useApiData', () => {
 
     test('does not update state after unmount', async () => {
         let resolveFetch;
-        const fetcher = jest.fn(() => new Promise((res) => { resolveFetch = res; }));
+        const fetcher = vi.fn(() => new Promise((res) => { resolveFetch = res; }));
         const { result, unmount } = renderHook(() => useApiData(fetcher, []));
 
         const before = result.current;

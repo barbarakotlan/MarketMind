@@ -3,10 +3,10 @@ import { useNavigation } from '../../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../../config/api';
 import useSearchData from './useSearchData';
 
-jest.mock('../../context/NavigationContext', () => ({ useNavigation: jest.fn() }));
-jest.mock('../../config/api', () => ({
-    ...jest.requireActual('../../config/api'),
-    apiRequest: jest.fn(),
+vi.mock('../../context/NavigationContext', () => ({ useNavigation: vi.fn() }));
+vi.mock('../../config/api', async () => ({
+    ...(await vi.importActual('../../config/api')),
+    apiRequest: vi.fn(),
 }));
 
 function route(url) {
@@ -35,24 +35,24 @@ function route(url) {
 }
 
 beforeAll(() => {
-    window.alert = jest.fn();
+    window.alert = vi.fn();
 });
 
 beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     localStorage.clear();
     useNavigation.mockReturnValue({
         sharedTicker: '',
         sharedCompareTicker: '',
-        clearTicker: jest.fn(),
-        clearCompareTicker: jest.fn(),
+        clearTicker: vi.fn(),
+        clearCompareTicker: vi.fn(),
     });
     apiRequest.mockImplementation(route);
 });
 
 async function runSearchFor(result, ticker) {
     await act(async () => {
-        await result.current.handleSearch({ preventDefault: jest.fn() }, ticker);
+        await result.current.handleSearch({ preventDefault: vi.fn() }, ticker);
     });
 }
 
@@ -90,7 +90,7 @@ describe('useSearchData', () => {
 
         act(() => result.current.setCompareTicker('MSFT'));
         await act(async () => {
-            await result.current.handleAddComparison({ preventDefault: jest.fn() });
+            await result.current.handleAddComparison({ preventDefault: vi.fn() });
         });
 
         await waitFor(() => expect(result.current.comparisonData).not.toBe(null));
@@ -106,7 +106,7 @@ describe('useSearchData', () => {
 
         act(() => result.current.setCompareTicker('AAPL'));
         await act(async () => {
-            await result.current.handleAddComparison({ preventDefault: jest.fn() });
+            await result.current.handleAddComparison({ preventDefault: vi.fn() });
         });
 
         expect(window.alert).toHaveBeenCalledWith('Choose a different ticker to compare.');
@@ -141,8 +141,8 @@ describe('useSearchData', () => {
     });
 
     test('auto-runs a search for an incoming navigation ticker and consumes it', async () => {
-        const clearTicker = jest.fn();
-        const clearCompareTicker = jest.fn();
+        const clearTicker = vi.fn();
+        const clearCompareTicker = vi.fn();
         useNavigation.mockReturnValue({
             sharedTicker: 'AAPL',
             sharedCompareTicker: '',

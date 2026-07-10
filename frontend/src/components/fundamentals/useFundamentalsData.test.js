@@ -3,10 +3,10 @@ import { useNavigation } from '../../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../../config/api';
 import useFundamentalsData from './useFundamentalsData';
 
-jest.mock('../../context/NavigationContext', () => ({ useNavigation: jest.fn() }));
-jest.mock('../../config/api', () => ({
-    ...jest.requireActual('../../config/api'),
-    apiRequest: jest.fn(),
+vi.mock('../../context/NavigationContext', () => ({ useNavigation: vi.fn() }));
+vi.mock('../../config/api', async () => ({
+    ...(await vi.importActual('../../config/api')),
+    apiRequest: vi.fn(),
 }));
 
 const OVERVIEW = { symbol: 'AAPL', market: 'US', marketSession: { state: 'open' } };
@@ -29,13 +29,13 @@ function routeAppleUs(url) {
 async function search(result, ticker) {
     act(() => result.current.setTicker(ticker));
     await act(async () => {
-        await result.current.handleSearch({ preventDefault: jest.fn() });
+        await result.current.handleSearch({ preventDefault: vi.fn() });
     });
 }
 
 beforeEach(() => {
-    jest.clearAllMocks();
-    useNavigation.mockReturnValue({ sharedTicker: '', clearTicker: jest.fn() });
+    vi.clearAllMocks();
+    useNavigation.mockReturnValue({ sharedTicker: '', clearTicker: vi.fn() });
     apiRequest.mockImplementation(routeAppleUs);
 });
 
@@ -91,7 +91,7 @@ describe('useFundamentalsData', () => {
     });
 
     test('auto-loads and consumes an incoming ticker from navigation', async () => {
-        const clearTicker = jest.fn();
+        const clearTicker = vi.fn();
         useNavigation.mockReturnValue({ sharedTicker: 'AAPL', clearTicker });
         const { result } = renderHook(() => useFundamentalsData());
 

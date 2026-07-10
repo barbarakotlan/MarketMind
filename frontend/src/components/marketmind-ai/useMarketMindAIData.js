@@ -190,7 +190,7 @@ export default function useMarketMindAIData() {
         };
         window.addEventListener('marketmindai:select-chat', handleSelectChat);
         return () => window.removeEventListener('marketmindai:select-chat', handleSelectChat);
-    }, [handleExternalChatSelection]);
+    }, []);
 
     useEffect(() => {
         const handleDeletedChat = (event) => {
@@ -235,7 +235,7 @@ export default function useMarketMindAIData() {
             window.sessionStorage.removeItem('marketmindai:selectedChatId');
             handleExternalChatSelection(pendingChatId);
         }
-    }, [handleExternalChatSelection]);
+    }, []);
 
     function resetWorkspace() {
         setActiveChatId(null);

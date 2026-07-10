@@ -80,8 +80,8 @@ Recommended: Vercel
 
 ## Frontend required env vars
 
-- `REACT_APP_API_URL=<your backend origin>`
-- `REACT_APP_CLERK_PUBLISHABLE_KEY=<live publishable key>`
+- `VITE_API_URL=<your backend origin>`
+- `VITE_CLERK_PUBLISHABLE_KEY=<live publishable key>`
 
 ## First production smoke checks
 

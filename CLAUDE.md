@@ -26,9 +26,9 @@ Note: `run_deterministic_backend_checks.sh` runs only a hand-picked subset of `b
 ### Frontend (Node 20, from `frontend/`)
 ```bash
 npm install
-npm start                                       # dev server, proxies to REACT_APP_API_URL (default http://localhost:5001)
+npm start                                       # Vite dev server; VITE_API_URL defaults to http://localhost:5001
 npm run build
-npm test -- --watchAll=false                    # single run; bare `npm test` is watch mode
+npm test                                       # single Vitest run
 CI=true bash frontend/run_frontend_checks.sh     # CI-equivalent: test + build (sets a dummy Clerk key)
 ```
 
@@ -40,9 +40,9 @@ npm test                                         # builds then runs node --test
 
 ## Configuration
 
-All config is environment-driven; see `.env.example` for the full list. The backend loads `.env` from repo root then `backend/.env` (override). Frontend reads `REACT_APP_*` vars at build time.
+All config is environment-driven; see `.env.example` for the full list. The backend loads `.env` from repo root then `backend/.env` (override). Frontend reads `VITE_*` vars at build time.
 
-Key vars: `REACT_APP_API_URL` and `REACT_APP_CLERK_PUBLISHABLE_KEY` (frontend); `PERSISTENCE_MODE`, `CORS_ORIGINS`, `FLASK_SECRET_KEY`, provider API keys (`ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `NEWS_API_KEY`), and rate-limit / public-API vars (backend).
+Key vars: `VITE_API_URL` and `VITE_CLERK_PUBLISHABLE_KEY` (frontend); `PERSISTENCE_MODE`, `CORS_ORIGINS`, `FLASK_SECRET_KEY`, provider API keys (`ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `NEWS_API_KEY`), and rate-limit / public-API vars (backend).
 
 ## Architecture
 

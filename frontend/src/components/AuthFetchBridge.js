@@ -9,7 +9,7 @@ import {
 
 const AuthFetchBridge = () => {
     const { getToken, isLoaded, isSignedIn } = useAuth();
-    const jwtTemplate = process.env.REACT_APP_CLERK_JWT_TEMPLATE;
+    const jwtTemplate = import.meta.env.VITE_CLERK_JWT_TEMPLATE;
 
     useEffect(() => {
         installAuthFetchInterceptor();

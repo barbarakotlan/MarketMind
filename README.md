@@ -131,9 +131,9 @@ LOCAL_AUTH_USER_ID=local_development_user
 LOCAL_AUTH_TOKEN=marketmind-local-development
 
 # frontend/.env
-REACT_APP_AUTH_MODE=local
-REACT_APP_LOCAL_AUTH_USER_ID=local_development_user
-REACT_APP_LOCAL_AUTH_TOKEN=marketmind-local-development
+VITE_AUTH_MODE=local
+VITE_LOCAL_AUTH_USER_ID=local_development_user
+VITE_LOCAL_AUTH_TOKEN=marketmind-local-development
 ```
 
 Local mode creates one non-admin development identity and still enforces the backend's normal capability checks. The backend rejects local mode when `FLASK_ENV=production`.
@@ -213,9 +213,9 @@ The root [`.env.example`](./.env.example) and [`frontend/.env.example`](./fronte
 - `CLERK_AUDIENCE` for optional Clerk audience validation.
 - `AUTH_MODE` for selecting `clerk` or development-only `local` authentication.
 - `LOCAL_AUTH_USER_ID` and `LOCAL_AUTH_TOKEN` for the isolated local development identity.
-- `REACT_APP_API_URL` for the frontend's backend base URL.
-- `REACT_APP_AUTH_MODE` and matching local identity values for frontend local mode.
-- `REACT_APP_CLERK_PUBLISHABLE_KEY` for frontend Clerk initialization.
+- `VITE_API_URL` for the frontend's backend base URL.
+- `VITE_AUTH_MODE` and matching local identity values for frontend local mode.
+- `VITE_CLERK_PUBLISHABLE_KEY` for frontend Clerk initialization.
 
 Keep local secrets out of version control and review provider-specific setup before deploying outside local development.
 

@@ -16,7 +16,7 @@ describe('resolveAuthConfiguration', () => {
 
     test('requires a publishable key in Clerk mode', () => {
         expect(resolveAuthConfiguration({ authMode: 'clerk', nodeEnv: 'development' }).error).toMatch(
-            /REACT_APP_CLERK_PUBLISHABLE_KEY/
+            /VITE_CLERK_PUBLISHABLE_KEY/
         );
     });
 

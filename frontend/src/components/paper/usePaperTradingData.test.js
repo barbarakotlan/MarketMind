@@ -3,19 +3,19 @@ import { useNavigation } from '../../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../../config/api';
 import usePaperTradingData from './usePaperTradingData';
 
-// jest.mock is hoisted above the imports by babel-jest, so the imported
+// vi.mock is hoisted above imports, so the imported
 // useNavigation / apiRequest are already mocks.
-jest.mock('../../context/NavigationContext', () => ({ useNavigation: jest.fn() }));
-jest.mock('../../config/api', () => ({
-    ...jest.requireActual('../../config/api'),
-    apiRequest: jest.fn(),
+vi.mock('../../context/NavigationContext', () => ({ useNavigation: vi.fn() }));
+vi.mock('../../config/api', async () => ({
+    ...(await vi.importActual('../../config/api')),
+    apiRequest: vi.fn(),
 }));
 
 const PORTFOLIO = { cash: 5000, total_value: 10000, positions: [], options_positions: [] };
 
 beforeEach(() => {
-    jest.clearAllMocks();
-    useNavigation.mockReturnValue({ sharedTicker: '', clearTicker: jest.fn() });
+    vi.clearAllMocks();
+    useNavigation.mockReturnValue({ sharedTicker: '', clearTicker: vi.fn() });
     apiRequest.mockImplementation((url) => {
         if (url === API_ENDPOINTS.PORTFOLIO) return Promise.resolve(PORTFOLIO);
         if (url === API_ENDPOINTS.PORTFOLIO_OPTIMIZE) return Promise.resolve({ recommendations: [] });
@@ -45,7 +45,7 @@ describe('usePaperTradingData', () => {
     });
 
     test('consumes an incoming ticker by opening the buy modal', async () => {
-        const clearTicker = jest.fn();
+        const clearTicker = vi.fn();
         useNavigation.mockReturnValue({ sharedTicker: 'aapl', clearTicker });
         const { result } = renderHook(() => usePaperTradingData());
 
@@ -86,7 +86,7 @@ describe('usePaperTradingData', () => {
         act(() => result.current.setBuyTicker('msft'));
         act(() => result.current.setBuyShares('10'));
         await act(async () => {
-            await result.current.handleBuy({ preventDefault: jest.fn() });
+            await result.current.handleBuy({ preventDefault: vi.fn() });
         });
 
         expect(result.current.tradeMessage).toEqual({ type: 'success', text: 'ok' });
