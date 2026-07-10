@@ -33,7 +33,6 @@ frontend/node_modules/
 .cache/
 frontend/.cache/
 frontend/build/
-frontend/package-lock.json
 
 # --- Backend (Python) ---
 # Bytecode

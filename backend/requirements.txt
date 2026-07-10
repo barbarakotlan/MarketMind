@@ -1,5 +1,5 @@
 aiohappyeyeballs==2.6.1
-aiohttp==3.13.2
+aiohttp==3.14.1
 aiosignal==1.4.0
 annotated-types==0.7.0
 appdirs==1.4.4
@@ -12,27 +12,27 @@ certifi==2025.10.5
 cffi==2.0.0
 charset-normalizer==3.4.4
 click==8.1.8
-cryptography==44.0.1
-curl_cffi==0.13.0
+cryptography==48.0.1
+curl_cffi==0.15.0
 edgartools==5.23.3
 exchange_calendars==4.13.2
 deprecation==2.1.0
 finnhub-python==2.4.25
-Flask==3.1.2
+Flask==3.1.3
 flask-cors==6.0.1
 flask-limiter==4.1.1
 frozendict==2.4.6
 frozenlist==1.8.0
 html5lib==1.1
-idna==3.11
+idna==3.15
 importlib_metadata==8.7.0
 itsdangerous==2.2.0
 Jinja2==3.1.6
 joblib==1.5.2
-lxml==6.0.2
+lxml==6.1.0
 MarkupSafe==3.0.3
 mlforecast==1.0.31
-msgpack==1.0.3
+msgpack==1.2.1
 multidict==6.7.0
 multitasking==0.0.12
 numpy==2.0.2
@@ -42,27 +42,29 @@ patsy==1.0.2
 peewee==3.18.3
 platformdirs==4.4.0
 propcache==0.4.1
-protobuf==6.33.0
+protobuf==6.33.5
 pycparser==2.23
 pydantic==2.12.4
 pydantic_core==2.41.5
 python-dateutil==2.9.0.post0
 python-docx==1.1.2
-python-dotenv==1.2.1
+python-dotenv==1.2.2
 pyportfolioopt==1.6.0
 polars-lts-cpu==0.20.31
-PyJWT==2.10.1
+PyJWT==2.13.0
 psycopg[binary]==3.2.12
 pytz==2025.2
 PyYAML==6.0.1
 qdrant-client==1.17.0
-requests==2.32.5
+requests==2.33.0
 redis==5.2.1
 scikit-learn==1.6.1
 scipy==1.13.1
-sentence-transformers==5.2.3
+# Intel macOS is capped at an obsolete Torch wheel. Embeddings and deep-learning
+# models already degrade gracefully when these optional packages are absent.
+sentence-transformers==5.2.3; sys_platform != "darwin" or platform_machine != "x86_64"
 six==1.17.0
-soupsieve==2.8
+soupsieve==2.8.4
 sseclient-py==1.8.0
 statsmodels==0.14.5
 schedule==1.2.2
@@ -71,20 +73,20 @@ SQLAlchemy==2.0.44
 statsforecast==2.0.3
 alembic==1.14.1
 threadpoolctl==3.6.0
-duckdb==0.10.3
-torch>=2.0
-transformers==4.41.2
+duckdb==1.5.4
+torch==2.13.0; sys_platform != "darwin" or platform_machine != "x86_64"
+transformers==5.3.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.2
-urllib3==1.26.20
+urllib3==2.7.0
 vaderSentiment==3.3.2
 webencodings==0.5.1
 websocket-client==1.9.0
 websockets==15.0.1
-Werkzeug==3.1.3
+Werkzeug==3.1.6
 xgboost==2.1.4
-lightgbm==3.3.5
+lightgbm==4.6.0
 catboost==1.2.5
 yarl==1.22.0
 yfinance==0.2.66
@@ -92,7 +94,10 @@ zipp==3.23.0
 
 # Optional: prediction-markets provider SDK. Guarded by try/except in
 # prediction_markets_fetcher.py; unavailable in CI (filtered out there).
-dr-manhattan
+dr-manhattan==0.0.1
+
+# Production WSGI server. Kept in the same graph CI and hosts install.
+gunicorn==26.0.0
 
 # Optional: OpenBB integration (financials/filings/screener/macro). NOT installed
 # by default — it pulls a very large, version-conflicting dependency tree. Install

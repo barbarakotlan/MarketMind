@@ -1,5 +1,5 @@
 # Use an official Python runtime as a parent image
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # Set the working directory in the container
 WORKDIR /app
@@ -9,9 +9,6 @@ COPY requirements.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install gunicorn for production
-RUN pip install gunicorn
 
 # Copy the rest of the application code
 COPY . .
@@ -24,4 +21,4 @@ EXPOSE 5001
 
 # Run the application
 # api:app refers to the "api.py" file and the "app" variable inside it
-CMD ["sh", "-c", "gunicorn --bind :${PORT:-5001} --workers 1 --threads 8 --timeout 0 api:app"]
+CMD ["sh", "-c", "gunicorn --bind :${PORT:-5001} --workers ${WEB_CONCURRENCY:-2} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-60} api:app"]
