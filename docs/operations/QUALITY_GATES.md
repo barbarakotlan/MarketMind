@@ -25,12 +25,17 @@ PYTHON_BIN=backend/.venv/bin/python bash backend/run_deterministic_backend_check
 
 What this gate covers:
 
+- Ruff static analysis and a maximum cyclomatic complexity of 40
+- branch-aware backend coverage with a 60% floor
 - auth and protected-route isolation
+- request validation, request IDs, stable error envelopes, and readiness probes
+- atomic paper trades, alert-worker behavior, and public API quota reservation
 - chart prediction append regression
 - user state snapshot/restore/verify
 - deterministic month-style user journey harness
 - persistence mode behavior
 - JSON to Postgres backfill behavior
+- dependency auditing, migrations, and production image import smoke testing
 
 Why it is a merge gate:
 
@@ -51,8 +56,11 @@ PATH=/opt/homebrew/bin:$PATH bash frontend/run_frontend_checks.sh
 
 What this gate covers:
 
-- frontend unit/component tests
-- production frontend build
+- ESLint static analysis
+- frontend unit/component tests and enforced coverage floors
+- Vite production build
+- Playwright critical browser journeys
+- dependency auditing
 
 Why it is a merge gate:
 
@@ -133,6 +141,7 @@ For normal pull requests:
 
 1. Required Backend Checks must pass.
 2. Required Frontend Checks must pass.
+3. New production Python callables must remain at cyclomatic complexity 40 or lower.
 
 For release:
 

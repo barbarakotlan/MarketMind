@@ -13,18 +13,11 @@ from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 from sqlalchemy import text as sql_text
 from datetime import datetime, timedelta, date, timezone
-import json
 import sqlite3
 import schedule
 import time
 import threading
-import uuid  # For unique notification IDs
-import re  # Added for Smart Alert parsing
 import math
-try:
-    import redis as redis_module
-except ImportError:  # pragma: no cover - installed in the production graph
-    redis_module = None
 from io import BytesIO
 from functools import wraps
 
@@ -155,6 +148,7 @@ except (AttributeError, ValueError):
 # --- New Imports for Options Suggester ---
 from options_suggester import generate_suggestion
 import api_auth as api_auth_helpers
+import api_runtime
 import authz
 import api_handlers_deliverables as deliverables_handlers
 import api_handlers_market_data as market_data_handlers
@@ -232,66 +226,22 @@ api_bp = Blueprint('api', __name__)
 # --- Security Headers Middleware ---
 @api_bp.before_app_request
 def begin_public_api_request():
-    supplied_request_id = request.headers.get('X-Request-ID', '').strip()
-    if supplied_request_id and re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', supplied_request_id):
-        g.request_id = supplied_request_id
-    else:
-        g.request_id = uuid.uuid4().hex
-    api_public_helpers.begin_public_request()
+    api_runtime.begin_request(request, g, api_public_helpers.begin_public_request)
 
 
 @api_bp.after_app_request
 def add_security_headers(response):
     request_id = getattr(g, 'request_id', None)
-    if request_id:
-        response.headers['X-Request-ID'] = request_id
-
-    if response.status_code >= 400 and not api_public_helpers.is_public_api_request(request.path):
-        payload = response.get_json(silent=True) if response.is_json else None
-        if isinstance(payload, dict):
-            raw_error = payload.get('error')
-            if isinstance(raw_error, dict):
-                message = str(raw_error.get('message') or 'Request failed.')
-                code = str(raw_error.get('code') or payload.get('code') or 'request_failed')
-            else:
-                message = str(raw_error or payload.get('message') or 'Request failed.')
-                code = str(payload.get('code') or {
-                    400: 'bad_request',
-                    401: 'unauthorized',
-                    403: 'forbidden',
-                    404: 'not_found',
-                    405: 'method_not_allowed',
-                    413: 'request_too_large',
-                    429: 'rate_limited',
-                    503: 'service_unavailable',
-                }.get(response.status_code, 'internal_error'))
-            payload['error'] = message
-            payload['code'] = code
-            payload['request_id'] = request_id
-            response.set_data(json.dumps(payload, separators=(',', ':')))
-            response.content_type = 'application/json'
-
-    # Prevent MIME type sniffing
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    # Prevent clickjacking
-    response.headers['X-Frame-Options'] = 'DENY'
-    # XSS Protection (legacy fallback for older browsers)
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    # Force HTTPS in production
-    if IS_PRODUCTION:
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    # API-focused CSP (JSON API does not serve active web content)
-    response.headers['Content-Security-Policy'] = os.getenv(
-        'API_CONTENT_SECURITY_POLICY',
-        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';"
+    response = api_runtime.prepare_response(
+        response,
+        request_id=request_id,
+        is_public_api=api_public_helpers.is_public_api_request(request.path),
+        is_production=IS_PRODUCTION,
+        content_security_policy=os.getenv(
+            'API_CONTENT_SECURITY_POLICY',
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';",
+        ),
     )
-    # Referrer Policy
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    # Permissions Policy
-    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
-    # Cross-origin hardening for API responses
-    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
-    response.headers['Cross-Origin-Resource-Policy'] = 'same-site' if IS_PRODUCTION else 'cross-origin'
     return api_public_helpers.finalize_public_response(
         response,
         session_scope_fn=user_state_session_scope,
@@ -2969,61 +2919,22 @@ def healthz():
 
 
 def _probe_redis(url):
-    if redis_module is None:
-        raise RuntimeError("redis package is not installed")
-    client = redis_module.from_url(
-        url,
-        socket_connect_timeout=1,
-        socket_timeout=1,
-    )
-    try:
-        if not client.ping():
-            raise RuntimeError("Redis ping failed")
-    finally:
-        client.close()
+    return api_runtime.probe_redis(url)
 
 
 def _readiness_checks():
-    checks = {}
-
-    try:
-        if _sql_persistence_enabled():
-            _ensure_user_state_storage_ready()
-            with user_state_session_scope(DATABASE_URL) as session:
-                session.execute(sql_text('SELECT 1'))
-        else:
-            os.makedirs(USER_DATA_DIR, exist_ok=True)
-            if not os.access(USER_DATA_DIR, os.R_OK | os.W_OK):
-                raise PermissionError("User data directory is not writable")
-        checks['storage'] = {'status': 'ok'}
-    except Exception as exc:
-        logger.error("Readiness storage probe failed: %s", exc)
-        checks['storage'] = {'status': 'error', 'type': type(exc).__name__}
-
-    redis_urls = {
-        'rate_limit_store': RATE_LIMIT_STORAGE_URL,
-        'public_api_cache': PUBLIC_API_CACHE_URL,
-    }
-    probed_urls = {}
-    for name, url in redis_urls.items():
-        normalized_url = str(url or '').strip()
-        if not normalized_url:
-            checks[name] = {'status': 'not_configured'}
-            continue
-        if normalized_url in probed_urls:
-            checks[name] = dict(probed_urls[normalized_url])
-            continue
-        try:
-            _probe_redis(normalized_url)
-            result = {'status': 'ok'}
-        except Exception as exc:
-            logger.error("Readiness %s probe failed: %s", name, exc)
-            result = {'status': 'error', 'type': type(exc).__name__}
-        probed_urls[normalized_url] = result
-        checks[name] = dict(result)
-
-    is_ready = all(check['status'] in {'ok', 'not_configured'} for check in checks.values())
-    return is_ready, checks
+    return api_runtime.build_readiness_checks(
+        sql_enabled=_sql_persistence_enabled(),
+        ensure_storage_ready_fn=_ensure_user_state_storage_ready,
+        session_scope_fn=user_state_session_scope,
+        database_url=DATABASE_URL,
+        sql_text_fn=sql_text,
+        user_data_dir=USER_DATA_DIR,
+        rate_limit_storage_url=RATE_LIMIT_STORAGE_URL,
+        public_api_cache_url=PUBLIC_API_CACHE_URL,
+        probe_redis_fn=_probe_redis,
+        logger=logger,
+    )
 
 
 @api_bp.route('/readyz', methods=['GET'])

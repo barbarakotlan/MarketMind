@@ -27,6 +27,8 @@ else
   "$PYTHON_BIN" -m ruff check backend/
 fi
 
+"$PYTHON_BIN" backend/check_complexity.py
+
 "$PYTHON_BIN" -m py_compile \
   backend/api.py \
   backend/user_journey_state.py \
@@ -52,6 +54,7 @@ fi
   backend.tests.test_authz \
   backend.tests.test_backfill_postgres \
   backend.tests.test_chart_prediction_append \
+  backend.tests.test_complexity_guard \
   backend.tests.test_deliverables_api \
   backend.tests.test_exchange_session_routes \
   backend.tests.test_exchange_session_service \
@@ -59,6 +62,7 @@ fi
   backend.tests.test_import_is_ml_free \
   backend.tests.test_macro_overview_handler \
   backend.tests.test_marketmind_ai_api \
+  backend.tests.test_maintainability_units \
   backend.tests.test_paper_trading_security \
   backend.tests.test_paper_trade_transactions \
   backend.tests.test_portfolio_optimization_route \

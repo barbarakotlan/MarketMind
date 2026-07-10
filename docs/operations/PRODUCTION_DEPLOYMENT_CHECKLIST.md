@@ -10,6 +10,7 @@ This is the first real hosted deployment plan for MarketMind.
 4. Deploy the frontend against the live backend URL.
 5. Verify the signed-in app flow.
 6. Enable the public API only after Redis-backed rate limiting is provisioned.
+7. Confirm logs, metrics, alerts, backups, and rollback ownership before launch.
 
 ## Backend host
 
@@ -31,13 +32,14 @@ Provision a separate background worker from the same backend image:
 ## Backend required env vars
 
 - `FLASK_ENV=production`
+- `AUTH_MODE=clerk`
 - `CORS_ORIGINS=<your frontend origin>`
 - `PERSISTENCE_MODE=postgres`
 - `DATABASE_URL=<postgres connection string>`
 - `RATE_LIMIT_STORAGE_URL=<redis url>`
 - `MAX_REQUEST_BODY_BYTES=1048576`
-- `CLERK_SECRET_KEY=<live secret>`
 - `CLERK_JWKS_URL=<clerk jwks url>`
+- `CLERK_ISSUER=<clerk issuer>`
 - `CLERK_AUDIENCE=<optional audience if used>`
 - `NEWS_API_KEY=<provider key>`
 - `ALPHA_VANTAGE_API_KEY=<provider key>`
@@ -102,6 +104,14 @@ Frontend:
 - Search loads AAPL
 - predictions render
 - paper portfolio page renders
+
+Operations:
+
+- alert worker is a separate process and reports fresh activity
+- centralized logs include request IDs from failed API responses
+- database and Redis alerts reach the owning team
+- a database backup can be restored in a non-production environment
+- the previous application revision and migration rollback procedure are known
 
 Public API, only after enabled:
 

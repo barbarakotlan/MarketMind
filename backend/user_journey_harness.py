@@ -255,8 +255,7 @@ def _expect_success(
     return False, payload
 
 
-def _run_journey(client, *, results: List[Dict[str, Any]]) -> None:
-    # Week 1: Research and setup
+def _run_week_1_research(client, *, results: List[Dict[str, Any]]) -> None:
     stock_resp = client.get("/stock/AAPL")
     _expect_success(results, phase="week_1_research", name="stock_quote", response=stock_resp, provider_dependent=True)
 
@@ -324,7 +323,7 @@ def _run_journey(client, *, results: List[Dict[str, Any]]) -> None:
                 details=watchlist_payload,
             )
 
-    # Week 2: Monitoring and alerting
+def _run_week_2_alerting(client, *, results: List[Dict[str, Any]]) -> None:
     create_alert = client.post(
         "/notifications",
         headers=_auth_headers(),
@@ -361,7 +360,7 @@ def _run_journey(client, *, results: List[Dict[str, Any]]) -> None:
         delete_alert = client.delete(f"/notifications/{alert_id}", headers=_auth_headers())
         _expect_success(results, phase="week_2_alerting", name="price_alert_delete", response=delete_alert)
 
-    # Week 3: Paper trading
+def _run_week_3_paper_trading(client, *, results: List[Dict[str, Any]]) -> None:
     buy_stock = client.post(
         "/paper/buy",
         headers=_auth_headers(),
@@ -468,7 +467,7 @@ def _run_journey(client, *, results: List[Dict[str, Any]]) -> None:
         response=transactions_resp,
     )
 
-    # Week 4: Prediction markets and review
+def _run_week_4_prediction_markets(client, *, results: List[Dict[str, Any]]) -> None:
     markets_resp = client.get("/prediction-markets?exchange=polymarket&limit=5")
     markets_ok, markets_payload = _expect_success(
         results,
@@ -561,6 +560,13 @@ def _run_journey(client, *, results: List[Dict[str, Any]]) -> None:
         name="prediction_history",
         response=history_resp,
     )
+
+
+def _run_journey(client, *, results: List[Dict[str, Any]]) -> None:
+    _run_week_1_research(client, results=results)
+    _run_week_2_alerting(client, results=results)
+    _run_week_3_paper_trading(client, results=results)
+    _run_week_4_prediction_markets(client, results=results)
 
 
 def run_harness(

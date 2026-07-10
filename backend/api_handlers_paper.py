@@ -577,6 +577,149 @@ def sell_option_handler(
         return jsonify_fn({'error': 'Failed to execute option sell order'}), 500
 
 
+def _empty_portfolio_history():
+    return {'dates': [], 'values': [], 'summary': {}}
+
+
+def _history_window(period, *, today, first_tx_date, date_cls, timedelta_cls):
+    period_offsets = {
+        '1m': timedelta_cls(days=30),
+        '3m': timedelta_cls(days=90),
+        '1y': timedelta_cls(days=365),
+    }
+    if period in period_offsets:
+        start_date = today - period_offsets[period]
+    elif period == 'ytd':
+        start_date = date_cls(today.year, 1, 1)
+    else:
+        start_date = first_tx_date
+    return max(min(start_date, today), first_tx_date), today
+
+
+def _equity_tickers(transactions):
+    return sorted({
+        tx['ticker']
+        for tx in transactions
+        if tx.get('type') in {'BUY', 'SELL'} and tx.get('ticker')
+    })
+
+
+def _normalize_close_prices(close_prices_raw, *, all_tickers, hist_index, pd_module, np_module):
+    if isinstance(close_prices_raw, pd_module.Series):
+        return pd_module.DataFrame({all_tickers[0]: close_prices_raw})
+    if isinstance(close_prices_raw, (float, np_module.float64)):
+        return pd_module.DataFrame({all_tickers[0]: [close_prices_raw]}, index=hist_index)
+    return close_prices_raw
+
+
+def _apply_equity_transaction(cash, positions, transaction):
+    tx_type = transaction.get('type')
+    if tx_type not in {'BUY', 'SELL'}:
+        return cash
+    shares = float(transaction['shares'])
+    total = float(transaction['total'])
+    ticker = transaction['ticker']
+    direction = 1 if tx_type == 'BUY' else -1
+    positions[ticker] = positions.get(ticker, 0) + (direction * shares)
+    return cash - total if tx_type == 'BUY' else cash + total
+
+
+def _starting_ledger(transactions, *, start_date, datetime_cls):
+    cash = 100000.0
+    positions = {}
+    for transaction in transactions:
+        tx_date = datetime_cls.strptime(transaction['date'], '%Y-%m-%d').date()
+        if tx_date < start_date:
+            cash = _apply_equity_transaction(cash, positions, transaction)
+    return cash, positions
+
+
+def _positions_value(positions, close_prices, *, as_of, pd_module):
+    total = 0.0
+    for ticker, shares in positions.items():
+        if shares <= 0 or ticker not in close_prices.columns:
+            continue
+        try:
+            price = close_prices[ticker].asof(as_of)
+            if not pd_module.isna(price):
+                total += shares * float(price)
+        except (KeyError, TypeError):
+            continue
+    return total
+
+
+def _transactions_by_date(transactions, *, start_date, end_date, datetime_cls):
+    grouped = {}
+    for transaction in transactions:
+        tx_date = datetime_cls.strptime(transaction['date'], '%Y-%m-%d').date()
+        if start_date <= tx_date <= end_date:
+            grouped.setdefault(tx_date, []).append(transaction)
+    return grouped
+
+
+def _build_daily_portfolio_values(
+    *,
+    transactions,
+    start_date,
+    end_date,
+    initial_cash,
+    initial_positions,
+    close_prices,
+    datetime_cls,
+    pd_module,
+):
+    grouped = _transactions_by_date(
+        transactions,
+        start_date=start_date,
+        end_date=end_date,
+        datetime_cls=datetime_cls,
+    )
+    current_cash = initial_cash
+    current_positions = initial_positions.copy()
+    values = []
+    for day in pd_module.date_range(start=start_date, end=end_date, freq='D'):
+        for transaction in grouped.get(day.date(), []):
+            current_cash = _apply_equity_transaction(current_cash, current_positions, transaction)
+        holdings_value = _positions_value(
+            current_positions,
+            close_prices,
+            as_of=day,
+            pd_module=pd_module,
+        )
+        values.append({'date': day.strftime('%Y-%m-%d'), 'value': holdings_value + current_cash})
+    return values
+
+
+def _annualized_return(return_cumulative, *, num_days):
+    if num_days <= 0:
+        return return_cumulative
+    if num_days < 365:
+        return return_cumulative * (365.0 / num_days)
+    return ((1 + (return_cumulative / 100)) ** (365.0 / num_days) - 1) * 100
+
+
+def _history_summary(*, period, start_date, end_date, start_value, end_value):
+    wealth_generated = end_value - start_value
+    if start_value in (None, 0):
+        return_cumulative = 0 if wealth_generated == 0 else float('inf')
+    else:
+        return_cumulative = (wealth_generated / start_value) * 100
+    return_annualized = _annualized_return(
+        return_cumulative,
+        num_days=(end_date - start_date).days,
+    )
+    return {
+        'period': period,
+        'start_date': start_date.strftime('%Y-%m-%d'),
+        'end_date': end_date.strftime('%Y-%m-%d'),
+        'start_value': round(start_value, 2),
+        'end_value': round(end_value, 2),
+        'wealth_generated': round(wealth_generated, 2),
+        'return_cumulative_pct': round(return_cumulative, 2),
+        'return_annualized_pct': round(return_annualized, 2),
+    }
+
+
 def get_paper_history_handler(
     *,
     request_obj,
@@ -595,33 +738,23 @@ def get_paper_history_handler(
     portfolio = load_portfolio_fn(user_id)
     transactions = portfolio.get('transactions', [])
     if not transactions:
-        return jsonify_fn({'dates': [], 'values': [], 'summary': {}})
+        return jsonify_fn(_empty_portfolio_history())
     try:
         first_tx_date = datetime_cls.strptime(transactions[0]['date'], '%Y-%m-%d').date()
     except (IndexError, ValueError):
-        return jsonify_fn({'dates': [], 'values': [], 'summary': {}})
+        return jsonify_fn(_empty_portfolio_history())
 
     period = request_obj.args.get('period', 'ytd')
-    today = date_cls.today()
-    if period == '1m':
-        start_date = today - timedelta_cls(days=30)
-    elif period == '3m':
-        start_date = today - timedelta_cls(days=90)
-    elif period == '1y':
-        start_date = today - timedelta_cls(days=365)
-    elif period == 'ytd':
-        start_date = date_cls(today.year, 1, 1)
-    else:
-        start_date = first_tx_date
-    end_date = today
-    if start_date > end_date:
-        start_date = end_date
-    if start_date < first_tx_date:
-        start_date = first_tx_date
-
-    all_tickers = list(set([t['ticker'] for t in transactions if t['type'] in ['BUY', 'SELL']]))
+    start_date, end_date = _history_window(
+        period,
+        today=date_cls.today(),
+        first_tx_date=first_tx_date,
+        date_cls=date_cls,
+        timedelta_cls=timedelta_cls,
+    )
+    all_tickers = _equity_tickers(transactions)
     if not all_tickers:
-        return jsonify_fn({'dates': [], 'values': [], 'summary': {}})
+        return jsonify_fn(_empty_portfolio_history())
 
     try:
         hist_data = yf_module.download(all_tickers, start=start_date - timedelta_cls(days=7), end=end_date + timedelta_cls(days=1))
@@ -632,97 +765,43 @@ def get_paper_history_handler(
         if close_prices_raw is None:
             return jsonify_fn({'error': "Could not get 'Close' price data from yfinance."}), 500
 
-        if isinstance(close_prices_raw, pd_module.Series):
-            close_prices = pd_module.DataFrame({all_tickers[0]: close_prices_raw})
-        elif isinstance(close_prices_raw, (float, np_module.float64)):
-            close_prices = pd_module.DataFrame({all_tickers[0]: [close_prices_raw]}, index=hist_data.index)
-        else:
-            close_prices = close_prices_raw
-
-        initial_cash = 100000.0
-        initial_positions = {}
-        net_contributions = 0
-        for tx in transactions:
-            tx_date = datetime_cls.strptime(tx['date'], '%Y-%m-%d').date()
-            if tx_date < start_date:
-                shares = float(tx['shares'])
-                total = float(tx['total'])
-                ticker = tx['ticker']
-                if tx['type'] == 'BUY':
-                    initial_cash -= total
-                    initial_positions[ticker] = initial_positions.get(ticker, 0) + shares
-                elif tx['type'] == 'SELL':
-                    initial_cash += total
-                    initial_positions[ticker] -= shares
-
-        start_value = initial_cash
-        for ticker, shares in initial_positions.items():
-            if shares > 0 and ticker in close_prices.columns:
-                try:
-                    price = close_prices[ticker].asof(start_date)
-                    if not pd_module.isna(price):
-                        start_value += shares * float(price)
-                except (KeyError, TypeError):
-                    pass
-
-        date_range = pd_module.date_range(start=start_date, end=end_date, freq='D')
-        portfolio_values = []
-        current_cash = initial_cash
-        current_positions = initial_positions.copy()
-        tx_by_date = {}
-        for tx in transactions:
-            tx_date = datetime_cls.strptime(tx['date'], '%Y-%m-%d').date()
-            if start_date <= tx_date <= end_date:
-                tx_by_date.setdefault(tx_date, []).append(tx)
-
-        for day in date_range:
-            day_str = day.strftime('%Y-%m-%d')
-            if day.date() in tx_by_date:
-                for tx in tx_by_date[day.date()]:
-                    shares = float(tx['shares'])
-                    total = float(tx['total'])
-                    ticker = tx['ticker']
-                    if tx['type'] == 'BUY':
-                        current_cash -= total
-                        current_positions[ticker] = current_positions.get(ticker, 0) + shares
-                    elif tx['type'] == 'SELL':
-                        current_cash += total
-                        current_positions[ticker] -= shares
-            total_holdings_value = 0
-            for ticker, shares in current_positions.items():
-                if shares > 0 and ticker in close_prices.columns:
-                    try:
-                        price = close_prices[ticker].asof(day)
-                        if not pd_module.isna(price):
-                            total_holdings_value += shares * float(price)
-                    except (KeyError, TypeError):
-                        pass
-            portfolio_values.append({'date': day_str, 'value': total_holdings_value + current_cash})
+        close_prices = _normalize_close_prices(
+            close_prices_raw,
+            all_tickers=all_tickers,
+            hist_index=hist_data.index,
+            pd_module=pd_module,
+            np_module=np_module,
+        )
+        initial_cash, initial_positions = _starting_ledger(
+            transactions,
+            start_date=start_date,
+            datetime_cls=datetime_cls,
+        )
+        start_value = initial_cash + _positions_value(
+            initial_positions,
+            close_prices,
+            as_of=start_date,
+            pd_module=pd_module,
+        )
+        portfolio_values = _build_daily_portfolio_values(
+            transactions=transactions,
+            start_date=start_date,
+            end_date=end_date,
+            initial_cash=initial_cash,
+            initial_positions=initial_positions,
+            close_prices=close_prices,
+            datetime_cls=datetime_cls,
+            pd_module=pd_module,
+        )
 
         end_value = portfolio_values[-1]['value'] if portfolio_values else start_value
-        wealth_generated = end_value - start_value - net_contributions
-        if start_value == 0 or start_value is None:
-            return_cumulative = 0 if wealth_generated == 0 else float('inf')
-        else:
-            return_cumulative = (wealth_generated / start_value) * 100
-        num_days = (end_date - start_date).days
-        if num_days <= 0:
-            return_annualized = return_cumulative
-        elif num_days < 365:
-            return_annualized = return_cumulative * (365.0 / num_days)
-        else:
-            return_annualized = ((1 + (return_cumulative / 100)) ** (365.0 / num_days) - 1) * 100
-
-        summary = {
-            'period': period,
-            'start_date': start_date.strftime('%Y-%m-%d'),
-            'end_date': end_date.strftime('%Y-%m-%d'),
-            'start_value': round(start_value, 2),
-            'end_value': round(end_value, 2),
-            'wealth_generated': round(wealth_generated, 2),
-            'return_cumulative_pct': round(return_cumulative, 2),
-            'return_annualized_pct': round(return_annualized, 2),
-        }
+        summary = _history_summary(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            start_value=start_value,
+            end_value=end_value,
+        )
         return jsonify_fn({
             'dates': [pv['date'] for pv in portfolio_values],
             'values': [round(pv['value'], 2) for pv in portfolio_values],

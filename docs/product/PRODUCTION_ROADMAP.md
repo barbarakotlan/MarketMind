@@ -1,295 +1,173 @@
-# MarketMind — Production Roadmap
+# MarketMind Production Roadmap
 
-## 1. Authentication (Clerk)
+Last reviewed: July 2026
 
-**Current state**: Implemented. Clerk authentication is live — frontend sign-in via `@clerk/clerk-react` and backend JWT/JWKS verification in `api_auth.py`, with user-scoped routes. The notes below record the original plan.
+This roadmap describes the code that is in the repository now and the work that
+still separates it from a dependable public launch. Historical implementation
+plans have been removed so this document can be used as an operational decision
+record.
 
-**Plan**: Use [Clerk](https://clerk.com) for authentication (OAuth with Google/GitHub, email/password, etc.).
+## Current Architecture
 
 ### Frontend
-- Install `@clerk/clerk-react`
-- Wrap `<App />` in `<ClerkProvider publishableKey={...}>`
-- Add `<SignInButton />` / `<UserButton />` to the Header
-- Protect pages with `<SignedIn>` / `<SignedOut>` components
-- Pass the session JWT in every API call via `useAuth().getToken()`
+
+- React 19 application built with Vite 8 on Node 24.
+- React Router owns URL navigation and direct-link restoration.
+- A shared API client centralizes `VITE_API_URL`, authentication, request
+  cancellation, timeouts, and normalized errors.
+- Clerk provides production identity. `VITE_AUTH_MODE=local` supplies one
+  development-only identity without requiring a Clerk account.
+- Vitest enforces coverage floors and Playwright exercises critical browser
+  journeys in CI.
+- Production output is written to `frontend/dist/`.
 
 ### Backend
-- Install `clerk-backend-api` or validate JWTs manually with `PyJWT` + Clerk's JWKS endpoint
-- Add a `@require_auth` decorator that:
-  1. Reads `Authorization: Bearer <token>` from the request header
-  2. Verifies the JWT signature against Clerk's public keys
-  3. Extracts `user_id` from the token claims
-  4. Passes `user_id` to the route handler
-- All portfolio/watchlist/notification data becomes user-scoped
 
-### Clerk Dashboard Config
-- Create a Clerk application at [dashboard.clerk.com](https://dashboard.clerk.com)
-- Enable OAuth providers (Google, GitHub)
-- Copy `CLERK_PUBLISHABLE_KEY` (frontend) and `CLERK_SECRET_KEY` (backend)
-- Add allowed redirect URLs for production domain
+- Flask application served by Gunicorn in production.
+- `backend/api.py` is the composition root and route registry. Domain behavior
+  is delegated to handler, service, persistence, and provider modules.
+- `backend/api_runtime.py` owns request IDs, error envelopes, security headers,
+  Redis probes, and readiness aggregation.
+- Pydantic request contracts reject malformed, oversized, and unexpected input
+  before domain handlers run.
+- `/healthz` reports process liveness. `/readyz` checks user-state storage and
+  configured Redis dependencies.
+- Expensive ML imports are deferred until prediction work is requested.
 
----
+### Identity And Persistence
 
-## 2. Database (SQLite/JSON -> PostgreSQL)
+- Clerk JWTs are verified against JWKS and mapped to capability-scoped
+  principals.
+- Local auth is accepted only outside production and still passes through the
+  normal authorization checks.
+- PostgreSQL, SQLAlchemy, and Alembic are the production persistence path.
+- Paper trades use database transactions and optimistic versioning so cash,
+  positions, trades, and snapshots change atomically.
+- JSON persistence remains available for local development. Writes are locked
+  and atomically replaced; production refuses to start in JSON mode.
 
-**Current state**: SQLite file + JSON files (`paper_portfolio.json`, `prediction_portfolio.json`, `notifications.json`). Single-user, no concurrency, data lost on redeploy.
+### Workers And Shared Infrastructure
 
-**Plan**: Migrate to PostgreSQL with user-scoped tables.
+- Alert evaluation runs in `backend/alert_worker.py`, not inside Gunicorn.
+- The worker uses a PostgreSQL advisory lock so only one replica actively polls.
+- Redis is required in production for distributed rate limiting. It is also
+  required before the public API cache is enabled.
+- AI and provider calls have explicit timeouts, bounded inputs, and grounded
+  fallback behavior.
 
-### Schema
+### Quality Gates
 
-```sql
--- Users (synced from Clerk via webhook or on first request)
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    clerk_id TEXT UNIQUE NOT NULL,
-    email TEXT,
-    name TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
+- Backend CI runs Ruff, a grade-F complexity guard, branch coverage with a 60%
+  floor, deterministic integration tests, Postgres migrations, dependency
+  auditing, and a production image smoke test.
+- Frontend CI runs ESLint, unit/component tests, coverage floors, a Vite
+  production build, dependency auditing, and Playwright browser journeys.
+- The deterministic month-style harness snapshots and restores user state while
+  exercising research, alerts, paper trading, and prediction markets.
 
--- Stock paper trading
-CREATE TABLE stock_portfolios (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    cash REAL DEFAULT 100000.0,
-    starting_cash REAL DEFAULT 100000.0
-);
+## Authentication Decision
 
-CREATE TABLE stock_positions (
-    id SERIAL PRIMARY KEY,
-    portfolio_id INTEGER REFERENCES stock_portfolios(id),
-    ticker TEXT NOT NULL,
-    shares REAL NOT NULL,
-    avg_cost REAL NOT NULL
-);
+Keep Clerk for the hosted multi-user product. It solves account security,
+session refresh, OAuth, and account recovery without making MarketMind own an
+identity system. The local auth mode removes Clerk from the inner development
+loop, so there is no reason to weaken production identity to improve local
+ergonomics.
 
-CREATE TABLE stock_trades (
-    id SERIAL PRIMARY KEY,
-    portfolio_id INTEGER REFERENCES stock_portfolios(id),
-    type TEXT NOT NULL, -- BUY, SELL, BUY_OPTION, SELL_OPTION
-    ticker TEXT NOT NULL,
-    shares REAL NOT NULL,
-    price REAL NOT NULL,
-    total REAL NOT NULL,
-    profit REAL,
-    timestamp TIMESTAMP DEFAULT NOW()
-);
+Before launch, configure a production Clerk instance, restrict redirect origins,
+set the backend issuer and JWKS values, and test sign-in, sign-out, expiry, and
+cross-user isolation in the deployed environment.
 
--- Prediction markets paper trading
-CREATE TABLE prediction_portfolios (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    cash REAL DEFAULT 10000.0,
-    starting_cash REAL DEFAULT 10000.0
-);
+## Remaining Priorities
 
-CREATE TABLE prediction_positions (
-    id SERIAL PRIMARY KEY,
-    portfolio_id INTEGER REFERENCES prediction_portfolios(id),
-    market_id TEXT NOT NULL,
-    outcome TEXT NOT NULL,
-    exchange TEXT DEFAULT 'polymarket',
-    question TEXT,
-    contracts REAL NOT NULL,
-    avg_cost REAL NOT NULL
-);
+### P0: First Production Environment
 
-CREATE TABLE prediction_trades (
-    id SERIAL PRIMARY KEY,
-    portfolio_id INTEGER REFERENCES prediction_portfolios(id),
-    type TEXT NOT NULL,
-    market_id TEXT NOT NULL,
-    question TEXT,
-    outcome TEXT NOT NULL,
-    contracts REAL NOT NULL,
-    price REAL NOT NULL,
-    total REAL NOT NULL,
-    profit REAL,
-    timestamp TIMESTAMP DEFAULT NOW()
-);
+1. Provision PostgreSQL and Redis with backups, monitoring, and separate staging
+   and production credentials.
+2. Deploy the backend image and alert worker from the same immutable revision.
+3. Run Alembic migrations as a release step before shifting traffic.
+4. Deploy `frontend/dist/` with `VITE_API_URL` and the live Clerk publishable key.
+5. Add centralized logs, error reporting, latency metrics, and alerts for
+   readiness failures, provider errors, quota exhaustion, and worker stalls.
+6. Document and rehearse database restore, application rollback, secret
+   rotation, and provider outage procedures.
 
-CREATE TABLE prediction_watchlist (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    market_id TEXT NOT NULL,
-    question TEXT,
-    exchange TEXT DEFAULT 'polymarket',
-    added_at TIMESTAMP DEFAULT NOW()
-);
+### P1: Backend Boundaries And Reliability
 
--- Portfolio history (for growth charts)
-CREATE TABLE portfolio_history (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    portfolio_type TEXT NOT NULL, -- 'stock' or 'prediction'
-    portfolio_value REAL NOT NULL,
-    timestamp TIMESTAMP DEFAULT NOW()
-);
+1. Continue splitting feature route registration out of `backend/api.py`. The
+   composition root is still large even though business logic has moved into
+   domain modules.
+2. Standardize external providers behind typed adapters with retry budgets,
+   circuit breakers, cache policy, and provenance metadata.
+3. Move long-running forecasts, document generation, and bulk research work to
+   a durable job queue with status endpoints and cancellation.
+4. Raise backend coverage above the current merge floor, concentrating on
+   provider degradation, transaction rollback, authorization, and migrations.
+5. Load-test portfolio writes, public API quota reservation, Redis rate limits,
+   and the alert worker against production-sized concurrency.
 
--- Notifications / price alerts
-CREATE TABLE notifications (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    ticker TEXT NOT NULL,
-    condition TEXT NOT NULL, -- 'above' or 'below'
-    target_price REAL NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    triggered_at TIMESTAMP,
-    message TEXT,
-    seen BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW()
-);
+### P1: Product Safety And Trust
 
--- Stock watchlist
-CREATE TABLE stock_watchlist (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    ticker TEXT NOT NULL,
-    added_at TIMESTAMP DEFAULT NOW()
-);
+1. Display source timestamps, provider status, and stale-data warnings wherever
+   users make decisions from market data.
+2. Make model confidence, evaluation windows, and prediction limitations
+   visible and consistent across research and portfolio workflows.
+3. Add an auditable record for generated investment memos, evidence snapshots,
+   assumptions, and model versions.
+4. Complete accessibility and responsive browser testing across every core
+   workflow, not only the critical Playwright journeys.
+
+### P2: Scale And Product Expansion
+
+1. Add portfolio-level risk analytics and scenario testing with explicit data
+   lineage.
+2. Expand public API observability, customer usage reporting, key rotation, and
+   abuse response before broad beta access.
+3. Introduce data-retention controls, account export/deletion, and a documented
+   privacy policy before collecting production user data.
+4. Measure provider cost and cache effectiveness before increasing polling or
+   enabling computationally expensive features by default.
+
+## Production Configuration
+
+Frontend variables:
+
+```dotenv
+VITE_API_URL=https://api.example.com
+VITE_AUTH_MODE=clerk
+VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxxxx
 ```
 
-### Hosting Options (free tier)
-- **Supabase** — Free Postgres, 500MB, built-in auth (but we're using Clerk)
-- **Neon** — Free Postgres, serverless, 512MB
-- **Railway** — Free Postgres, 1GB
+Backend baseline:
 
-### ORM
-- Use **SQLAlchemy** (already installed) with `flask-sqlalchemy`
-- Connection string via `DATABASE_URL` env var
-
----
-
-## 3. Deployment
-
-### Architecture
-
-```
-[Vercel]  ──HTTPS──>  [Render/Railway]  ──>  [Postgres]
- Frontend               Backend (Gunicorn)     Database
- (React build)          (Flask API)
-```
-
-### Frontend -> Vercel (free)
-- Connect GitHub repo, set root directory to `frontend/`
-- Build command: `npm run build`
-- Output directory: `build`
-- Environment variables:
-  - `REACT_APP_API_URL` = `https://marketmind-api.onrender.com`
-  - `REACT_APP_CLERK_PUBLISHABLE_KEY` = `pk_live_...`
-
-### Backend -> Render (free) or Railway
-- Connect GitHub repo, set root directory to `backend/`
-- Build command: `pip install -r requirements.txt`
-- Start command: `gunicorn -w 4 -b 0.0.0.0:$PORT api:app`
-- Environment variables:
-  - `DATABASE_URL` = postgres connection string
-  - `CLERK_SECRET_KEY` = `sk_live_...`
-  - `NEWS_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`
-  - `FLASK_ENV` = `production`
-
-### Required Backend Changes for Deployment
-- Replace `app.run(debug=True)` with Gunicorn
-- Add `Procfile`: `web: gunicorn -w 4 api:app`
-- Add `runtime.txt`: `python-3.10.5`
-
----
-
-## 4. API Hardening
-
-### CORS
-```python
-# Lock down from allow-all to specific origin
-CORS(app, origins=[
-    "https://marketmind.vercel.app",
-    "http://localhost:3000"  # keep for local dev
-])
-```
-
-### Rate Limiting (Redis-backed)
-```python
-# Move from in-memory to Redis for persistence across workers
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-
-limiter = Limiter(
-    key_func=get_remote_address,
-    storage_uri=os.getenv("REDIS_URL", "memory://"),
-    app=app
-)
-```
-
-### HTTPS
-- Handled automatically by Vercel (frontend) and Render (backend)
-- No code changes needed
-
-### Input Sanitization
-- Add ticker regex validation: `^[A-Z]{1,5}$`
-- Sanitize all user inputs before DB queries (SQLAlchemy handles this via parameterized queries)
-
----
-
-## 5. Frontend Production Changes
-
-### API URL
-Replace every hardcoded `http://127.0.0.1:5001` with:
-```js
-const API_BASE = process.env.REACT_APP_API_URL || 'http://127.0.0.1:5001';
-```
-
-Files to update:
-- `PredictionMarketsPage.js`
-- `PredictionPortfolioChart.js`
-- `PaperTradingPage.js` (and its chart)
-- `SearchPage.js`
-- `Header.js` (notification polling)
-- All other components that call the API
-
-### Error Boundaries
-```jsx
-// Wrap each page in an error boundary so one crash doesn't white-screen the app
-<ErrorBoundary fallback={<p>Something went wrong.</p>}>
-    <SearchPage />
-</ErrorBoundary>
-```
-
-### Build Optimization
-- `npm run build` produces optimized static files
-- Vercel serves them with CDN + gzip + cache headers automatically
-
----
-
-## 6. Priority Order
-
-| Priority | Task | Effort | Impact |
-|----------|------|--------|--------|
-| 1 | Replace hardcoded API URLs with env var | 30 min | Enables deployment |
-| 2 | Add Clerk auth (frontend sign-in + backend JWT verification) | 2-3 hrs | Multi-user support |
-| 3 | Migrate to PostgreSQL (schema + SQLAlchemy models) | 3-4 hrs | Persistent, user-scoped data |
-| 4 | Deploy frontend to Vercel | 30 min | Live site |
-| 5 | Deploy backend to Render + connect Postgres | 1 hr | Live API |
-| 6 | Lock down CORS + add Gunicorn | 30 min | Security |
-| 7 | Redis-backed rate limiting | 1 hr | Scalability |
-| 8 | Error boundaries + loading states audit | 1 hr | Reliability |
-
----
-
-## 7. Environment Variables Summary
-
-### Frontend (.env)
-```
-REACT_APP_API_URL=https://marketmind-api.onrender.com
-REACT_APP_CLERK_PUBLISHABLE_KEY=pk_live_xxxxx
-```
-
-### Backend (.env)
-```
-DATABASE_URL=postgresql://user:pass@host:5432/marketmind
-CLERK_SECRET_KEY=sk_live_xxxxx
-NEWS_API_KEY=xxxxx
-ALPHA_VANTAGE_API_KEY=xxxxx
-FINNHUB_API_KEY=xxxxx
+```dotenv
 FLASK_ENV=production
-REDIS_URL=redis://...  # optional, for rate limiting
+AUTH_MODE=clerk
+CORS_ORIGINS=https://app.example.com
+PERSISTENCE_MODE=postgres
+DATABASE_URL=postgresql+psycopg://user:pass@host:5432/marketmind
+RATE_LIMIT_STORAGE_URL=rediss://host:6379/0
+CLERK_JWKS_URL=https://example.clerk.accounts.dev/.well-known/jwks.json
+CLERK_ISSUER=https://example.clerk.accounts.dev
+FLASK_SECRET_KEY=<random secret>
 ```
+
+Enable `PUBLIC_API_ENABLED`, `PUBLIC_API_DOCS_ENABLED`, and
+`PUBLIC_API_CACHE_URL` only after public API keys, Redis, quotas, logs, and abuse
+response are operational.
+
+## Release Criteria
+
+A production release is ready only when:
+
+- required backend and frontend workflows are green for the exact revision;
+- migrations have succeeded against staging and a rollback path is known;
+- `/healthz` and `/readyz` pass in the target environment;
+- Clerk sign-in and user isolation pass the release smoke checklist;
+- the web process and alert worker are running separately;
+- dashboards and alerts can detect backend, database, Redis, provider, and
+  worker failures;
+- a recent backup has been restored successfully in a non-production
+  environment.
+
+See the [production deployment checklist](../operations/PRODUCTION_DEPLOYMENT_CHECKLIST.md)
+and [quality gates](../operations/QUALITY_GATES.md) for executable steps.

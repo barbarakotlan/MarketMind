@@ -686,36 +686,15 @@ def _prediction_based_lean(context: Optional[Dict[str, Any]]) -> tuple[Optional[
     return lean, rationale
 
 
-def _build_grounded_fallback_reply(
+def _fallback_market_bullets(
     *,
-    attached_ticker: str,
-    context: Dict[str, Any],
-    messages: List[Dict[str, str]],
-) -> str:
-    asset_type = context.get("assetType") or "equity"
-    fundamentals = context.get("fundamentalsSummary") or {}
-    prediction = context.get("predictionSnapshot") or {}
-    news_items = context.get("recentNews") or []
-    sec_filing = context.get("secFilingsSummary") or {}
-    filing_change = context.get("filingChangeSummary") or {}
-    insider_activity = context.get("insiderActivitySummary") or []
-    beneficial_ownership = context.get("beneficialOwnershipSummary") or []
-    quote = context.get("cryptoQuote") or {}
-    current_position = context.get("currentPaperPosition") or {}
-
-    asset_name = (
-        context.get("assetName")
-        or fundamentals.get("companyName")
-        or context.get("cryptoSymbol")
-        or attached_ticker
-    )
-
-    lines = [
-        f"I do have MarketMind context attached for **{attached_ticker}** ({asset_name}). Here is the grounded setup from the current session:",
-        "",
-    ]
+    asset_type: str,
+    asset_name: str,
+    fundamentals: Dict[str, Any],
+    prediction: Dict[str, Any],
+    quote: Dict[str, Any],
+) -> List[str]:
     bullets: List[str] = []
-
     if asset_type == "crypto":
         if quote.get("exchangeRate") is not None:
             bullets.append(
@@ -727,46 +706,59 @@ def _build_grounded_fallback_reply(
         sector = fundamentals.get("sector") or "Unknown sector"
         bullets.append(f"Fundamentals context: **{fundamentals.get('companyName')}** in **{sector}**.")
 
-    if prediction.get("recentPredicted") is not None and prediction.get("recentClose") is not None:
-        confidence = prediction.get("confidence")
-        confidence_clause = f" with **{confidence}%** confidence" if confidence is not None else ""
-        bullets.append(
-            f"Prediction snapshot: **${prediction.get('recentPredicted')}** predicted versus **${prediction.get('recentClose')}** recent close{confidence_clause}."
-        )
-    else:
+    if prediction.get("recentPredicted") is None or prediction.get("recentClose") is None:
         bullets.append("Prediction snapshot: no model forecast is attached to this chat right now.")
+        return bullets
+    confidence = prediction.get("confidence")
+    confidence_clause = f" with **{confidence}%** confidence" if confidence is not None else ""
+    bullets.append(
+        f"Prediction snapshot: **${prediction.get('recentPredicted')}** predicted versus **${prediction.get('recentClose')}** recent close{confidence_clause}."
+    )
+    return bullets
 
+
+def _fallback_news_bullets(context: Dict[str, Any]) -> List[str]:
+    news_items = context.get("recentNews") or []
     if news_items:
-        bullets.append(
+        bullets = [
             f"Recent news: **{len(news_items)}** headline(s) in context; latest is “{news_items[0].get('title', 'Untitled headline')}”."
-        )
+        ]
     else:
-        bullets.append("Recent news: no fresh headlines are attached to this chat right now.")
-
+        bullets = ["Recent news: no fresh headlines are attached to this chat right now."]
     overall_sentiment = (context.get("sentimentSummary") or {}).get("overall") or {}
     if overall_sentiment.get("label"):
         bullets.append(
             f"Evidence tone: overall **{overall_sentiment.get('label')}** across **{overall_sentiment.get('scoredCount') or 0}** scored item(s)."
         )
+    return bullets
 
+
+def _fallback_sec_bullets(context: Dict[str, Any]) -> List[str]:
+    bullets: List[str] = []
+    sec_filing = context.get("secFilingsSummary") or {}
     if sec_filing.get("type") and sec_filing.get("date"):
-        section_titles = [section.get("title") for section in (sec_filing.get("sections") or []) if section.get("title")]
+        section_titles = [
+            section.get("title")
+            for section in (sec_filing.get("sections") or [])
+            if section.get("title")
+        ]
         section_suffix = f" covering {', '.join(section_titles)}" if section_titles else ""
         bullets.append(
             f"SEC filing context: latest attached filing is **{sec_filing.get('type')}** from **{sec_filing.get('date')}**{section_suffix}."
         )
 
-    if filing_change.get("comparisonForm"):
-        changed_sections = filing_change.get("sectionChanges") or []
-        if changed_sections:
-            section_titles = ", ".join(
-                section.get("title") for section in changed_sections[:3] if section.get("title")
-            )
-            bullets.append(
-                f"SEC change watch: the latest **{filing_change.get('comparisonForm')}** differs from the prior filing across **{len(changed_sections)}** section(s)"
-                + (f", including {section_titles}." if section_titles else ".")
-            )
+    filing_change = context.get("filingChangeSummary") or {}
+    changed_sections = filing_change.get("sectionChanges") or []
+    if filing_change.get("comparisonForm") and changed_sections:
+        section_titles = ", ".join(
+            section.get("title") for section in changed_sections[:3] if section.get("title")
+        )
+        bullets.append(
+            f"SEC change watch: the latest **{filing_change.get('comparisonForm')}** differs from the prior filing across **{len(changed_sections)}** section(s)"
+            + (f", including {section_titles}." if section_titles else ".")
+        )
 
+    insider_activity = context.get("insiderActivitySummary") or []
     if insider_activity:
         latest_insider = insider_activity[0]
         insider_name = latest_insider.get("insiderName") or "Recent insider"
@@ -775,6 +767,7 @@ def _build_grounded_fallback_reply(
             f"Insider activity: **{insider_name}** filed a recent **{latest_insider.get('type') or 'Form 4'}** tagged as **{activity}**."
         )
 
+    beneficial_ownership = context.get("beneficialOwnershipSummary") or []
     if beneficial_ownership:
         latest_owner = beneficial_ownership[0]
         owner_names = ", ".join(latest_owner.get("owners") or [])
@@ -786,12 +779,16 @@ def _build_grounded_fallback_reply(
             + percent_clause
             + "."
         )
+    return bullets
 
+
+def _fallback_workspace_bullets(context: Dict[str, Any]) -> List[str]:
+    bullets: List[str] = []
     if context.get("watchlistMembership") or context.get("activeAlerts"):
         bullets.append(
             f"Workspace context: tracked={bool(context.get('watchlistMembership'))}, active alerts={len(context.get('activeAlerts') or [])}."
         )
-
+    current_position = context.get("currentPaperPosition") or {}
     if current_position.get("shares"):
         bullets.append(
             f"Paper position: current MarketMind paper portfolio holds **{current_position.get('shares')}** shares/units."
@@ -800,18 +797,57 @@ def _build_grounded_fallback_reply(
             bullets.append(
                 "Portfolio intelligence is available in the Paper Portfolio workspace for rebalancing this position against the rest of the account."
             )
+    return bullets
 
-    lines.extend(f"- {bullet}" for bullet in bullets)
 
-    if _user_requested_directional_lean(_last_meaningful_user_text(messages)):
-        lean, rationale = _prediction_based_lean(context)
-        lines.extend(["", "**Context-based lean:**"])
-        if lean and rationale:
-            lines.append(f"- **{lean}** because {rationale}.")
-        else:
-            lines.append("- The current MarketMind context is enough to summarize the setup, but not enough to make a clean buy/sell/hold call from app data alone.")
-        lines.append("- This is not personalized advice; it is only the directional read supported by the attached MarketMind context.")
+def _fallback_directional_lines(
+    context: Dict[str, Any], messages: List[Dict[str, str]]
+) -> List[str]:
+    if not _user_requested_directional_lean(_last_meaningful_user_text(messages)):
+        return []
+    lean, rationale = _prediction_based_lean(context)
+    if lean and rationale:
+        conclusion = f"- **{lean}** because {rationale}."
+    else:
+        conclusion = "- The current MarketMind context is enough to summarize the setup, but not enough to make a clean buy/sell/hold call from app data alone."
+    return [
+        "",
+        "**Context-based lean:**",
+        conclusion,
+        "- This is not personalized advice; it is only the directional read supported by the attached MarketMind context.",
+    ]
 
+
+def _build_grounded_fallback_reply(
+    *,
+    attached_ticker: str,
+    context: Dict[str, Any],
+    messages: List[Dict[str, str]],
+) -> str:
+    fundamentals = context.get("fundamentalsSummary") or {}
+    prediction = context.get("predictionSnapshot") or {}
+    asset_name = (
+        context.get("assetName")
+        or fundamentals.get("companyName")
+        or context.get("cryptoSymbol")
+        or attached_ticker
+    )
+    bullets = _fallback_market_bullets(
+        asset_type=context.get("assetType") or "equity",
+        asset_name=asset_name,
+        fundamentals=fundamentals,
+        prediction=prediction,
+        quote=context.get("cryptoQuote") or {},
+    )
+    bullets.extend(_fallback_news_bullets(context))
+    bullets.extend(_fallback_sec_bullets(context))
+    bullets.extend(_fallback_workspace_bullets(context))
+    lines = [
+        f"I do have MarketMind context attached for **{attached_ticker}** ({asset_name}). Here is the grounded setup from the current session:",
+        "",
+        *(f"- {bullet}" for bullet in bullets),
+    ]
+    lines.extend(_fallback_directional_lines(context, messages))
     return "\n".join(lines)
 
 

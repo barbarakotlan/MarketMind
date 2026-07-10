@@ -1524,56 +1524,51 @@ def export_user_state(session: Session, clerk_user_id: str) -> Dict[str, Any]:
     }
 
 
-def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
-    state = dict(state or {})
+def _delete_deliverable_graph(session: Session, deliverable_ids: Iterable[Any]) -> None:
+    ids = list(deliverable_ids)
+    if not ids:
+        return
+    for model in (
+        DeliverableLink,
+        DeliverableMemo,
+        DeliverablePreflight,
+        DeliverableReview,
+        DeliverableAssumption,
+    ):
+        session.execute(delete(model).where(model.deliverable_id.in_(ids)))
+    session.execute(delete(Deliverable).where(Deliverable.id.in_(ids)))
 
+
+def _clear_user_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> None:
     deliverable_ids = [
         _coerce_uuid(row.get("id"))
         for row in (state.get("deliverables", []) or [])
         if row.get("id")
     ]
-
-    if deliverable_ids:
-        session.execute(delete(DeliverableLink).where(DeliverableLink.deliverable_id.in_(deliverable_ids)))
-        session.execute(delete(DeliverableMemo).where(DeliverableMemo.deliverable_id.in_(deliverable_ids)))
-        session.execute(delete(DeliverablePreflight).where(DeliverablePreflight.deliverable_id.in_(deliverable_ids)))
-        session.execute(delete(DeliverableReview).where(DeliverableReview.deliverable_id.in_(deliverable_ids)))
-        session.execute(delete(DeliverableAssumption).where(DeliverableAssumption.deliverable_id.in_(deliverable_ids)))
-        session.execute(delete(Deliverable).where(Deliverable.id.in_(deliverable_ids)))
-
+    _delete_deliverable_graph(session, deliverable_ids)
     existing_deliverable_ids = session.scalars(
         select(Deliverable.id).where(Deliverable.clerk_user_id == clerk_user_id)
     ).all()
-    if existing_deliverable_ids:
-        session.execute(delete(DeliverableLink).where(DeliverableLink.deliverable_id.in_(existing_deliverable_ids)))
-        session.execute(delete(DeliverableMemo).where(DeliverableMemo.deliverable_id.in_(existing_deliverable_ids)))
-        session.execute(delete(DeliverablePreflight).where(DeliverablePreflight.deliverable_id.in_(existing_deliverable_ids)))
-        session.execute(delete(DeliverableReview).where(DeliverableReview.deliverable_id.in_(existing_deliverable_ids)))
-        session.execute(delete(DeliverableAssumption).where(DeliverableAssumption.deliverable_id.in_(existing_deliverable_ids)))
-        session.execute(delete(Deliverable).where(Deliverable.id.in_(existing_deliverable_ids)))
-
-    session.execute(
-        delete(PredictionMarketTrade).where(PredictionMarketTrade.clerk_user_id == clerk_user_id)
-    )
-    session.execute(
-        delete(PredictionMarketPosition).where(PredictionMarketPosition.clerk_user_id == clerk_user_id)
-    )
-    session.execute(
-        delete(PredictionPortfolio).where(PredictionPortfolio.clerk_user_id == clerk_user_id)
-    )
-    session.execute(
-        delete(PaperPortfolioSnapshot).where(PaperPortfolioSnapshot.clerk_user_id == clerk_user_id)
-    )
-    session.execute(delete(PaperTradeEvent).where(PaperTradeEvent.clerk_user_id == clerk_user_id))
-    session.execute(delete(PaperOptionPosition).where(PaperOptionPosition.clerk_user_id == clerk_user_id))
-    session.execute(delete(PaperEquityPosition).where(PaperEquityPosition.clerk_user_id == clerk_user_id))
-    session.execute(delete(PaperPortfolio).where(PaperPortfolio.clerk_user_id == clerk_user_id))
-    session.execute(delete(TriggeredAlert).where(TriggeredAlert.clerk_user_id == clerk_user_id))
-    session.execute(delete(AlertRule).where(AlertRule.clerk_user_id == clerk_user_id))
-    session.execute(delete(WatchlistItem).where(WatchlistItem.clerk_user_id == clerk_user_id))
-    session.execute(delete(AppUser).where(AppUser.clerk_user_id == clerk_user_id))
+    _delete_deliverable_graph(session, existing_deliverable_ids)
+    for model in (
+        PredictionMarketTrade,
+        PredictionMarketPosition,
+        PredictionPortfolio,
+        PaperPortfolioSnapshot,
+        PaperTradeEvent,
+        PaperOptionPosition,
+        PaperEquityPosition,
+        PaperPortfolio,
+        TriggeredAlert,
+        AlertRule,
+        WatchlistItem,
+        AppUser,
+    ):
+        session.execute(delete(model).where(model.clerk_user_id == clerk_user_id))
     session.flush()
 
+
+def _restore_account_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> None:
     app_user = state.get("app_user")
     if app_user:
         session.add(
@@ -1585,7 +1580,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 last_seen_at=_coerce_datetime(app_user.get("last_seen_at")),
             )
         )
-
     for row in state.get("watchlist_items", []) or []:
         session.add(
             WatchlistItem(
@@ -1594,7 +1588,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 created_at=_coerce_datetime(row.get("created_at")),
             )
         )
-
     for row in state.get("alert_rules", []) or []:
         session.add(
             AlertRule(
@@ -1609,7 +1602,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 created_at=_coerce_datetime(row.get("created_at")),
             )
         )
-
     for row in state.get("triggered_alerts", []) or []:
         alert_rule_id = row.get("alert_rule_id")
         session.add(
@@ -1624,17 +1616,18 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
             )
         )
 
-    paper_portfolio = state.get("paper_portfolio")
-    if paper_portfolio:
+
+def _restore_paper_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> None:
+    portfolio = state.get("paper_portfolio")
+    if portfolio:
         session.add(
             PaperPortfolio(
                 clerk_user_id=clerk_user_id,
-                cash=paper_portfolio.get("cash", 100000.0),
-                starting_cash=paper_portfolio.get("starting_cash", 100000.0),
-                updated_at=_coerce_datetime(paper_portfolio.get("updated_at")),
+                cash=portfolio.get("cash", 100000.0),
+                starting_cash=portfolio.get("starting_cash", 100000.0),
+                updated_at=_coerce_datetime(portfolio.get("updated_at")),
             )
         )
-
     for row in state.get("paper_equity_positions", []) or []:
         session.add(
             PaperEquityPosition(
@@ -1645,7 +1638,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 updated_at=_coerce_datetime(row.get("updated_at")),
             )
         )
-
     for row in state.get("paper_option_positions", []) or []:
         session.add(
             PaperOptionPosition(
@@ -1656,7 +1648,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 updated_at=_coerce_datetime(row.get("updated_at")),
             )
         )
-
     for row in state.get("paper_trade_events", []) or []:
         session.add(
             PaperTradeEvent(
@@ -1673,7 +1664,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 metadata_json=dict(row.get("metadata", {}) or {}),
             )
         )
-
     for row in state.get("paper_portfolio_snapshots", []) or []:
         session.add(
             PaperPortfolioSnapshot(
@@ -1683,17 +1673,18 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
             )
         )
 
-    prediction_portfolio = state.get("prediction_portfolio")
-    if prediction_portfolio:
+
+def _restore_prediction_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> None:
+    portfolio = state.get("prediction_portfolio")
+    if portfolio:
         session.add(
             PredictionPortfolio(
                 clerk_user_id=clerk_user_id,
-                cash=prediction_portfolio.get("cash", 10000.0),
-                starting_cash=prediction_portfolio.get("starting_cash", 10000.0),
-                updated_at=_coerce_datetime(prediction_portfolio.get("updated_at")),
+                cash=portfolio.get("cash", 10000.0),
+                starting_cash=portfolio.get("starting_cash", 10000.0),
+                updated_at=_coerce_datetime(portfolio.get("updated_at")),
             )
         )
-
     for row in state.get("prediction_market_positions", []) or []:
         session.add(
             PredictionMarketPosition(
@@ -1707,7 +1698,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 updated_at=_coerce_datetime(row.get("updated_at")),
             )
         )
-
     for row in state.get("prediction_market_trades", []) or []:
         session.add(
             PredictionMarketTrade(
@@ -1726,6 +1716,8 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
             )
         )
 
+
+def _restore_deliverable_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> None:
     for row in state.get("deliverables", []) or []:
         session.add(
             Deliverable(
@@ -1823,6 +1815,14 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
             )
         )
 
+
+def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
+    state = dict(state or {})
+    _clear_user_state(session, clerk_user_id, state)
+    _restore_account_state(session, clerk_user_id, state)
+    _restore_paper_state(session, clerk_user_id, state)
+    _restore_prediction_state(session, clerk_user_id, state)
+    _restore_deliverable_state(session, clerk_user_id, state)
     session.flush()
     return export_user_state(session, clerk_user_id)
 

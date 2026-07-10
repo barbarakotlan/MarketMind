@@ -172,16 +172,18 @@ def _single_chunk_document(
     return _expand_to_chunks({"payload": payload, "text": text})
 
 
-def _build_sec_documents(context: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _sec_identity(context: Dict[str, Any]) -> tuple[str, str, str]:
     asset_id = context.get("assetId") or context.get("ticker") or ""
-    ticker = context.get("ticker") or asset_id
-    market = context.get("market") or "US"
-    docs: List[Dict[str, Any]] = []
+    return asset_id, context.get("ticker") or asset_id, context.get("market") or "US"
 
+
+def _build_sec_section_documents(
+    context: Dict[str, Any], identity: tuple[str, str, str]
+) -> List[Dict[str, Any]]:
+    asset_id, ticker, market = identity
     filing = context.get("secFilingsSummary") or {}
     filing_type = filing.get("type")
-    filing_date = filing.get("date")
-    filing_url = filing.get("url")
+    docs: List[Dict[str, Any]] = []
     for section in filing.get("sections") or []:
         section_text = section.get("text")
         if not section_text:
@@ -200,22 +202,30 @@ def _build_sec_documents(context: Dict[str, Any]) -> List[Dict[str, Any]]:
                 title=f"{filing_type or 'SEC filing'} · {section.get('title') or section.get('key')}",
                 text=section_text,
                 section_key=section.get("key"),
-                published_at=filing_date,
-                source_url=filing_url,
+                published_at=filing.get("date"),
+                source_url=filing.get("url"),
                 language="en",
-                version=f"{filing.get('accessionNumber') or filing_date or 'latest'}",
+                version=f"{filing.get('accessionNumber') or filing.get('date') or 'latest'}",
             )
         )
+    return docs
 
+
+def _build_filing_change_documents(
+    context: Dict[str, Any], identity: tuple[str, str, str]
+) -> List[Dict[str, Any]]:
+    asset_id, ticker, market = identity
     filing_change = context.get("filingChangeSummary") or {}
+    current_filing = filing_change.get("currentFiling") or {}
+    docs: List[Dict[str, Any]] = []
     for section_change in filing_change.get("sectionChanges") or []:
         change_text = "\n".join(
             part
-            for part in [
+            for part in (
                 f"Status: {section_change.get('status')}" if section_change.get("status") else None,
                 section_change.get("currentExcerpt"),
                 section_change.get("previousExcerpt"),
-            ]
+            )
             if part
         )
         if not change_text:
@@ -234,23 +244,30 @@ def _build_sec_documents(context: Dict[str, Any]) -> List[Dict[str, Any]]:
                 title=f"{filing_change.get('comparisonForm') or 'Filing change'} · {section_change.get('title') or section_change.get('key')}",
                 text=change_text,
                 section_key=section_change.get("key"),
-                published_at=(filing_change.get("currentFiling") or {}).get("date"),
-                source_url=(filing_change.get("currentFiling") or {}).get("url"),
+                published_at=current_filing.get("date"),
+                source_url=current_filing.get("url"),
                 language="en",
-                version=str((filing_change.get("currentFiling") or {}).get("accessionNumber") or "latest"),
+                version=str(current_filing.get("accessionNumber") or "latest"),
             )
         )
+    return docs
 
+
+def _build_insider_activity_documents(
+    context: Dict[str, Any], identity: tuple[str, str, str]
+) -> List[Dict[str, Any]]:
+    asset_id, ticker, market = identity
+    docs: List[Dict[str, Any]] = []
     for index, item in enumerate(context.get("insiderActivitySummary") or []):
         insider_name = item.get("insiderName") or "Insider"
         text = "\n".join(
             part
-            for part in [
+            for part in (
                 f"Activity: {item.get('activity')}" if item.get("activity") else None,
                 f"Form: {item.get('type')}" if item.get("type") else None,
                 f"Date: {item.get('date')}" if item.get("date") else None,
                 f"Shares: {item.get('shares')}" if item.get("shares") is not None else None,
-            ]
+            )
             if part
         )
         if not text:
@@ -274,17 +291,26 @@ def _build_sec_documents(context: Dict[str, Any]) -> List[Dict[str, Any]]:
                 version="v1",
             )
         )
+    return docs
 
+
+def _build_beneficial_ownership_documents(
+    context: Dict[str, Any], identity: tuple[str, str, str]
+) -> List[Dict[str, Any]]:
+    asset_id, ticker, market = identity
+    docs: List[Dict[str, Any]] = []
     for index, item in enumerate(context.get("beneficialOwnershipSummary") or []):
         owners = ", ".join(item.get("owners") or [])
         text = "\n".join(
             part
-            for part in [
+            for part in (
                 f"Owners: {owners}" if owners else None,
                 f"Disclosure: {item.get('type')}" if item.get("type") else None,
-                f"Ownership percent: {item.get('ownershipPercent')}" if item.get("ownershipPercent") is not None else None,
+                f"Ownership percent: {item.get('ownershipPercent')}"
+                if item.get("ownershipPercent") is not None
+                else None,
                 f"Date: {item.get('date')}" if item.get("date") else None,
-            ]
+            )
             if part
         )
         if not text:
@@ -308,8 +334,18 @@ def _build_sec_documents(context: Dict[str, Any]) -> List[Dict[str, Any]]:
                 version="v1",
             )
         )
-
     return docs
+
+
+def _build_sec_documents(context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    identity = _sec_identity(context)
+    builders = (
+        _build_sec_section_documents,
+        _build_filing_change_documents,
+        _build_insider_activity_documents,
+        _build_beneficial_ownership_documents,
+    )
+    return [document for builder in builders for document in builder(context, identity)]
 
 
 def _build_news_documents(context: Dict[str, Any]) -> List[Dict[str, Any]]:
