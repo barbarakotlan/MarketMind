@@ -1,23 +1,49 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import {
+    MemoryRouter,
+    useInRouterContext,
+    useLocation,
+    useNavigate,
+} from 'react-router-dom';
 
-/**
- * NavigationContext centralizes app navigation and the one-shot "navigation
- * intent" (a ticker / compare-ticker / AI prompt) that a destination page reads
- * once on arrival. This replaces threading `activePage`/`setActivePage` and the
- * `initialTicker` + `onConsumeInitialTicker` prop dance through App into every
- * page.
- *
- * Pages read `activePage` and their intent (`sharedTicker`, etc.) via
- * `useNavigation()`, and clear the intent with `clearTicker()` /
- * `clearCompareTicker()` / `clearAiPrompt()` once consumed — the same
- * read-once-then-clear semantics as before, now expressed in one place.
- */
+
 const NavigationContext = createContext(null);
 
-const INITIAL_PAGE = 'screener';
+export const PAGE_PATHS = Object.freeze({
+    screener: '/screener',
+    dashboard: '/dashboard',
+    search: '/search',
+    macro: '/macro',
+    watchlist: '/watchlist',
+    portfolio: '/portfolio',
+    fundamentals: '/fundamentals',
+    predictions: '/predictions',
+    performance: '/performance',
+    options: '/options',
+    forex: '/forex',
+    crypto: '/crypto',
+    commodities: '/commodities',
+    news: '/news',
+    notifications: '/notifications',
+    predictionMarkets: '/prediction-markets',
+    marketmindAI: '/marketmind-ai',
+    gettingStarted: '/getting-started',
+    calendar: '/calendar',
+});
 
-export function NavigationProvider({ children }) {
-    const [activePage, setActivePage] = useState(INITIAL_PAGE);
+const PATH_PAGES = Object.freeze(
+    Object.fromEntries(Object.entries(PAGE_PATHS).map(([page, path]) => [path, page]))
+);
+
+export const pageForPath = (pathname) => {
+    const normalized = pathname !== '/' ? String(pathname || '').replace(/\/+$/, '') : '/';
+    return PATH_PAGES[normalized] || 'screener';
+};
+
+function RoutedNavigationProvider({ children }) {
+    const location = useLocation();
+    const routerNavigate = useNavigate();
+    const activePage = pageForPath(location.pathname);
     const [sharedTicker, setSharedTicker] = useState(null);
     const [sharedCompareTicker, setSharedCompareTicker] = useState(null);
     const [sharedAiPrompt, setSharedAiPrompt] = useState('');
@@ -26,22 +52,23 @@ export function NavigationProvider({ children }) {
     const clearCompareTicker = useCallback(() => setSharedCompareTicker(null), []);
     const clearAiPrompt = useCallback(() => setSharedAiPrompt(''), []);
 
-    // Navigate to a page, optionally seeding the intent the destination reads.
+    const setActivePage = useCallback((page, options = {}) => {
+        routerNavigate(PAGE_PATHS[page] || PAGE_PATHS.screener, options);
+    }, [routerNavigate]);
+
     const navigate = useCallback((page, intent = {}) => {
         if ('ticker' in intent) setSharedTicker(intent.ticker);
         if ('compareTicker' in intent) setSharedCompareTicker(intent.compareTicker);
         if ('aiPrompt' in intent) setSharedAiPrompt(intent.aiPrompt);
         setActivePage(page);
-    }, []);
+    }, [setActivePage]);
 
-    // Screener "open ticker in search" — moved verbatim from App.handleScreenerNav.
     const screenerNav = useCallback((ticker) => {
         setSharedTicker(ticker);
         setSharedCompareTicker(null);
         setActivePage('search');
-    }, []);
+    }, [setActivePage]);
 
-    // Screener action buttons — moved verbatim from App.handleScreenerAction.
     const screenerAction = useCallback(({ action, ticker, compareTicker }) => {
         const normalizedTicker = String(ticker || '').trim().toUpperCase();
         const normalizedCompareTicker = String(compareTicker || '').trim().toUpperCase();
@@ -75,11 +102,12 @@ export function NavigationProvider({ children }) {
         }
 
         setActivePage('search');
-    }, []);
+    }, [setActivePage]);
 
     const value = useMemo(
         () => ({
             activePage,
+            activePath: location.pathname,
             setActivePage,
             navigate,
             sharedTicker,
@@ -93,10 +121,12 @@ export function NavigationProvider({ children }) {
         }),
         [
             activePage,
+            location.pathname,
+            setActivePage,
+            navigate,
             sharedTicker,
             sharedCompareTicker,
             sharedAiPrompt,
-            navigate,
             clearTicker,
             clearCompareTicker,
             clearAiPrompt,
@@ -108,12 +138,27 @@ export function NavigationProvider({ children }) {
     return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;
 }
 
+export function NavigationProvider({ children }) {
+    const inRouter = useInRouterContext();
+    if (inRouter) {
+        return <RoutedNavigationProvider>{children}</RoutedNavigationProvider>;
+    }
+    return (
+        <MemoryRouter
+            initialEntries={[PAGE_PATHS.screener]}
+            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+            <RoutedNavigationProvider>{children}</RoutedNavigationProvider>
+        </MemoryRouter>
+    );
+}
+
 export function useNavigation() {
-    const ctx = useContext(NavigationContext);
-    if (!ctx) {
+    const context = useContext(NavigationContext);
+    if (!context) {
         throw new Error('useNavigation must be used within a NavigationProvider');
     }
-    return ctx;
+    return context;
 }
 
 export default NavigationContext;

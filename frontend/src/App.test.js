@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import App from './App';
 
 let mockIsSignedIn = false;
@@ -108,32 +109,47 @@ describe('App', () => {
         expect(screen.getByTestId('auth-fetch-bridge')).toBeInTheDocument();
     });
 
-    test('shows the signed-in shell on the screener front door when signed in', () => {
+    test('shows the signed-in shell on the screener front door when signed in', async () => {
         mockIsSignedIn = true;
         render(<App />);
 
         expect(screen.getByText('Sidebar')).toBeInTheDocument();
-        expect(screen.getByText('Screener Page')).toBeInTheDocument();
+        expect(await screen.findByText('Screener Page')).toBeInTheDocument();
     });
 
-    test('routes screener selections into the search page ticker state', () => {
+    test('routes screener selections into the search page ticker state', async () => {
         mockIsSignedIn = true;
         render(<App />);
 
         fireEvent.click(screen.getByText('Go Screener'));
-        fireEvent.click(screen.getByText('Pick AAPL'));
+        fireEvent.click(await screen.findByText('Pick AAPL'));
 
-        expect(screen.getByText('Search Page for AAPL')).toBeInTheDocument();
+        expect(await screen.findByText('Search Page for AAPL')).toBeInTheDocument();
     });
 
-    test('skips the landing page for signed-in users on refresh', () => {
+    test('skips the landing page for signed-in users on refresh', async () => {
         mockIsSignedIn = true;
 
         render(<App />);
 
         expect(screen.queryByText('Landing Page')).not.toBeInTheDocument();
         expect(screen.getByText('Sidebar')).toBeInTheDocument();
-        expect(screen.getByText('Screener Page')).toBeInTheDocument();
+        expect(await screen.findByText('Screener Page')).toBeInTheDocument();
+    });
+
+    test('renders a signed-in deep link without resetting it to the screener', async () => {
+        mockIsSignedIn = true;
+
+        render(
+            <MemoryRouter
+                initialEntries={['/fundamentals']}
+                future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+            >
+                <App />
+            </MemoryRouter>
+        );
+
+        expect(await screen.findByText('Fundamentals Page')).toBeInTheDocument();
     });
 
     test('persists app entry so refresh stays in the app shell', () => {
