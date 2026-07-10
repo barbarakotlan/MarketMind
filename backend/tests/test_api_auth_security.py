@@ -85,6 +85,8 @@ class ApiAuthSecurityTests(unittest.TestCase):
                 clerk_jwks_url="",
                 clerk_issuer="",
                 allow_legacy_user_data_seed=True,
+                persistence_mode="json",
+                database_url="",
             )
 
         message = str(exc.exception)
@@ -92,6 +94,18 @@ class ApiAuthSecurityTests(unittest.TestCase):
         self.assertIn("CLERK_JWKS_URL", message)
         self.assertIn("CLERK_ISSUER", message)
         self.assertIn("ALLOW_LEGACY_USER_DATA_SEED", message)
+        self.assertIn("PERSISTENCE_MODE", message)
+        self.assertIn("DATABASE_URL", message)
+
+    def test_validate_production_runtime_security_accepts_postgres(self):
+        backend_api.validate_production_runtime_security(
+            flask_secret_key="secret",
+            clerk_jwks_url="https://clerk.example.com/.well-known/jwks.json",
+            clerk_issuer="https://clerk.example.com",
+            allow_legacy_user_data_seed=False,
+            persistence_mode="postgres",
+            database_url="postgresql+psycopg://user:pass@db.example.com/marketmind",
+        )
 
     def test_verify_clerk_token_uses_only_pinned_values_in_production(self):
         jwt_module = _FakeJWTModule(

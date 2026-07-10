@@ -66,7 +66,7 @@ Run after the backend service has the correct `DATABASE_URL`:
 
 ```bash
 cd backend
-DATABASE_URL="<database-url>" .venv/bin/python -m alembic upgrade head
+DATABASE_URL="<database-url>" .venv/bin/alembic -c alembic.ini upgrade head
 ```
 
 ## Frontend host

@@ -328,6 +328,8 @@ def validate_production_runtime_security(
     clerk_jwks_url: str,
     clerk_issuer: str,
     allow_legacy_user_data_seed: bool,
+    persistence_mode: str,
+    database_url: str,
 ):
     errors = []
 
@@ -339,6 +341,13 @@ def validate_production_runtime_security(
         errors.append("CLERK_ISSUER environment variable is required in production")
     if allow_legacy_user_data_seed:
         errors.append("ALLOW_LEGACY_USER_DATA_SEED must be false in production")
+    if str(persistence_mode or '').strip().lower() != 'postgres':
+        errors.append("PERSISTENCE_MODE must be postgres in production")
+    normalized_database_url = str(database_url or '').strip().lower()
+    if not normalized_database_url.startswith(
+        ('postgresql://', 'postgresql+psycopg://', 'postgres://')
+    ):
+        errors.append("DATABASE_URL must be a PostgreSQL connection string in production")
 
     if errors:
         raise ValueError("; ".join(errors))
@@ -350,6 +359,8 @@ if IS_PRODUCTION:
         clerk_jwks_url=CLERK_JWKS_URL,
         clerk_issuer=CLERK_ISSUER,
         allow_legacy_user_data_seed=ALLOW_LEGACY_USER_DATA_SEED,
+        persistence_mode=PERSISTENCE_MODE,
+        database_url=DATABASE_URL,
     )
 
 

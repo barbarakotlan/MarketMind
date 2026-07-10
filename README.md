@@ -27,7 +27,9 @@ The backend is centered on [`backend/api.py`](./backend/api.py), which combines 
 
 At runtime, the Flask service sits between the frontend and several external providers. Market and historical pricing data primarily come from yfinance, with Alpha Vantage used for selected data workflows and fallback behavior. News retrieval uses Finnhub, and some fundamentals, filings, screener, and macro functionality can use optional OpenBB integrations where available. This makes the backend the single integration layer for third-party services, rather than having the frontend call providers directly.
 
-Persistence is intentionally mixed. SQLite is used for selected local history and snapshot data, while most authenticated user state is stored as JSON files under `backend/user_data/`, including portfolios, watchlists, notifications, and prediction-market positions. This keeps the application easy to run locally while still supporting per-user state isolation and authenticated workflows.
+Local development can store user state in lock-protected JSON files under
+`backend/user_data/`. Production refuses to start unless `PERSISTENCE_MODE=postgres`
+and `DATABASE_URL` points to PostgreSQL, preventing accidental ephemeral storage.
 
 The high-level request path looks like this:
 
