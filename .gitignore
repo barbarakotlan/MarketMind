@@ -33,7 +33,6 @@ frontend/node_modules/
 .cache/
 frontend/.cache/
 frontend/build/
-frontend/package-lock.json
 
 # --- Backend (Python) ---
 # Bytecode
@@ -66,6 +65,9 @@ wheels/
 .coverage
 htmlcov/
 backend/.coverage
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
 
 # Flask
 instance/

@@ -9,7 +9,7 @@
  */
 
 const resolveApiBaseUrl = () => {
-    const configuredBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+    const configuredBase = import.meta.env.VITE_API_URL || 'http://localhost:5001';
     return configuredBase.replace(/\/$/, '');
 };
 

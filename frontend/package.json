@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": "20.x"
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.1",
@@ -21,34 +21,21 @@
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
-    "react-scripts": "5.0.1",
+    "react-router-dom": "^6.30.4",
     "react-sparklines": "^1.7.0",
-    "remark-gfm": "^4.0.1",
-    "web-vitals": "^2.1.4"
+    "remark-gfm": "^4.0.1"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "lint": "eslint src --max-warnings=0",
-    "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ],
-    "overrides": [
-      {
-        "files": [
-          "**/*.test.js"
-        ],
-        "rules": {
-          "testing-library/no-node-access": "off",
-          "jest/no-conditional-expect": "off"
-        }
-      }
-    ]
+    "start": "vite --host 0.0.0.0 --port 3000",
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage --maxWorkers=50%",
+    "test:e2e": "playwright test",
+    "start:e2e": "vite --host 127.0.0.1 --port 4173",
+    "lint": "eslint src e2e --max-warnings=0"
   },
   "browserslist": {
     "production": [
@@ -63,8 +50,20 @@
     ]
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@playwright/test": "^1.61.1",
+    "@vitejs/plugin-react": "^6.0.3",
+    "@vitest/coverage-v8": "^4.1.10",
     "autoprefixer": "^10.4.21",
+    "eslint": "^9.39.2",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^16.5.0",
+    "jsdom": "^28.1.0",
     "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^3.4.17",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
   }
 }

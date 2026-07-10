@@ -58,6 +58,7 @@ class RouteRegistrationSmokeTests(unittest.TestCase):
             "/calendar/market-sessions": {"GET"},
             "/macro/overview": {"GET"},
             "/healthz": {"GET"},
+            "/readyz": {"GET"},
             "/api/public/docs": {"GET"},
             "/api/public/openapi/v1.yaml": {"GET"},
             "/api/public/v1/health": {"GET"},

@@ -21,13 +21,15 @@ MarketMind is structured as a browser-based frontend backed by a single Flask se
 
 Each large page is a thin orchestrator that owns its data-fetching and state, and delegates presentation to focused subcomponents grouped in a per-page folder under [`frontend/src/components/`](./frontend/src/components/): `landing/`, `getting-started/`, `search/`, `fundamentals/`, `paper/`, `marketmind-ai/`, and `prediction-markets/` each hold the cards, panels, and formatters for their page. Cross-page building blocks live in `components/ui/` and `components/charts/`. Shared application concerns sit alongside the components: navigation and theme state in [`frontend/src/context/`](./frontend/src/context/) (`NavigationContext`, `DarkModeContext`), reusable data-fetching in [`frontend/src/hooks/`](./frontend/src/hooks/) (`useApiData`), static content in [`frontend/src/data/`](./frontend/src/data/), and API/auth configuration in [`frontend/src/config/`](./frontend/src/config/).
 
-Authentication is handled with Clerk on the frontend and verified on the backend. The frontend installs a fetch interceptor through [`frontend/src/config/authFetch.js`](./frontend/src/config/authFetch.js) and [`frontend/src/components/AuthFetchBridge.js`](./frontend/src/components/AuthFetchBridge.js). That layer normalizes backend URLs, adds bearer tokens for authenticated requests, and retries once on `401` responses with a refreshed token. On the backend, [`backend/api.py`](./backend/api.py) validates Clerk tokens, attaches the current user ID to the request context, and gates user-specific routes such as watchlists, paper trading, notifications, and prediction-market portfolios.
+Authentication is handled with Clerk on the frontend and verified on the backend. The frontend installs a fetch interceptor through [`frontend/src/config/authFetch.js`](./frontend/src/config/authFetch.js) and [`frontend/src/components/AuthFetchBridge.js`](./frontend/src/components/AuthFetchBridge.js). That layer normalizes backend URLs, adds bearer tokens for authenticated requests, and retries once on `401` responses with a refreshed token. On the backend, [`backend/api_auth.py`](./backend/api_auth.py) validates Clerk tokens and [`backend/authz.py`](./backend/authz.py) gates user-specific capabilities. A development-only local identity follows the same authorization path without requiring Clerk.
 
-The backend is centered on [`backend/api.py`](./backend/api.py), which combines route registration, auth enforcement, rate limiting, CORS, and security headers with orchestration of domain modules. Feature-specific logic is delegated to supporting modules such as [`backend/data_fetcher.py`](./backend/data_fetcher.py) for market data preparation, [`backend/prediction_service.py`](./backend/prediction_service.py) and [`backend/models.py`](./backend/models.py) for forecasting, [`backend/professional_evaluation.py`](./backend/professional_evaluation.py) for rolling backtests, and [`backend/prediction_markets_fetcher.py`](./backend/prediction_markets_fetcher.py) for prediction-market data.
+The backend uses [`backend/api.py`](./backend/api.py) as its Flask composition root and route registry. Request lifecycle behavior lives in [`backend/api_runtime.py`](./backend/api_runtime.py), input models live in [`backend/request_contracts.py`](./backend/request_contracts.py), and feature logic is delegated to handler and service modules. Forecasting is split across [`backend/prediction_service.py`](./backend/prediction_service.py) and [`backend/models.py`](./backend/models.py), while [`backend/professional_evaluation.py`](./backend/professional_evaluation.py) owns rolling backtests and [`backend/prediction_markets_fetcher.py`](./backend/prediction_markets_fetcher.py) owns prediction-market provider access.
 
 At runtime, the Flask service sits between the frontend and several external providers. Market and historical pricing data primarily come from yfinance, with Alpha Vantage used for selected data workflows and fallback behavior. News retrieval uses Finnhub, and some fundamentals, filings, screener, and macro functionality can use optional OpenBB integrations where available. This makes the backend the single integration layer for third-party services, rather than having the frontend call providers directly.
 
-Persistence is intentionally mixed. SQLite is used for selected local history and snapshot data, while most authenticated user state is stored as JSON files under `backend/user_data/`, including portfolios, watchlists, notifications, and prediction-market positions. This keeps the application easy to run locally while still supporting per-user state isolation and authenticated workflows.
+Local development can store user state in lock-protected JSON files under
+`backend/user_data/`. Production refuses to start unless `PERSISTENCE_MODE=postgres`
+and `DATABASE_URL` points to PostgreSQL, preventing accidental ephemeral storage.
 
 The high-level request path looks like this:
 
@@ -60,9 +62,9 @@ The high-level request path looks like this:
                                                               |
                                                               v
                                                   +-------------------------+
-                                                  | Local persistence       |
-                                                  | SQLite                  |
-                                                  | backend/user_data/*.json|
+                                                  | User-state persistence  |
+                                                  | PostgreSQL (production) |
+                                                  | JSON (local development)|
                                                   +-------------------------+
 ```
 
@@ -74,6 +76,9 @@ In practice, this means the frontend is primarily responsible for navigation, pr
 MarketMind/
 |-- backend/
 |   |-- api.py
+|   |-- api_runtime.py
+|   |-- request_contracts.py
+|   |-- alert_worker.py
 |   |-- data_fetcher.py
 |   |-- professional_evaluation.py
 |   |-- prediction_markets_fetcher.py
@@ -118,6 +123,23 @@ MarketMind is developed as two local processes: the Flask backend on port `5001`
 cp .env.example .env
 cp frontend/.env.example frontend/.env
 ```
+
+For Clerk-backed development, keep `AUTH_MODE=clerk` and configure the Clerk values in both environment files. For a self-contained local workspace, set matching development-only modes and tokens:
+
+```bash
+# .env
+FLASK_ENV=development
+AUTH_MODE=local
+LOCAL_AUTH_USER_ID=local_development_user
+LOCAL_AUTH_TOKEN=marketmind-local-development
+
+# frontend/.env
+VITE_AUTH_MODE=local
+VITE_LOCAL_AUTH_USER_ID=local_development_user
+VITE_LOCAL_AUTH_TOKEN=marketmind-local-development
+```
+
+Local mode creates one non-admin development identity and still enforces the backend's normal capability checks. The backend rejects local mode when `FLASK_ENV=production`.
 
 2. Set up and start the backend.
 
@@ -172,12 +194,13 @@ Common development workflow:
 Useful local checks:
 
 - Frontend checks: `bash frontend/run_frontend_checks.sh`
+- Frontend browser journeys: `cd frontend && npm run test:e2e`
 - Backend deterministic checks: `PYTHON_BIN=backend/.venv/bin/python bash backend/run_deterministic_backend_checks.sh`
 
 Beginner-friendly tips:
 
 - The frontend should call the Flask API, not third-party market providers directly.
-- Some user-facing features will not work correctly unless Clerk is configured in both the frontend and backend environment files.
+- Hosted authentication requires Clerk configuration in both processes; local development can use the matching local auth settings shown above.
 - On macOS, XGBoost-related backend issues are often caused by a missing `libomp` installation.
 - If you are unsure where logic lives, search [`backend/api.py`](./backend/api.py) first and then follow imports into supporting modules.
 
@@ -192,8 +215,11 @@ The root [`.env.example`](./.env.example) and [`frontend/.env.example`](./fronte
 - `CORS_ORIGINS` for allowed frontend origins in production-style deployments.
 - `CLERK_JWKS_URL` for backend Clerk token verification when needed.
 - `CLERK_AUDIENCE` for optional Clerk audience validation.
-- `REACT_APP_API_URL` for the frontend's backend base URL.
-- `REACT_APP_CLERK_PUBLISHABLE_KEY` for frontend Clerk initialization.
+- `AUTH_MODE` for selecting `clerk` or development-only `local` authentication.
+- `LOCAL_AUTH_USER_ID` and `LOCAL_AUTH_TOKEN` for the isolated local development identity.
+- `VITE_API_URL` for the frontend's backend base URL.
+- `VITE_AUTH_MODE` and matching local identity values for frontend local mode.
+- `VITE_CLERK_PUBLISHABLE_KEY` for frontend Clerk initialization.
 
 Keep local secrets out of version control and review provider-specific setup before deploying outside local development.
 

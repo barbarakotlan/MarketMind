@@ -46,6 +46,7 @@ class Capabilities:
     WATCHLIST_WRITE = "watchlist.write"
     PAPER_READ = "paper.read"
     PAPER_TRADE = "paper.trade"
+    PREDICTIONS_RUN = "predictions.run"
     NOTIFICATIONS_READ = "notifications.read"
     NOTIFICATIONS_WRITE = "notifications.write"
     PREDICTION_MARKETS_READ = "prediction_markets.read"
@@ -69,6 +70,7 @@ USER_CAPABILITIES: FrozenSet[str] = frozenset(
         Capabilities.WATCHLIST_WRITE,
         Capabilities.PAPER_READ,
         Capabilities.PAPER_TRADE,
+        Capabilities.PREDICTIONS_RUN,
         Capabilities.NOTIFICATIONS_READ,
         Capabilities.NOTIFICATIONS_WRITE,
         Capabilities.PREDICTION_MARKETS_READ,

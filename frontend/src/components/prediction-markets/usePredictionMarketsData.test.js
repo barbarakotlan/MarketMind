@@ -1,20 +1,20 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '../../auth';
 import { API_ENDPOINTS, apiRequest } from '../../config/api';
 import usePredictionMarketsData from './usePredictionMarketsData';
 
-// jest.mock calls are hoisted above the imports by babel-jest, so useAuth /
+// vi.mock calls are hoisted above imports, so useAuth /
 // apiRequest are already mocks by the time they are imported above.
-jest.mock('@clerk/clerk-react', () => ({ useAuth: jest.fn() }));
-jest.mock('../../config/api', () => ({
-    ...jest.requireActual('../../config/api'),
-    apiRequest: jest.fn(),
+vi.mock('../../auth', () => ({ useAuth: vi.fn() }));
+vi.mock('../../config/api', async () => ({
+    ...(await vi.importActual('../../config/api')),
+    apiRequest: vi.fn(),
 }));
 
 const MARKETS = [{ id: 'm1', question: 'Will X happen?' }];
 
 beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     apiRequest.mockImplementation((url) => {
         if (url === API_ENDPOINTS.PREDICTION_PORTFOLIO) return Promise.resolve({ cash: 10000 });
         if (url === API_ENDPOINTS.PREDICTION_HISTORY) return Promise.resolve([{ id: 't1' }]);
@@ -80,7 +80,7 @@ describe('usePredictionMarketsData', () => {
 
         act(() => result.current.setSearchInput('election'));
         await act(async () => {
-            result.current.handleSearch({ preventDefault: jest.fn() });
+            result.current.handleSearch({ preventDefault: vi.fn() });
         });
 
         expect(result.current.activeSearch).toBe('election');

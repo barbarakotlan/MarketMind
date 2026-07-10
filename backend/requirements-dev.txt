@@ -2,6 +2,8 @@
 
 # Linting (matches the version pinned in CI)
 ruff==0.11.4
+coverage==7.15.0
+radon==6.0.1
 
 # Optional local profiling / debugging tooling
 memray==1.19.2

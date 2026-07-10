@@ -8,6 +8,7 @@ cd "$ROOT_DIR"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 export DATABASE_URL="${DATABASE_URL:-}"
 export PERSISTENCE_MODE="${PERSISTENCE_MODE:-json}"
+export AUTH_MODE="clerk"
 export PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX:-/tmp/marketmind_pycache}"
 
 # Raise the flask-limiter route limits so business-logic tests that legitimately
@@ -26,6 +27,8 @@ else
   "$PYTHON_BIN" -m ruff check backend/
 fi
 
+"$PYTHON_BIN" backend/check_complexity.py
+
 "$PYTHON_BIN" -m py_compile \
   backend/api.py \
   backend/user_journey_state.py \
@@ -39,21 +42,29 @@ fi
 # once B3 made `import api` ML-free and the numpy-ABI-sensitive deps
 # (duckdb/numexpr) match the pinned versions; earlier this gated only a curated
 # subset.
-"$PYTHON_BIN" -m unittest \
+"$PYTHON_BIN" -m coverage run --branch --source=backend --omit='backend/tests/*' -m unittest \
   backend.tests.test_akshare_service \
+  backend.tests.test_alert_worker \
   backend.tests.test_api_auth_security \
+  backend.tests.test_api_contracts \
+  backend.tests.test_api_state_json \
   backend.tests.test_app_factory \
   backend.tests.test_asset_identity \
   backend.tests.test_auth_isolation \
   backend.tests.test_authz \
   backend.tests.test_backfill_postgres \
   backend.tests.test_chart_prediction_append \
+  backend.tests.test_complexity_guard \
   backend.tests.test_deliverables_api \
   backend.tests.test_exchange_session_routes \
   backend.tests.test_exchange_session_service \
+  backend.tests.test_http_policy \
   backend.tests.test_import_is_ml_free \
   backend.tests.test_macro_overview_handler \
   backend.tests.test_marketmind_ai_api \
+  backend.tests.test_maintainability_units \
+  backend.tests.test_paper_trading_security \
+  backend.tests.test_paper_trade_transactions \
   backend.tests.test_portfolio_optimization_route \
   backend.tests.test_portfolio_optimization_service \
   backend.tests.test_prediction_market_analysis \
@@ -75,3 +86,5 @@ fi
   backend.tests.test_user_journey_harness \
   backend.tests.test_user_journey_state \
   backend.tests.test_user_state_persistence_modes
+
+"$PYTHON_BIN" -m coverage report --skip-covered --fail-under=60

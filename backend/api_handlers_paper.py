@@ -6,6 +6,104 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import logging
+import math
+import re
+
+
+OPTION_CONTRACT_PATTERN = re.compile(
+    r"^(?P<underlying>[A-Z]{1,6})(?P<expiration>\d{6})(?P<option_type>[CP])(?P<strike>\d{8})$"
+)
+MAX_OPTION_CONTRACTS_PER_ORDER = 1_000
+
+
+class OptionOrderValidationError(ValueError):
+    pass
+
+
+class OptionQuoteUnavailableError(RuntimeError):
+    pass
+
+
+def _finite_positive_number(value, field_name):
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise OptionOrderValidationError(f"{field_name} must be a finite positive number") from exc
+    if not math.isfinite(number) or number <= 0:
+        raise OptionOrderValidationError(f"{field_name} must be a finite positive number")
+    return number
+
+
+def _normalize_option_order(data):
+    payload = data if isinstance(data, dict) else {}
+    contract_symbol = str(payload.get("contractSymbol") or "").strip().upper()
+    if not OPTION_CONTRACT_PATTERN.fullmatch(contract_symbol):
+        raise OptionOrderValidationError("contractSymbol must be a valid OCC option symbol")
+
+    raw_quantity = payload.get("quantity")
+    if isinstance(raw_quantity, bool):
+        raise OptionOrderValidationError("quantity must be a positive whole number")
+    quantity_number = _finite_positive_number(raw_quantity, "quantity")
+    if not quantity_number.is_integer() or quantity_number > MAX_OPTION_CONTRACTS_PER_ORDER:
+        raise OptionOrderValidationError(
+            f"quantity must be a whole number between 1 and {MAX_OPTION_CONTRACTS_PER_ORDER}"
+        )
+
+    displayed_price = _finite_positive_number(payload.get("price"), "price")
+    return contract_symbol, int(quantity_number), displayed_price
+
+
+def resolve_option_market_price(contract_symbol, side, *, yf_module=yf):
+    try:
+        option_ticker = yf_module.Ticker(contract_symbol)
+        info = option_ticker.info or {}
+    except Exception as exc:
+        raise OptionQuoteUnavailableError(
+            f"No executable market quote is available for {contract_symbol}"
+        ) from exc
+    preferred_fields = (
+        ("ask", "regularMarketPrice", "lastPrice", "bid")
+        if side == "buy"
+        else ("bid", "regularMarketPrice", "lastPrice", "ask")
+    )
+    candidates = [info.get(field) for field in preferred_fields]
+
+    try:
+        candidates.append((option_ticker.fast_info or {}).get("last_price"))
+    except Exception:
+        pass
+
+    try:
+        history = option_ticker.history(period="1d")
+        if not history.empty:
+            candidates.append(history["Close"].iloc[-1])
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        try:
+            price = float(candidate)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(price) and price > 0:
+            return price
+    raise OptionQuoteUnavailableError(f"No executable market quote is available for {contract_symbol}")
+
+
+def _resolve_server_option_price(resolve_option_price_fn, contract_symbol, side):
+    try:
+        candidate = float(resolve_option_price_fn(contract_symbol, side))
+    except OptionQuoteUnavailableError:
+        raise
+    except Exception as exc:
+        raise OptionQuoteUnavailableError(
+            f"No executable market quote is available for {contract_symbol}"
+        ) from exc
+    if not math.isfinite(candidate) or candidate <= 0:
+        raise OptionQuoteUnavailableError(
+            f"No executable market quote is available for {contract_symbol}"
+        )
+    return candidate
 
 
 def optimize_paper_portfolio_handler(
@@ -187,6 +285,8 @@ def buy_stock_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
+    execute_trade_fn=None,
+    trade_error_cls=(),
     jsonify_fn=jsonify,
     yf_module=yf,
     log_api_error_fn,
@@ -194,20 +294,35 @@ def buy_stock_handler(
     datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
-    portfolio = load_portfolio_fn(user_id)
     try:
-        data = request_obj.get_json()
+        data = request_obj.get_json(silent=True) or {}
         ticker = data.get('ticker', '').upper()
-        shares = float(data.get('shares', 0))
-        if shares <= 0:
-            return jsonify_fn({'error': 'Shares must be positive'}), 400
+        shares = _finite_positive_number(data.get('shares'), 'shares')
         stock = yf_module.Ticker(ticker)
         info = stock.info
         price = info.get('regularMarketPrice')
-        if price is None or price == 0:
+        if price is None or not math.isfinite(float(price)) or float(price) <= 0:
             price = info.get('previousClose', 0)
-        if price is None or price == 0:
+        if price is None or not math.isfinite(float(price)) or float(price) <= 0:
             return jsonify_fn({'error': f'Could not get price for {ticker}'}), 404
+        price = float(price)
+        timestamp = datetime_cls.now()
+        if execute_trade_fn is not None:
+            execution = execute_trade_fn(
+                user_id,
+                action='BUY',
+                symbol=ticker,
+                quantity=shares,
+                price=price,
+                occurred_at=timestamp,
+            )
+            if execution is not None:
+                return jsonify_fn({
+                    'success': True,
+                    'message': f'Bought {shares} shares of {ticker} at ${price:.2f}',
+                }), 200
+
+        portfolio = load_portfolio_fn(user_id)
         total_cost = shares * price
         if total_cost > portfolio['cash']:
             return jsonify_fn({'error': f'Insufficient cash. Need ${total_cost:.2f}, have ${portfolio["cash"]:.2f}'}), 400
@@ -222,11 +337,11 @@ def buy_stock_handler(
             'shares': shares,
             'price': price,
             'total': total_cost,
-            'timestamp': datetime_cls.now().isoformat(),
+            'timestamp': timestamp.isoformat(),
         }
         portfolio['trade_history'].append(trade)
         portfolio['transactions'].append({
-            'date': datetime_cls.now().strftime('%Y-%m-%d'),
+            'date': timestamp.strftime('%Y-%m-%d'),
             'type': 'BUY',
             'ticker': ticker,
             'shares': shares,
@@ -235,6 +350,10 @@ def buy_stock_handler(
         })
         save_portfolio_with_snapshot_fn(portfolio, user_id)
         return jsonify_fn({'success': True, 'message': f'Bought {shares} shares of {ticker} at ${price:.2f}'}), 200
+    except OptionOrderValidationError as exc:
+        return jsonify_fn({'error': str(exc)}), 400
+    except trade_error_cls as exc:
+        return jsonify_fn({'error': str(exc)}), getattr(exc, 'status_code', 400)
     except Exception as exc:
         log_api_error_fn(logger, '/paper/buy', exc)
         return jsonify_fn({'error': 'Failed to execute buy order'}), 500
@@ -246,6 +365,8 @@ def sell_stock_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
+    execute_trade_fn=None,
+    trade_error_cls=(),
     jsonify_fn=jsonify,
     yf_module=yf,
     log_api_error_fn,
@@ -253,23 +374,41 @@ def sell_stock_handler(
     datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
-    portfolio = load_portfolio_fn(user_id)
     try:
-        data = request_obj.get_json()
+        data = request_obj.get_json(silent=True) or {}
         ticker = data.get('ticker', '').upper()
-        shares = float(data.get('shares', 0))
-        if shares <= 0:
-            return jsonify_fn({'error': 'Shares must be positive'}), 400
-        pos = portfolio['positions'].get(ticker)
-        if not pos or pos['shares'] < shares:
-            return jsonify_fn({'error': f'Not enough shares. You have {pos.get("shares", 0)}, trying to sell {shares}'}), 400
+        shares = _finite_positive_number(data.get('shares'), 'shares')
         stock = yf_module.Ticker(ticker)
         info = stock.info
         price = info.get('regularMarketPrice')
-        if price is None or price == 0:
+        if price is None or not math.isfinite(float(price)) or float(price) <= 0:
             price = info.get('previousClose', 0)
-        if price is None or price == 0:
+        if price is None or not math.isfinite(float(price)) or float(price) <= 0:
             return jsonify_fn({'error': f'Could not get price for {ticker}'}), 404
+        price = float(price)
+        timestamp = datetime_cls.now()
+        if execute_trade_fn is not None:
+            execution = execute_trade_fn(
+                user_id,
+                action='SELL',
+                symbol=ticker,
+                quantity=shares,
+                price=price,
+                occurred_at=timestamp,
+            )
+            if execution is not None:
+                profit = execution.get('profit') or 0
+                return jsonify_fn({
+                    'success': True,
+                    'message': f'Sold {shares} shares of {ticker} at ${price:.2f}',
+                    'profit': round(profit, 2),
+                }), 200
+
+        portfolio = load_portfolio_fn(user_id)
+        pos = portfolio['positions'].get(ticker)
+        if not pos or pos['shares'] < shares:
+            available = pos.get('shares', 0) if pos else 0
+            return jsonify_fn({'error': f'Not enough shares. You have {available}, trying to sell {shares}'}), 400
         proceeds = shares * price
         profit = proceeds - (shares * pos['avg_cost'])
         pos['shares'] -= shares
@@ -283,11 +422,11 @@ def sell_stock_handler(
             'price': price,
             'total': proceeds,
             'profit': profit,
-            'timestamp': datetime_cls.now().isoformat(),
+            'timestamp': timestamp.isoformat(),
         }
         portfolio['trade_history'].append(trade)
         portfolio['transactions'].append({
-            'date': datetime_cls.now().strftime('%Y-%m-%d'),
+            'date': timestamp.strftime('%Y-%m-%d'),
             'type': 'SELL',
             'ticker': ticker,
             'shares': shares,
@@ -296,6 +435,10 @@ def sell_stock_handler(
         })
         save_portfolio_with_snapshot_fn(portfolio, user_id)
         return jsonify_fn({'success': True, 'message': f'Sold {shares} shares of {ticker} at ${price:.2f}', 'profit': round(profit, 2)}), 200
+    except OptionOrderValidationError as exc:
+        return jsonify_fn({'error': str(exc)}), 400
+    except trade_error_cls as exc:
+        return jsonify_fn({'error': str(exc)}), getattr(exc, 'status_code', 400)
     except Exception as exc:
         log_api_error_fn(logger, '/paper/sell', exc)
         return jsonify_fn({'error': 'Failed to execute sell order'}), 500
@@ -307,20 +450,35 @@ def buy_option_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
+    resolve_option_price_fn,
+    execute_trade_fn=None,
+    trade_error_cls=(),
     jsonify_fn=jsonify,
     datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
-    portfolio = load_portfolio_fn(user_id)
     try:
-        data = request_obj.get_json()
-        contract_symbol = data.get('contractSymbol')
-        quantity = int(data.get('quantity', 0))
-        price = float(data.get('price', 0))
-        if quantity <= 0:
-            return jsonify_fn({'error': 'Quantity must be positive'}), 400
-        if price == 0:
-            return jsonify_fn({'error': 'Cannot buy an option with no premium.'}), 400
+        contract_symbol, quantity, _displayed_price = _normalize_option_order(
+            request_obj.get_json(silent=True)
+        )
+        price = _resolve_server_option_price(resolve_option_price_fn, contract_symbol, "buy")
+        timestamp = datetime_cls.now()
+        if execute_trade_fn is not None:
+            execution = execute_trade_fn(
+                user_id,
+                action='BUY_OPTION',
+                symbol=contract_symbol,
+                quantity=quantity,
+                price=price,
+                occurred_at=timestamp,
+            )
+            if execution is not None:
+                return jsonify_fn({
+                    'success': True,
+                    'message': f'Bought {quantity} {contract_symbol} contract(s) at ${price:.2f}',
+                }), 200
+
+        portfolio = load_portfolio_fn(user_id)
         total_cost = quantity * price * 100
         if total_cost > portfolio['cash']:
             return jsonify_fn({'error': f'Insufficient cash. Need ${total_cost:.2f}, have ${portfolio["cash"]:.2f}'}), 400
@@ -335,13 +493,19 @@ def buy_option_handler(
             'shares': quantity,
             'price': price,
             'total': total_cost,
-            'timestamp': datetime_cls.now().isoformat(),
+            'timestamp': timestamp.isoformat(),
         }
         portfolio['trade_history'].append(trade)
         save_portfolio_with_snapshot_fn(portfolio, user_id)
         return jsonify_fn({'success': True, 'message': f'Bought {quantity} {contract_symbol} contract(s) at ${price:.2f}'}), 200
-    except Exception as exc:
-        return jsonify_fn({'error': str(exc)}), 500
+    except OptionOrderValidationError as exc:
+        return jsonify_fn({'error': str(exc)}), 400
+    except OptionQuoteUnavailableError as exc:
+        return jsonify_fn({'error': str(exc)}), 503
+    except trade_error_cls as exc:
+        return jsonify_fn({'error': str(exc)}), getattr(exc, 'status_code', 400)
+    except Exception:
+        return jsonify_fn({'error': 'Failed to execute option buy order'}), 500
 
 
 def sell_option_handler(
@@ -350,23 +514,41 @@ def sell_option_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
+    resolve_option_price_fn,
+    execute_trade_fn=None,
+    trade_error_cls=(),
     jsonify_fn=jsonify,
     datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
-    portfolio = load_portfolio_fn(user_id)
     try:
-        data = request_obj.get_json()
-        contract_symbol = data.get('contractSymbol')
-        quantity = int(data.get('quantity', 0))
-        price = float(data.get('price', 0))
-        if quantity <= 0:
-            return jsonify_fn({'error': 'Quantity must be positive'}), 400
-        if price == 0:
-            return jsonify_fn({'error': 'Cannot sell an option for no premium.'}), 400
+        contract_symbol, quantity, _displayed_price = _normalize_option_order(
+            request_obj.get_json(silent=True)
+        )
+        price = _resolve_server_option_price(resolve_option_price_fn, contract_symbol, "sell")
+        timestamp = datetime_cls.now()
+        if execute_trade_fn is not None:
+            execution = execute_trade_fn(
+                user_id,
+                action='SELL_OPTION',
+                symbol=contract_symbol,
+                quantity=quantity,
+                price=price,
+                occurred_at=timestamp,
+            )
+            if execution is not None:
+                profit = execution.get('profit') or 0
+                return jsonify_fn({
+                    'success': True,
+                    'message': f'Sold {quantity} {contract_symbol} contract(s) at ${price:.2f}',
+                    'profit': round(profit, 2),
+                }), 200
+
+        portfolio = load_portfolio_fn(user_id)
         pos = portfolio['options_positions'].get(contract_symbol)
         if not pos or pos['quantity'] < quantity:
-            return jsonify_fn({'error': f'Not enough contracts. You have {pos.get("quantity", 0)}, trying to sell {quantity}'}), 400
+            available = pos.get('quantity', 0) if pos else 0
+            return jsonify_fn({'error': f'Not enough contracts. You have {available}, trying to sell {quantity}'}), 400
         proceeds = quantity * price * 100
         profit = proceeds - (quantity * pos['avg_cost'] * 100)
         pos['quantity'] -= quantity
@@ -380,13 +562,162 @@ def sell_option_handler(
             'price': price,
             'total': proceeds,
             'profit': profit,
-            'timestamp': datetime_cls.now().isoformat(),
+            'timestamp': timestamp.isoformat(),
         }
         portfolio['trade_history'].append(trade)
         save_portfolio_with_snapshot_fn(portfolio, user_id)
         return jsonify_fn({'success': True, 'message': f'Sold {quantity} {contract_symbol} contract(s) at ${price:.2f}', 'profit': round(profit, 2)}), 200
-    except Exception as exc:
-        return jsonify_fn({'error': str(exc)}), 500
+    except OptionOrderValidationError as exc:
+        return jsonify_fn({'error': str(exc)}), 400
+    except OptionQuoteUnavailableError as exc:
+        return jsonify_fn({'error': str(exc)}), 503
+    except trade_error_cls as exc:
+        return jsonify_fn({'error': str(exc)}), getattr(exc, 'status_code', 400)
+    except Exception:
+        return jsonify_fn({'error': 'Failed to execute option sell order'}), 500
+
+
+def _empty_portfolio_history():
+    return {'dates': [], 'values': [], 'summary': {}}
+
+
+def _history_window(period, *, today, first_tx_date, date_cls, timedelta_cls):
+    period_offsets = {
+        '1m': timedelta_cls(days=30),
+        '3m': timedelta_cls(days=90),
+        '1y': timedelta_cls(days=365),
+    }
+    if period in period_offsets:
+        start_date = today - period_offsets[period]
+    elif period == 'ytd':
+        start_date = date_cls(today.year, 1, 1)
+    else:
+        start_date = first_tx_date
+    return max(min(start_date, today), first_tx_date), today
+
+
+def _equity_tickers(transactions):
+    return sorted({
+        tx['ticker']
+        for tx in transactions
+        if tx.get('type') in {'BUY', 'SELL'} and tx.get('ticker')
+    })
+
+
+def _normalize_close_prices(close_prices_raw, *, all_tickers, hist_index, pd_module, np_module):
+    if isinstance(close_prices_raw, pd_module.Series):
+        return pd_module.DataFrame({all_tickers[0]: close_prices_raw})
+    if isinstance(close_prices_raw, (float, np_module.float64)):
+        return pd_module.DataFrame({all_tickers[0]: [close_prices_raw]}, index=hist_index)
+    return close_prices_raw
+
+
+def _apply_equity_transaction(cash, positions, transaction):
+    tx_type = transaction.get('type')
+    if tx_type not in {'BUY', 'SELL'}:
+        return cash
+    shares = float(transaction['shares'])
+    total = float(transaction['total'])
+    ticker = transaction['ticker']
+    direction = 1 if tx_type == 'BUY' else -1
+    positions[ticker] = positions.get(ticker, 0) + (direction * shares)
+    return cash - total if tx_type == 'BUY' else cash + total
+
+
+def _starting_ledger(transactions, *, start_date, datetime_cls):
+    cash = 100000.0
+    positions = {}
+    for transaction in transactions:
+        tx_date = datetime_cls.strptime(transaction['date'], '%Y-%m-%d').date()
+        if tx_date < start_date:
+            cash = _apply_equity_transaction(cash, positions, transaction)
+    return cash, positions
+
+
+def _positions_value(positions, close_prices, *, as_of, pd_module):
+    total = 0.0
+    for ticker, shares in positions.items():
+        if shares <= 0 or ticker not in close_prices.columns:
+            continue
+        try:
+            price = close_prices[ticker].asof(as_of)
+            if not pd_module.isna(price):
+                total += shares * float(price)
+        except (KeyError, TypeError):
+            continue
+    return total
+
+
+def _transactions_by_date(transactions, *, start_date, end_date, datetime_cls):
+    grouped = {}
+    for transaction in transactions:
+        tx_date = datetime_cls.strptime(transaction['date'], '%Y-%m-%d').date()
+        if start_date <= tx_date <= end_date:
+            grouped.setdefault(tx_date, []).append(transaction)
+    return grouped
+
+
+def _build_daily_portfolio_values(
+    *,
+    transactions,
+    start_date,
+    end_date,
+    initial_cash,
+    initial_positions,
+    close_prices,
+    datetime_cls,
+    pd_module,
+):
+    grouped = _transactions_by_date(
+        transactions,
+        start_date=start_date,
+        end_date=end_date,
+        datetime_cls=datetime_cls,
+    )
+    current_cash = initial_cash
+    current_positions = initial_positions.copy()
+    values = []
+    for day in pd_module.date_range(start=start_date, end=end_date, freq='D'):
+        for transaction in grouped.get(day.date(), []):
+            current_cash = _apply_equity_transaction(current_cash, current_positions, transaction)
+        holdings_value = _positions_value(
+            current_positions,
+            close_prices,
+            as_of=day,
+            pd_module=pd_module,
+        )
+        values.append({'date': day.strftime('%Y-%m-%d'), 'value': holdings_value + current_cash})
+    return values
+
+
+def _annualized_return(return_cumulative, *, num_days):
+    if num_days <= 0:
+        return return_cumulative
+    if num_days < 365:
+        return return_cumulative * (365.0 / num_days)
+    return ((1 + (return_cumulative / 100)) ** (365.0 / num_days) - 1) * 100
+
+
+def _history_summary(*, period, start_date, end_date, start_value, end_value):
+    wealth_generated = end_value - start_value
+    if start_value in (None, 0):
+        return_cumulative = 0 if wealth_generated == 0 else float('inf')
+    else:
+        return_cumulative = (wealth_generated / start_value) * 100
+    return_annualized = _annualized_return(
+        return_cumulative,
+        num_days=(end_date - start_date).days,
+    )
+    return {
+        'period': period,
+        'start_date': start_date.strftime('%Y-%m-%d'),
+        'end_date': end_date.strftime('%Y-%m-%d'),
+        'start_value': round(start_value, 2),
+        'end_value': round(end_value, 2),
+        'wealth_generated': round(wealth_generated, 2),
+        'return_cumulative_pct': round(return_cumulative, 2),
+        'return_annualized_pct': round(return_annualized, 2),
+    }
 
 
 def get_paper_history_handler(
@@ -407,33 +738,23 @@ def get_paper_history_handler(
     portfolio = load_portfolio_fn(user_id)
     transactions = portfolio.get('transactions', [])
     if not transactions:
-        return jsonify_fn({'dates': [], 'values': [], 'summary': {}})
+        return jsonify_fn(_empty_portfolio_history())
     try:
         first_tx_date = datetime_cls.strptime(transactions[0]['date'], '%Y-%m-%d').date()
     except (IndexError, ValueError):
-        return jsonify_fn({'dates': [], 'values': [], 'summary': {}})
+        return jsonify_fn(_empty_portfolio_history())
 
     period = request_obj.args.get('period', 'ytd')
-    today = date_cls.today()
-    if period == '1m':
-        start_date = today - timedelta_cls(days=30)
-    elif period == '3m':
-        start_date = today - timedelta_cls(days=90)
-    elif period == '1y':
-        start_date = today - timedelta_cls(days=365)
-    elif period == 'ytd':
-        start_date = date_cls(today.year, 1, 1)
-    else:
-        start_date = first_tx_date
-    end_date = today
-    if start_date > end_date:
-        start_date = end_date
-    if start_date < first_tx_date:
-        start_date = first_tx_date
-
-    all_tickers = list(set([t['ticker'] for t in transactions if t['type'] in ['BUY', 'SELL']]))
+    start_date, end_date = _history_window(
+        period,
+        today=date_cls.today(),
+        first_tx_date=first_tx_date,
+        date_cls=date_cls,
+        timedelta_cls=timedelta_cls,
+    )
+    all_tickers = _equity_tickers(transactions)
     if not all_tickers:
-        return jsonify_fn({'dates': [], 'values': [], 'summary': {}})
+        return jsonify_fn(_empty_portfolio_history())
 
     try:
         hist_data = yf_module.download(all_tickers, start=start_date - timedelta_cls(days=7), end=end_date + timedelta_cls(days=1))
@@ -444,97 +765,43 @@ def get_paper_history_handler(
         if close_prices_raw is None:
             return jsonify_fn({'error': "Could not get 'Close' price data from yfinance."}), 500
 
-        if isinstance(close_prices_raw, pd_module.Series):
-            close_prices = pd_module.DataFrame({all_tickers[0]: close_prices_raw})
-        elif isinstance(close_prices_raw, (float, np_module.float64)):
-            close_prices = pd_module.DataFrame({all_tickers[0]: [close_prices_raw]}, index=hist_data.index)
-        else:
-            close_prices = close_prices_raw
-
-        initial_cash = 100000.0
-        initial_positions = {}
-        net_contributions = 0
-        for tx in transactions:
-            tx_date = datetime_cls.strptime(tx['date'], '%Y-%m-%d').date()
-            if tx_date < start_date:
-                shares = float(tx['shares'])
-                total = float(tx['total'])
-                ticker = tx['ticker']
-                if tx['type'] == 'BUY':
-                    initial_cash -= total
-                    initial_positions[ticker] = initial_positions.get(ticker, 0) + shares
-                elif tx['type'] == 'SELL':
-                    initial_cash += total
-                    initial_positions[ticker] -= shares
-
-        start_value = initial_cash
-        for ticker, shares in initial_positions.items():
-            if shares > 0 and ticker in close_prices.columns:
-                try:
-                    price = close_prices[ticker].asof(start_date)
-                    if not pd_module.isna(price):
-                        start_value += shares * float(price)
-                except (KeyError, TypeError):
-                    pass
-
-        date_range = pd_module.date_range(start=start_date, end=end_date, freq='D')
-        portfolio_values = []
-        current_cash = initial_cash
-        current_positions = initial_positions.copy()
-        tx_by_date = {}
-        for tx in transactions:
-            tx_date = datetime_cls.strptime(tx['date'], '%Y-%m-%d').date()
-            if start_date <= tx_date <= end_date:
-                tx_by_date.setdefault(tx_date, []).append(tx)
-
-        for day in date_range:
-            day_str = day.strftime('%Y-%m-%d')
-            if day.date() in tx_by_date:
-                for tx in tx_by_date[day.date()]:
-                    shares = float(tx['shares'])
-                    total = float(tx['total'])
-                    ticker = tx['ticker']
-                    if tx['type'] == 'BUY':
-                        current_cash -= total
-                        current_positions[ticker] = current_positions.get(ticker, 0) + shares
-                    elif tx['type'] == 'SELL':
-                        current_cash += total
-                        current_positions[ticker] -= shares
-            total_holdings_value = 0
-            for ticker, shares in current_positions.items():
-                if shares > 0 and ticker in close_prices.columns:
-                    try:
-                        price = close_prices[ticker].asof(day)
-                        if not pd_module.isna(price):
-                            total_holdings_value += shares * float(price)
-                    except (KeyError, TypeError):
-                        pass
-            portfolio_values.append({'date': day_str, 'value': total_holdings_value + current_cash})
+        close_prices = _normalize_close_prices(
+            close_prices_raw,
+            all_tickers=all_tickers,
+            hist_index=hist_data.index,
+            pd_module=pd_module,
+            np_module=np_module,
+        )
+        initial_cash, initial_positions = _starting_ledger(
+            transactions,
+            start_date=start_date,
+            datetime_cls=datetime_cls,
+        )
+        start_value = initial_cash + _positions_value(
+            initial_positions,
+            close_prices,
+            as_of=start_date,
+            pd_module=pd_module,
+        )
+        portfolio_values = _build_daily_portfolio_values(
+            transactions=transactions,
+            start_date=start_date,
+            end_date=end_date,
+            initial_cash=initial_cash,
+            initial_positions=initial_positions,
+            close_prices=close_prices,
+            datetime_cls=datetime_cls,
+            pd_module=pd_module,
+        )
 
         end_value = portfolio_values[-1]['value'] if portfolio_values else start_value
-        wealth_generated = end_value - start_value - net_contributions
-        if start_value == 0 or start_value is None:
-            return_cumulative = 0 if wealth_generated == 0 else float('inf')
-        else:
-            return_cumulative = (wealth_generated / start_value) * 100
-        num_days = (end_date - start_date).days
-        if num_days <= 0:
-            return_annualized = return_cumulative
-        elif num_days < 365:
-            return_annualized = return_cumulative * (365.0 / num_days)
-        else:
-            return_annualized = ((1 + (return_cumulative / 100)) ** (365.0 / num_days) - 1) * 100
-
-        summary = {
-            'period': period,
-            'start_date': start_date.strftime('%Y-%m-%d'),
-            'end_date': end_date.strftime('%Y-%m-%d'),
-            'start_value': round(start_value, 2),
-            'end_value': round(end_value, 2),
-            'wealth_generated': round(wealth_generated, 2),
-            'return_cumulative_pct': round(return_cumulative, 2),
-            'return_annualized_pct': round(return_annualized, 2),
-        }
+        summary = _history_summary(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            start_value=start_value,
+            end_value=end_value,
+        )
         return jsonify_fn({
             'dates': [pv['date'] for pv in portfolio_values],
             'values': [round(pv['value'], 2) for pv in portfolio_values],

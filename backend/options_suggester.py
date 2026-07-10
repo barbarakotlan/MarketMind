@@ -3,6 +3,7 @@ import requests # Import for NewsAPI
 import os # Import for API Key
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from datetime import datetime
+from http_policy import DEFAULT_HTTP_TIMEOUT
 
 # --- MODIFIED IMPORT ---
 # We now import from our new, dedicated model
@@ -148,7 +149,8 @@ def get_sentiment_signal(ticker):
                f"&sortBy=relevancy"
                f"&apiKey={NEWS_API_KEY}")
         
-        response = requests.get(url)
+        response = requests.get(url, timeout=DEFAULT_HTTP_TIMEOUT)
+        response.raise_for_status()
         data = response.json()
 
         if data.get('status') != 'ok' or data.get('totalResults') == 0:

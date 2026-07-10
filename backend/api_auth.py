@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hmac
 import logging
 import time
 from functools import wraps
@@ -10,8 +11,49 @@ import jwt
 import requests
 from sqlalchemy.exc import OperationalError
 
+from http_policy import timeout
+
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_AUTH_MODES = frozenset({"clerk", "local"})
+
+
+def validate_auth_mode(auth_mode: str | None, *, is_production: bool) -> str:
+    mode = str(auth_mode or "clerk").strip().lower()
+    if mode not in SUPPORTED_AUTH_MODES:
+        raise ValueError(f"AUTH_MODE must be one of: {', '.join(sorted(SUPPORTED_AUTH_MODES))}")
+    if is_production and mode != "clerk":
+        raise ValueError("AUTH_MODE=local is not allowed in production")
+    return mode
+
+
+def verify_auth_token(
+    token: str,
+    *,
+    auth_mode: str,
+    is_production: bool,
+    local_auth_token: str,
+    local_user_id: str,
+    verify_clerk_token_fn,
+):
+    mode = validate_auth_mode(auth_mode, is_production=is_production)
+    if mode == "clerk":
+        return verify_clerk_token_fn(token)
+
+    expected_token = str(local_auth_token or "")
+    user_id = str(local_user_id or "").strip()
+    if not expected_token or not user_id:
+        raise ValueError("Local authentication requires LOCAL_AUTH_TOKEN and LOCAL_AUTH_USER_ID")
+    if not hmac.compare_digest(str(token or ""), expected_token):
+        raise ValueError("Invalid local development token")
+
+    return {
+        "sub": user_id,
+        "username": "Local Developer",
+        "email": None,
+        "auth_mode": "local",
+    }
 
 
 def get_bearer_token(auth_header: str) -> str | None:
@@ -57,7 +99,7 @@ def fetch_jwks(
     if cached and (now - cached["fetched_at"]) < cache_ttl_seconds:
         return cached["jwks"]
 
-    response = requests_get(jwks_url, timeout=5)
+    response = requests_get(jwks_url, timeout=timeout(5))
     response.raise_for_status()
     jwks = response.json()
     cache[jwks_url] = {"jwks": jwks, "fetched_at": now}

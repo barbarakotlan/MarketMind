@@ -6,6 +6,7 @@ import requests
 import yfinance as yf
 
 from config import ALPHA_VANTAGE_API_KEY
+from http_policy import timeout
 
 
 def fetch_stock_data(ticker, source='alpha_vantage', outputsize='full'):
@@ -49,7 +50,8 @@ def fetch_from_alpha_vantage(ticker, outputsize='full'):
         }
         
         print(f"Fetching {ticker} from Alpha Vantage...")
-        response = requests.get(url, params=params, timeout=30)
+        response = requests.get(url, params=params, timeout=timeout(30))
+        response.raise_for_status()
         data = response.json()
         
         # Debug: print response keys

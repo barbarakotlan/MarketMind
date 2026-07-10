@@ -116,3 +116,13 @@ export const installAuthFetchInterceptor = () => {
 
     interceptorInstalled = true;
 };
+
+export const uninstallAuthFetchInterceptor = () => {
+    if (interceptorInstalled && originalFetch && typeof window !== 'undefined') {
+        window.fetch = originalFetch;
+    }
+    tokenGetter = null;
+    originalFetch = null;
+    interceptorInstalled = false;
+    authSessionState = 'unknown';
+};

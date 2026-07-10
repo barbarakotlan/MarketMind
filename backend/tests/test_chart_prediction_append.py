@@ -67,16 +67,16 @@ class ChartPredictionAppendTests(unittest.TestCase):
         backend_api.ensemble_predict = self.original["ensemble_predict"]
         backend_api.prediction_service.get_future_prediction_dates = self.original["future_prediction_dates"]
 
-    def test_chart_endpoint_appends_prediction_rows(self):
+    def test_chart_endpoint_does_not_run_prediction_models(self):
+        backend_api.create_dataset = lambda *_args, **_kwargs: self.fail(
+            "chart reads must not create prediction datasets"
+        )
         resp = self.client.get("/chart/AAPL?period=1mo")
         self.assertEqual(resp.status_code, 200)
 
         payload = resp.get_json()
-        self.assertEqual(len(payload), 9)
-        self.assertEqual(payload[-1]["date"], "2025-05-08 00:00:00")
-        self.assertEqual(payload[-1]["close"], 126.0)
-        self.assertIsNone(payload[-1]["open"])
-        self.assertIsNone(payload[-1]["volume"])
+        self.assertEqual(len(payload), 3)
+        self.assertEqual(payload[-1]["close"], 102.5)
 
 
 if __name__ == "__main__":

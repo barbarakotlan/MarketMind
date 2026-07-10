@@ -1,12 +1,39 @@
 from __future__ import annotations
 
-from datetime import datetime
+from contextlib import contextmanager
+from datetime import datetime, timezone
 
 import logging
 
 import json
 import os
 import re
+import tempfile
+import uuid
+
+
+class CorruptStateError(RuntimeError):
+    def __init__(self, path, quarantine_path):
+        super().__init__(
+            f"State file {path} was corrupt and has been quarantined at {quarantine_path}"
+        )
+        self.path = path
+        self.quarantine_path = quarantine_path
+
+
+@contextmanager
+def _json_file_lock(path):
+    import fcntl
+
+    path = os.path.abspath(path)
+    lock_path = f"{path}.lock"
+    os.makedirs(os.path.dirname(os.path.abspath(lock_path)), exist_ok=True)
+    with open(lock_path, "a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def normalize_persistence_mode(mode, *, logger=logging.getLogger("marketmind_api")):
@@ -102,18 +129,46 @@ def iter_user_ids(
 
 
 def load_json(path, default):
-    if os.path.exists(path):
+    with _json_file_lock(path):
+        if not os.path.exists(path):
+            return default
         try:
-            with open(path, "r") as handle:
+            with open(path, "r", encoding="utf-8") as handle:
                 return json.load(handle)
-        except json.JSONDecodeError:
-            pass
-    return default
+        except json.JSONDecodeError as exc:
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            quarantine_path = f"{path}.corrupt-{timestamp}-{uuid.uuid4().hex[:8]}"
+            os.replace(path, quarantine_path)
+            raise CorruptStateError(path, quarantine_path) from exc
 
 
 def save_json(path, payload):
-    with open(path, "w") as handle:
-        json.dump(payload, handle, indent=4)
+    absolute_path = os.path.abspath(path)
+    directory = os.path.dirname(absolute_path)
+    os.makedirs(directory, exist_ok=True)
+
+    with _json_file_lock(absolute_path):
+        file_descriptor, temporary_path = tempfile.mkstemp(
+            dir=directory,
+            prefix=f".{os.path.basename(absolute_path)}.",
+            suffix=".tmp",
+            text=True,
+        )
+        try:
+            with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=4)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_path, absolute_path)
+
+            directory_descriptor = os.open(directory, os.O_RDONLY)
+            try:
+                os.fsync(directory_descriptor)
+            finally:
+                os.close(directory_descriptor)
+        finally:
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
 
 
 def portfolio_file(user_id=None, *, default_file, get_user_file_path_fn=None):

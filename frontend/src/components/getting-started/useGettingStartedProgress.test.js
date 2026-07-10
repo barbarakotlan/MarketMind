@@ -6,7 +6,7 @@ const STORAGE_KEY = 'marketmind_course_progress';
 
 beforeAll(() => {
     // jsdom doesn't implement scrollTo; navigation helpers call it.
-    window.scrollTo = jest.fn();
+    window.scrollTo = vi.fn();
 });
 
 beforeEach(() => {

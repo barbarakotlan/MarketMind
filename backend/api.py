@@ -10,14 +10,13 @@ import numpy as np
 import requests
 from flask import Flask, Blueprint, jsonify, request, g, send_file
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
+from sqlalchemy import text as sql_text
 from datetime import datetime, timedelta, date, timezone
-import json
 import sqlite3
 import schedule
 import time
 import threading
-import uuid  # For unique notification IDs
-import re  # Added for Smart Alert parsing
 import math
 from io import BytesIO
 from functools import wraps
@@ -104,13 +103,14 @@ from marketmind_ai import (
 )
 from user_state_store import (
     AppUser,
+    PaperTradeExecutionError,
+    PublicApiQuotaExceeded,
     create_public_api_client as create_public_api_client_db,
     create_public_api_key as create_public_api_key_db,
     ensure_database_ready as ensure_user_state_database_ready,
+    execute_paper_trade_transaction as execute_paper_trade_transaction_db,
     get_public_api_client as get_public_api_client_db,
-    get_public_api_daily_request_total as get_public_api_daily_request_total_db,
     get_public_api_key_by_prefix as get_public_api_key_by_prefix_db,
-    increment_public_api_daily_usage as increment_public_api_daily_usage_db,
     list_app_user_ids as list_app_user_ids_db,
     list_public_api_clients as list_public_api_clients_db,
     list_public_api_daily_usage as list_public_api_daily_usage_db,
@@ -119,14 +119,15 @@ from user_state_store import (
     load_portfolio as load_portfolio_db,
     load_prediction_portfolio as load_prediction_portfolio_db,
     load_watchlist as load_watchlist_db,
+    mark_public_api_usage_cached as mark_public_api_usage_cached_db,
     record_portfolio_snapshot as record_portfolio_snapshot_db,
+    reserve_public_api_daily_usage_transaction as reserve_public_api_daily_usage_transaction_db,
     save_notifications as save_notifications_db,
     save_portfolio as save_portfolio_db,
     save_prediction_portfolio as save_prediction_portfolio_db,
     save_watchlist as save_watchlist_db,
     session_scope as user_state_session_scope,
     set_public_api_key_status as set_public_api_key_status_db,
-    touch_public_api_key_last_used as touch_public_api_key_last_used_db,
     touch_app_user as touch_app_user_db,
 )
 
@@ -147,6 +148,7 @@ except (AttributeError, ValueError):
 # --- New Imports for Options Suggester ---
 from options_suggester import generate_suggestion
 import api_auth as api_auth_helpers
+import api_runtime
 import authz
 import api_handlers_deliverables as deliverables_handlers
 import api_handlers_market_data as market_data_handlers
@@ -161,6 +163,23 @@ import api_public as api_public_helpers
 import api_prediction_runtime as api_prediction_runtime_helpers
 import api_scheduler as api_scheduler_helpers
 import api_state as api_state_helpers
+from request_contracts import (
+    DeliverableAssumptionsPayload,
+    DeliverableCreatePayload,
+    DeliverablePatchPayload,
+    DeliverableReviewPayload,
+    MarketMindArtifactPayload,
+    MarketMindArtifactPreflightPayload,
+    MarketMindChatPayload,
+    NotificationPayload,
+    OptionTradePayload,
+    PaperTradePayload,
+    PortfolioOptimizationPayload,
+    PredictionMarketAnalysisPayload,
+    PredictionMarketTradePayload,
+    SmartNotificationPayload,
+    validate_json_payload,
+)
 
 # Initialize logger
 import logging
@@ -207,45 +226,44 @@ api_bp = Blueprint('api', __name__)
 # --- Security Headers Middleware ---
 @api_bp.before_app_request
 def begin_public_api_request():
-    api_public_helpers.begin_public_request()
+    api_runtime.begin_request(request, g, api_public_helpers.begin_public_request)
 
 
 @api_bp.after_app_request
 def add_security_headers(response):
-    # Prevent MIME type sniffing
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    # Prevent clickjacking
-    response.headers['X-Frame-Options'] = 'DENY'
-    # XSS Protection (legacy fallback for older browsers)
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    # Force HTTPS in production
-    if IS_PRODUCTION:
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    # API-focused CSP (JSON API does not serve active web content)
-    response.headers['Content-Security-Policy'] = os.getenv(
-        'API_CONTENT_SECURITY_POLICY',
-        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';"
+    request_id = getattr(g, 'request_id', None)
+    response = api_runtime.prepare_response(
+        response,
+        request_id=request_id,
+        is_public_api=api_public_helpers.is_public_api_request(request.path),
+        is_production=IS_PRODUCTION,
+        content_security_policy=os.getenv(
+            'API_CONTENT_SECURITY_POLICY',
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';",
+        ),
     )
-    # Referrer Policy
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    # Permissions Policy
-    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
-    # Cross-origin hardening for API responses
-    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
-    response.headers['Cross-Origin-Resource-Policy'] = 'same-site' if IS_PRODUCTION else 'cross-origin'
     return api_public_helpers.finalize_public_response(
         response,
         session_scope_fn=user_state_session_scope,
         database_url=DATABASE_URL,
-        increment_public_api_daily_usage_fn=increment_public_api_daily_usage_db,
-        touch_public_api_key_last_used_fn=touch_public_api_key_last_used_db,
+        mark_public_api_usage_cached_fn=mark_public_api_usage_cached_db,
     )
 
 @api_bp.app_errorhandler(RateLimitExceeded)
 def handle_rate_limit_exceeded(_exc):
     if api_public_helpers.is_public_api_request(request.path):
         return _public_api_error_response(429, "rate_limited", "Rate limit exceeded for this API key.")
-    return jsonify({"error": "Rate limit exceeded"}), 429
+    return jsonify({"error": "Rate limit exceeded", "code": "rate_limited"}), 429
+
+
+@api_bp.app_errorhandler(HTTPException)
+def handle_http_exception(exc):
+    if api_public_helpers.is_public_api_request(request.path):
+        return _public_api_error_response(exc.code or 500, exc.name.lower().replace(' ', '_'), exc.description)
+    return jsonify({
+        "error": exc.description,
+        "code": exc.name.lower().replace(' ', '_'),
+    }), exc.code or 500
 
 
 def create_app(config=None):
@@ -258,13 +276,15 @@ def create_app(config=None):
     """
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
+    app.config['MAX_CONTENT_LENGTH'] = MAX_REQUEST_BODY_BYTES
     if config:
         app.config.update(config)
     CORS(
         app,
         resources={r"/*": {"origins": allowed_origins}},
         supports_credentials=False,
-        allow_headers=["Content-Type", "Authorization", "Accept"],
+        allow_headers=["Content-Type", "Authorization", "Accept", "X-Request-ID"],
+        expose_headers=["X-Request-ID"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )
     limiter.init_app(app)
@@ -291,10 +311,18 @@ PUBLIC_API_ENABLED = os.getenv('PUBLIC_API_ENABLED', 'false').strip()
 PUBLIC_API_DOCS_ENABLED = os.getenv('PUBLIC_API_DOCS_ENABLED', 'false').strip()
 PUBLIC_API_KEY_HASH_PEPPER = os.getenv('PUBLIC_API_KEY_HASH_PEPPER', '').strip()
 PUBLIC_API_RATE_LIMIT_STORAGE_URL = os.getenv('PUBLIC_API_RATE_LIMIT_STORAGE_URL', '').strip()
+RATE_LIMIT_STORAGE_URL = (
+    os.getenv('RATE_LIMIT_STORAGE_URL', '').strip()
+    or PUBLIC_API_RATE_LIMIT_STORAGE_URL
+)
 PUBLIC_API_CACHE_URL = os.getenv('PUBLIC_API_CACHE_URL', '').strip()
 PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT = os.getenv('PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT', '30/minute').strip()
 PUBLIC_API_DEFAULT_PER_HOUR_LIMIT = os.getenv('PUBLIC_API_DEFAULT_PER_HOUR_LIMIT', '500/hour').strip()
 PUBLIC_API_DEFAULT_DAILY_QUOTA = int(os.getenv('PUBLIC_API_DEFAULT_DAILY_QUOTA', '2500'))
+MAX_REQUEST_BODY_BYTES = max(
+    1_024,
+    min(int(os.getenv('MAX_REQUEST_BODY_BYTES', str(1024 * 1024))), 10 * 1024 * 1024),
+)
 PUBLIC_API_GLOBAL_EMERGENCY_LIMIT = os.getenv('PUBLIC_API_GLOBAL_EMERGENCY_LIMIT', '5000/hour').strip()
 PUBLIC_API_FALLBACK_IP_LIMIT = os.getenv('PUBLIC_API_FALLBACK_IP_LIMIT', '120/hour').strip()
 
@@ -312,6 +340,12 @@ CLERK_ISSUER = os.getenv('CLERK_ISSUER', '').strip()
 CLERK_AUDIENCE = os.getenv('CLERK_AUDIENCE', '').strip()
 CLERK_JWKS_CACHE_TTL_SECONDS = int(os.getenv('CLERK_JWKS_CACHE_TTL_SECONDS', '3600'))
 _JWKS_CACHE = {}
+AUTH_MODE = api_auth_helpers.validate_auth_mode(
+    os.getenv('AUTH_MODE', 'clerk'),
+    is_production=IS_PRODUCTION,
+)
+LOCAL_AUTH_TOKEN = os.getenv('LOCAL_AUTH_TOKEN', 'marketmind-local-development')
+LOCAL_AUTH_USER_ID = os.getenv('LOCAL_AUTH_USER_ID', 'local_development_user').strip()
 
 
 def validate_production_runtime_security(
@@ -320,6 +354,9 @@ def validate_production_runtime_security(
     clerk_jwks_url: str,
     clerk_issuer: str,
     allow_legacy_user_data_seed: bool,
+    persistence_mode: str,
+    database_url: str,
+    rate_limit_storage_url: str,
 ):
     errors = []
 
@@ -331,6 +368,16 @@ def validate_production_runtime_security(
         errors.append("CLERK_ISSUER environment variable is required in production")
     if allow_legacy_user_data_seed:
         errors.append("ALLOW_LEGACY_USER_DATA_SEED must be false in production")
+    if str(persistence_mode or '').strip().lower() != 'postgres':
+        errors.append("PERSISTENCE_MODE must be postgres in production")
+    normalized_database_url = str(database_url or '').strip().lower()
+    if not normalized_database_url.startswith(
+        ('postgresql://', 'postgresql+psycopg://', 'postgres://')
+    ):
+        errors.append("DATABASE_URL must be a PostgreSQL connection string in production")
+    normalized_rate_limit_url = str(rate_limit_storage_url or '').strip().lower()
+    if not normalized_rate_limit_url.startswith(('redis://', 'rediss://')):
+        errors.append("RATE_LIMIT_STORAGE_URL must use Redis in production")
 
     if errors:
         raise ValueError("; ".join(errors))
@@ -342,6 +389,9 @@ if IS_PRODUCTION:
         clerk_jwks_url=CLERK_JWKS_URL,
         clerk_issuer=CLERK_ISSUER,
         allow_legacy_user_data_seed=ALLOW_LEGACY_USER_DATA_SEED,
+        persistence_mode=PERSISTENCE_MODE,
+        database_url=DATABASE_URL,
+        rate_limit_storage_url=RATE_LIMIT_STORAGE_URL,
     )
 
 
@@ -399,7 +449,7 @@ def _try_authenticate_optional_request():
     if not token:
         return
     try:
-        payload = verify_clerk_token(token)
+        payload = _verify_auth_token(token)
     except Exception:
         return
     setattr(g, 'current_user_id', payload['sub'])
@@ -486,6 +536,17 @@ def verify_clerk_token(token):
     )
 
 
+def _verify_auth_token(token):
+    return api_auth_helpers.verify_auth_token(
+        token,
+        auth_mode=AUTH_MODE,
+        is_production=IS_PRODUCTION,
+        local_auth_token=LOCAL_AUTH_TOKEN,
+        local_user_id=LOCAL_AUTH_USER_ID,
+        verify_clerk_token_fn=verify_clerk_token,
+    )
+
+
 def get_current_user_id():
     return getattr(g, 'current_user_id', None)
 
@@ -514,11 +575,33 @@ def require_capability(capability):
     return decorator
 
 
+def require_capability_for_methods(capabilities_by_method):
+    """Guard a mixed-method route with the capability for the active method."""
+
+    normalized = {
+        str(method).upper(): capability
+        for method, capability in capabilities_by_method.items()
+    }
+
+    def decorator(view_fn):
+        @wraps(view_fn)
+        def wrapper(*args, **kwargs):
+            capability = normalized.get(request.method)
+            principal = get_current_principal()
+            if capability is None or principal is None or not principal.has(capability):
+                return jsonify({"error": "You do not have access to this action."}), 403
+            return view_fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
 def require_auth(f):
     return api_auth_helpers.build_require_auth(
         f,
         token_getter=lambda: _get_clerk_bearer_token(),
-        verify_token_fn=lambda token: verify_clerk_token(token),
+        verify_token_fn=lambda token: _verify_auth_token(token),
         sync_authenticated_user_fn=lambda payload: _sync_authenticated_user(payload),
         unauthorized_response_fn=lambda message, status: (jsonify({"error": message}), status),
         set_request_identity_fn=lambda payload: (
@@ -569,14 +652,32 @@ def _public_api_daily_quota(_identity):
     return PUBLIC_API_DEFAULT_DAILY_QUOTA
 
 
-def _public_api_daily_usage_total(identity, day_value):
+def _public_api_reserve_daily_usage(identity, day_value, route_group, daily_quota):
     _ensure_user_state_storage_ready()
-    with user_state_session_scope(DATABASE_URL) as session:
-        return get_public_api_daily_request_total_db(
-            session,
+    try:
+        reservation = reserve_public_api_daily_usage_transaction_db(
+            DATABASE_URL,
+            client_id=identity["client_id"],
             api_key_id=identity["api_key_id"],
             day_value=day_value,
+            route_group=route_group,
+            daily_quota=daily_quota,
         )
+        return {"allowed": True, **reservation}
+    except PublicApiQuotaExceeded as exc:
+        return {
+            "allowed": False,
+            "used_before": exc.used,
+            "used_after": exc.used,
+            "quota": exc.quota,
+        }
+    except Exception as exc:
+        logger.error("Public API quota reservation failed: %s", exc)
+        raise api_public_helpers.PublicApiError(
+            503,
+            "quota_unavailable",
+            "Public API quota enforcement is temporarily unavailable.",
+        ) from exc
 
 
 def require_public_api_auth(route_group):
@@ -589,7 +690,7 @@ def require_public_api_auth(route_group):
             token_getter=_get_bearer_token,
             authenticate_key_fn=_public_api_authenticate,
             get_daily_quota_fn=_public_api_daily_quota,
-            get_daily_usage_total_fn=_public_api_daily_usage_total,
+            reserve_daily_usage_fn=_public_api_reserve_daily_usage,
             error_response_fn=_public_api_error_response,
             set_principal_fn=lambda identity: setattr(
                 g, 'principal', authz.principal_for_api_key(identity)
@@ -625,36 +726,6 @@ def _public_dispatch(handler_fn, *args, **kwargs):
         return jsonify(payload), status_code
     except api_public_helpers.PublicApiError as exc:
         return _public_api_error_response(exc.status_code, exc.code, exc.message)
-
-def validate_request_json(required_fields):
-    """
-    Decorator to ensure that the incoming JSON request contains
-    all required fields. Returns 400 with missing fields if not.
-    
-    Usage:
-        @api_bp.route('/buy', methods=['POST'])
-        @validate_request_json(['ticker', 'shares'])
-        def buy_stock():
-            data = request.get_json()
-            ...
-    """
-    def decorator(f):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            # Ensure request is JSON
-            if not request.is_json:
-                return jsonify({"error": "Request must be JSON"}), 400
-            
-            data = request.get_json()
-            # Check for missing fields
-            missing = [field for field in required_fields if field not in data]
-            if missing:
-                return jsonify({"error": f"Missing required fields: {missing}"}), 400
-            
-            # Everything is fine, call the route function
-            return f(*args, **kwargs)
-        return wrapper
-    return decorator
 
 def _load_json(path, default):
     return api_state_helpers.load_json(path, default)
@@ -796,7 +867,12 @@ def save_portfolio_with_snapshot(portfolio, user_id=None, *, reset_snapshots=Fal
 
         _ensure_user_state_storage_ready()
         with user_state_session_scope(DATABASE_URL) as session:
-            save_portfolio_db(session, user_id, portfolio)
+            save_portfolio_db(
+                session,
+                user_id,
+                portfolio,
+                clear_trade_history=reset_snapshots,
+            )
             if reset_snapshots:
                 session.query(PaperPortfolioSnapshot).filter_by(clerk_user_id=user_id).delete()
             record_portfolio_snapshot_db(session, user_id, portfolio)
@@ -806,6 +882,24 @@ def save_portfolio_with_snapshot(portfolio, user_id=None, *, reset_snapshots=Fal
 
     _save_portfolio_json(portfolio, user_id)
     record_portfolio_snapshot(portfolio, user_id)
+
+
+def execute_paper_trade_atomic(user_id, *, action, symbol, quantity, price, occurred_at=None):
+    if not user_id or not _sql_persistence_enabled():
+        return None
+    _ensure_user_state_storage_ready()
+    result = execute_paper_trade_transaction_db(
+        DATABASE_URL,
+        user_id,
+        action=action,
+        symbol=symbol,
+        quantity=quantity,
+        price=price,
+        occurred_at=occurred_at,
+    )
+    if _json_mirror_enabled():
+        _save_portfolio_json(result["portfolio"], user_id)
+    return result
 
 
 def _load_notifications_json(user_id=None):
@@ -908,6 +1002,7 @@ def auth_me():
         "user_id": get_current_user_id(),
         "email": payload.get('email'),
         "username": payload.get('username'),
+        "auth_mode": payload.get('auth_mode', 'clerk'),
     })
 
 
@@ -939,6 +1034,7 @@ def get_deliverables():
 @require_auth
 @require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(DeliverableCreatePayload)
 def post_deliverable():
     payload = request.get_json(silent=True) or {}
     return deliverables_handlers.create_deliverable_handler(
@@ -976,6 +1072,7 @@ def get_deliverable(deliverable_id):
 @require_auth
 @require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(DeliverablePatchPayload)
 def patch_deliverable(deliverable_id):
     payload = request.get_json(silent=True) or {}
     return deliverables_handlers.patch_deliverable_handler(
@@ -996,6 +1093,7 @@ def patch_deliverable(deliverable_id):
 @require_auth
 @require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(DeliverableAssumptionsPayload)
 def put_deliverable_assumptions(deliverable_id):
     payload = request.get_json(silent=True) or {}
     return deliverables_handlers.put_deliverable_assumptions_handler(
@@ -1016,6 +1114,7 @@ def put_deliverable_assumptions(deliverable_id):
 @require_auth
 @require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(DeliverableReviewPayload)
 def post_deliverable_review(deliverable_id):
     payload = request.get_json(silent=True) or {}
     return deliverables_handlers.post_deliverable_review_handler(
@@ -1236,6 +1335,7 @@ def get_marketmind_ai_retrieval_status_route():
 @require_auth
 @require_capability(authz.Capabilities.AI_WRITE)
 @limiter.limit(RateLimits.HEAVY)
+@validate_json_payload(MarketMindChatPayload)
 def post_marketmind_ai_chat():
     payload = request.get_json(silent=True) or {}
     return marketmind_ai_handlers.post_chat_handler(
@@ -1255,6 +1355,7 @@ def post_marketmind_ai_chat():
 @require_auth
 @require_capability(authz.Capabilities.AI_WRITE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(MarketMindArtifactPreflightPayload)
 def post_marketmind_ai_artifact_preflight():
     payload = request.get_json(silent=True) or {}
     return marketmind_ai_handlers.post_artifact_preflight_handler(
@@ -1290,6 +1391,7 @@ def get_marketmind_ai_artifacts():
 @require_auth
 @require_capability(authz.Capabilities.AI_WRITE)
 @limiter.limit(RateLimits.HEAVY)
+@validate_json_payload(MarketMindArtifactPayload)
 def post_marketmind_ai_artifact_generate():
     payload = request.get_json(silent=True) or {}
     return marketmind_ai_handlers.generate_artifact_handler(
@@ -1420,7 +1522,7 @@ def get_chart_data(ticker):
         request_obj=request,
         yf_module=yf,
         clean_value_fn=clean_value,
-        chart_prediction_points_fn=_chart_prediction_points,
+        chart_prediction_points_fn=lambda _ticker: [],
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
     )
@@ -1472,9 +1574,10 @@ def get_option_suggestion(ticker):
 
 # --- ML Endpoints ---
 @api_bp.route('/predict/<string:model>/<string:ticker>')
-@limiter.limit(RateLimits.STANDARD)
+@require_auth
+@require_capability(authz.Capabilities.PREDICTIONS_RUN)
+@limiter.limit(RateLimits.HEAVY)
 def predict_stock(model, ticker):
-    _try_authenticate_optional_request()
     response = market_data_handlers.predict_stock_handler(
         model,
         ticker,
@@ -1515,9 +1618,10 @@ def _chart_prediction_points(sanitized_ticker):
 
 
 @api_bp.route('/predict/ensemble/<string:ticker>')
-@limiter.limit(RateLimits.STANDARD)
+@require_auth
+@require_capability(authz.Capabilities.PREDICTIONS_RUN)
+@limiter.limit(RateLimits.HEAVY)
 def predict_ensemble(ticker):
-    _try_authenticate_optional_request()
     response = market_data_handlers.predict_ensemble_handler(
         ticker,
         request_obj=request,
@@ -1562,6 +1666,7 @@ def get_paper_portfolio():
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.STANDARD)
+@validate_json_payload(PortfolioOptimizationPayload)
 def optimize_paper_portfolio():
     return paper_handlers.optimize_paper_portfolio_handler(
         request_obj=request,
@@ -1576,13 +1681,15 @@ def optimize_paper_portfolio():
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.WRITE)
-@validate_request_json(['ticker', 'shares'])
+@validate_json_payload(PaperTradePayload)
 def buy_stock():
     return paper_handlers.buy_stock_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
+        execute_trade_fn=execute_paper_trade_atomic,
+        trade_error_cls=PaperTradeExecutionError,
         yf_module=yf,
         log_api_error_fn=log_api_error,
     )
@@ -1592,13 +1699,15 @@ def buy_stock():
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.WRITE)
-@validate_request_json(['ticker', 'shares'])
+@validate_json_payload(PaperTradePayload)
 def sell_stock():
     return paper_handlers.sell_stock_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
+        execute_trade_fn=execute_paper_trade_atomic,
+        trade_error_cls=PaperTradeExecutionError,
         yf_module=yf,
         log_api_error_fn=log_api_error,
     )
@@ -1607,24 +1716,42 @@ def sell_stock():
 @api_bp.route('/paper/options/buy', methods=['POST'])
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
+@limiter.limit(RateLimits.WRITE)
+@validate_json_payload(OptionTradePayload)
 def buy_option():
     return paper_handlers.buy_option_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
+        execute_trade_fn=execute_paper_trade_atomic,
+        trade_error_cls=PaperTradeExecutionError,
+        resolve_option_price_fn=lambda symbol, side: paper_handlers.resolve_option_market_price(
+            symbol,
+            side,
+            yf_module=yf,
+        ),
     )
 
 
 @api_bp.route('/paper/options/sell', methods=['POST'])
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
+@limiter.limit(RateLimits.WRITE)
+@validate_json_payload(OptionTradePayload)
 def sell_option():
     return paper_handlers.sell_option_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
+        execute_trade_fn=execute_paper_trade_atomic,
+        trade_error_cls=PaperTradeExecutionError,
+        resolve_option_price_fn=lambda symbol, side: paper_handlers.resolve_option_market_price(
+            symbol,
+            side,
+            yf_module=yf,
+        ),
     )
 
 
@@ -1666,7 +1793,11 @@ def reset_portfolio():
 # --- NEW: Notification Endpoints ---
 @api_bp.route('/notifications', methods=['GET', 'POST'])
 @require_auth
-@require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
+@require_capability_for_methods({
+    'GET': authz.Capabilities.NOTIFICATIONS_READ,
+    'POST': authz.Capabilities.NOTIFICATIONS_WRITE,
+})
+@validate_json_payload(NotificationPayload)
 def handle_notifications():
     return notification_handlers.handle_notifications_handler(
         request_obj=request,
@@ -1680,6 +1811,7 @@ def handle_notifications():
 @api_bp.route('/notifications/smart', methods=['POST'])
 @require_auth
 @require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
+@validate_json_payload(SmartNotificationPayload)
 def create_smart_alert():
     return notification_handlers.create_smart_alert_handler(
         request_obj=request,
@@ -1704,7 +1836,10 @@ def delete_notification(alert_id):
 
 @api_bp.route('/notifications/triggered', methods=['GET', 'DELETE'])
 @require_auth
-@require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
+@require_capability_for_methods({
+    'GET': authz.Capabilities.NOTIFICATIONS_READ,
+    'DELETE': authz.Capabilities.NOTIFICATIONS_WRITE,
+})
 def get_triggered_notifications():
     return notification_handlers.get_triggered_notifications_handler(
         request_obj=request,
@@ -1765,6 +1900,8 @@ def news_api():
 
 
 @api_bp.route('/evaluate/<string:ticker>')
+@require_auth
+@require_capability(authz.Capabilities.PREDICTIONS_RUN)
 @limiter.limit(RateLimits.HEAVY)
 def evaluate_models(ticker):
     return market_data_handlers.evaluate_models_handler(
@@ -1861,6 +1998,7 @@ def list_prediction_exchanges():
 @require_auth
 @require_capability(authz.Capabilities.PREDICTION_MARKETS_TRADE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(PredictionMarketAnalysisPayload)
 def analyze_prediction_market():
     return prediction_markets_handlers.analyze_prediction_market_handler(
         request_obj=request,
@@ -1898,7 +2036,7 @@ def get_prediction_portfolio():
 @require_auth
 @require_capability(authz.Capabilities.PREDICTION_MARKETS_TRADE)
 @limiter.limit(RateLimits.WRITE)
-@validate_request_json(['market_id', 'outcome', 'contracts'])
+@validate_json_payload(PredictionMarketTradePayload)
 def buy_prediction_contract():
     return prediction_markets_handlers.buy_prediction_contract_handler(
         request_obj=request,
@@ -1914,7 +2052,7 @@ def buy_prediction_contract():
 @require_auth
 @require_capability(authz.Capabilities.PREDICTION_MARKETS_TRADE)
 @limiter.limit(RateLimits.WRITE)
-@validate_request_json(['market_id', 'outcome', 'contracts'])
+@validate_json_payload(PredictionMarketTradePayload)
 def sell_prediction_contract():
     return prediction_markets_handlers.sell_prediction_contract_handler(
         request_obj=request,
@@ -2773,10 +2911,40 @@ def healthz():
             "status": "ok",
             "service": "marketmind-backend",
             "environment": FLASK_ENV,
+            "auth_mode": AUTH_MODE,
             "persistence_mode": PERSISTENCE_MODE,
             "public_api_enabled": _public_api_enabled(),
         }
     ), 200
+
+
+def _probe_redis(url):
+    return api_runtime.probe_redis(url)
+
+
+def _readiness_checks():
+    return api_runtime.build_readiness_checks(
+        sql_enabled=_sql_persistence_enabled(),
+        ensure_storage_ready_fn=_ensure_user_state_storage_ready,
+        session_scope_fn=user_state_session_scope,
+        database_url=DATABASE_URL,
+        sql_text_fn=sql_text,
+        user_data_dir=USER_DATA_DIR,
+        rate_limit_storage_url=RATE_LIMIT_STORAGE_URL,
+        public_api_cache_url=PUBLIC_API_CACHE_URL,
+        probe_redis_fn=_probe_redis,
+        logger=logger,
+    )
+
+
+@api_bp.route('/readyz', methods=['GET'])
+def readyz():
+    is_ready, checks = _readiness_checks()
+    return jsonify({
+        'status': 'ready' if is_ready else 'not_ready',
+        'service': 'marketmind-backend',
+        'checks': checks,
+    }), 200 if is_ready else 503
 
 
 # WSGI / module-level application instance. Built here — after every route and

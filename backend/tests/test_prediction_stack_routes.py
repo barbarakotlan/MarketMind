@@ -24,6 +24,7 @@ class PredictionStackRouteTests(unittest.TestCase):
             "ensemble_predict": backend_api.ensemble_predict,
             "rolling_window_backtest": backend_api.rolling_window_backtest,
             "future_prediction_dates": backend_api.prediction_service.get_future_prediction_dates,
+            "verify_clerk_token": backend_api.verify_clerk_token,
         }
         backend_api.app.testing = True
         self.client = backend_api.app.test_client()
@@ -54,6 +55,8 @@ class PredictionStackRouteTests(unittest.TestCase):
             },
         )
         backend_api.prediction_service.get_future_prediction_dates = lambda df, horizon: self.future_dates[:horizon]
+        backend_api.verify_clerk_token = lambda token: {"sub": token}
+        self.headers = {"Authorization": "Bearer prediction-user"}
 
     def tearDown(self):
         backend_api.yf.Ticker = self.original["ticker_cls"]
@@ -62,16 +65,17 @@ class PredictionStackRouteTests(unittest.TestCase):
         backend_api.ensemble_predict = self.original["ensemble_predict"]
         backend_api.rolling_window_backtest = self.original["rolling_window_backtest"]
         backend_api.prediction_service.get_future_prediction_dates = self.original["future_prediction_dates"]
+        backend_api.verify_clerk_token = self.original["verify_clerk_token"]
 
     def test_single_model_prediction_route_uses_trading_session_dates(self):
-        response = self.client.get("/predict/LinReg/AAPL")
+        response = self.client.get("/predict/LinReg/AAPL", headers=self.headers)
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["predictions"][0]["date"], "2026-04-03")
         self.assertEqual(len(payload["predictions"]), 7)
 
     def test_ensemble_prediction_route_keeps_contract_with_new_models(self):
-        response = self.client.get("/predict/ensemble/AAPL")
+        response = self.client.get("/predict/ensemble/AAPL", headers=self.headers)
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["symbol"], "AAPL")
@@ -120,13 +124,21 @@ class PredictionStackRouteTests(unittest.TestCase):
 
         backend_api.rolling_window_backtest = _fake_backtest
 
-        response = self.client.get("/evaluate/AAPL?fast_mode=false&include_explanations=true&test_days=30")
+        response = self.client.get(
+            "/evaluate/AAPL?fast_mode=false&include_explanations=true&test_days=30",
+            headers=self.headers,
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(captured["ticker"], "AAPL")
         self.assertEqual(captured["test_days"], 30)
         self.assertEqual(captured["fast_mode"], False)
         self.assertEqual(captured["include_explanations"], True)
         self.assertEqual(response.get_json()["featureSpecVersion"], "prediction-stack-v2")
+
+    def test_expensive_prediction_routes_require_authentication(self):
+        self.assertEqual(self.client.get("/predict/LinReg/AAPL").status_code, 401)
+        self.assertEqual(self.client.get("/predict/ensemble/AAPL").status_code, 401)
+        self.assertEqual(self.client.get("/evaluate/AAPL").status_code, 401)
 
 
 if __name__ == "__main__":

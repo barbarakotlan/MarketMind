@@ -5,11 +5,12 @@ This is the first real hosted deployment plan for MarketMind.
 ## Recommended launch order
 
 1. Deploy the backend first.
-2. Verify the backend at `/healthz`.
+2. Verify liveness at `/healthz` and dependency readiness at `/readyz`.
 3. Configure Clerk/backend secrets.
 4. Deploy the frontend against the live backend URL.
 5. Verify the signed-in app flow.
 6. Enable the public API only after Redis-backed rate limiting is provisioned.
+7. Confirm logs, metrics, alerts, backups, and rollback ownership before launch.
 
 ## Backend host
 
@@ -19,16 +20,26 @@ Recommended: Render web service
 - Runtime: Python
 - Build command: `pip install -r requirements.txt`
 - Start command: `gunicorn -w 4 -b 0.0.0.0:$PORT api:app`
-- Health check path: `/healthz`
+- Health check path: `/readyz`
+
+Provision a separate background worker from the same backend image:
+
+- Start command: `python alert_worker.py`
+- Use the same `DATABASE_URL`, auth, and market-data environment variables as the web service.
+- Do not start the scheduler inside the Gunicorn web process. The worker holds a
+  PostgreSQL advisory lock, so only one replica actively checks alerts.
 
 ## Backend required env vars
 
 - `FLASK_ENV=production`
+- `AUTH_MODE=clerk`
 - `CORS_ORIGINS=<your frontend origin>`
 - `PERSISTENCE_MODE=postgres`
 - `DATABASE_URL=<postgres connection string>`
-- `CLERK_SECRET_KEY=<live secret>`
+- `RATE_LIMIT_STORAGE_URL=<redis url>`
+- `MAX_REQUEST_BODY_BYTES=1048576`
 - `CLERK_JWKS_URL=<clerk jwks url>`
+- `CLERK_ISSUER=<clerk issuer>`
 - `CLERK_AUDIENCE=<optional audience if used>`
 - `NEWS_API_KEY=<provider key>`
 - `ALPHA_VANTAGE_API_KEY=<provider key>`
@@ -59,7 +70,7 @@ Run after the backend service has the correct `DATABASE_URL`:
 
 ```bash
 cd backend
-DATABASE_URL="<database-url>" .venv/bin/python -m alembic upgrade head
+DATABASE_URL="<database-url>" .venv/bin/alembic -c alembic.ini upgrade head
 ```
 
 ## Frontend host
@@ -68,18 +79,19 @@ Recommended: Vercel
 
 - Root directory: `frontend/`
 - Build command: `npm run build`
-- Output directory: `build`
+- Output directory: `dist`
 
 ## Frontend required env vars
 
-- `REACT_APP_API_URL=<your backend origin>`
-- `REACT_APP_CLERK_PUBLISHABLE_KEY=<live publishable key>`
+- `VITE_API_URL=<your backend origin>`
+- `VITE_CLERK_PUBLISHABLE_KEY=<live publishable key>`
 
 ## First production smoke checks
 
 Backend:
 
 - `GET /healthz`
+- `GET /readyz` returns `200` with storage and Redis checks ready
 - `GET /news`
 - `GET /search-symbols?q=AAPL`
 - authenticated `GET /auth/me`
@@ -92,6 +104,14 @@ Frontend:
 - Search loads AAPL
 - predictions render
 - paper portfolio page renders
+
+Operations:
+
+- alert worker is a separate process and reports fresh activity
+- centralized logs include request IDs from failed API responses
+- database and Redis alerts reach the owning team
+- a database backup can be restored in a non-production environment
+- the previous application revision and migration rollback procedure are known
 
 Public API, only after enabled:
 

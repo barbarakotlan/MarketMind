@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from http_policy import timeout
+
 try:
     import dr_manhattan
     DR_MANHATTAN_AVAILABLE = True
@@ -246,7 +248,11 @@ def _fetch_polymarket_market(reference: str) -> Dict[str, Any]:
     event_url = f"{POLYMARKET_GAMMA_BASE_URL}/events/slug/{slug}"
 
     try:
-        market_response = requests.get(market_url, headers=headers, timeout=POLYMARKET_HTTP_TIMEOUT_SECONDS)
+        market_response = requests.get(
+            market_url,
+            headers=headers,
+            timeout=timeout(POLYMARKET_HTTP_TIMEOUT_SECONDS),
+        )
         if market_response.status_code == 200:
             payload = market_response.json()
             if not isinstance(payload, dict):
@@ -255,7 +261,11 @@ def _fetch_polymarket_market(reference: str) -> Dict[str, Any]:
         if market_response.status_code not in {404}:
             market_response.raise_for_status()
 
-        event_response = requests.get(event_url, headers=headers, timeout=POLYMARKET_HTTP_TIMEOUT_SECONDS)
+        event_response = requests.get(
+            event_url,
+            headers=headers,
+            timeout=timeout(POLYMARKET_HTTP_TIMEOUT_SECONDS),
+        )
         if event_response.status_code == 404:
             raise PredictionMarketLookupError("Prediction market not found", status_code=404)
         event_response.raise_for_status()

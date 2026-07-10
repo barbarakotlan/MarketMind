@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
+import threading
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any, Dict, Iterable, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional
 
 from sqlalchemy import (
     Date,
@@ -29,7 +31,9 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm.exc import StaleDataError
 
 
 JSON_VARIANT = JSON().with_variant(JSONB(), "postgresql")
@@ -38,6 +42,23 @@ SNAPSHOT_ID_TYPE = BigInteger().with_variant(Integer(), "sqlite")
 
 class Base(DeclarativeBase):
     pass
+
+
+class PaperTradeExecutionError(ValueError):
+    def __init__(self, message: str, *, status_code: int = 400):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class PublicApiQuotaExceeded(ValueError):
+    def __init__(self, *, used: int, quota: int):
+        super().__init__("Daily quota exceeded for this API key")
+        self.used = int(used)
+        self.quota = int(quota)
+
+
+_PUBLIC_API_SQLITE_LOCKS: Dict[str, threading.RLock] = {}
+_PUBLIC_API_SQLITE_LOCKS_GUARD = threading.Lock()
 
 
 class AppUser(Base):
@@ -91,6 +112,9 @@ class PaperPortfolio(Base):
     cash: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     starting_cash: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    __mapper_args__ = {"version_id_col": version}
 
 
 class PaperEquityPosition(Base):
@@ -402,6 +426,8 @@ def reset_runtime_state() -> None:
         engine.dispose()
     _ENGINES.clear()
     _SESSION_FACTORIES.clear()
+    with _PUBLIC_API_SQLITE_LOCKS_GUARD:
+        _PUBLIC_API_SQLITE_LOCKS.clear()
 
 
 def get_session_factory(database_url: str) -> sessionmaker[Session]:
@@ -620,6 +646,7 @@ def save_notifications(
 def _trade_event_to_dict(row: PaperTradeEvent) -> Dict[str, Any]:
     raw = dict((row.metadata_json or {}).get("raw") or {})
     if raw:
+        raw.setdefault("id", str(row.id))
         raw.setdefault("timestamp", row.occurred_at.isoformat())
         return raw
 
@@ -687,7 +714,13 @@ def load_portfolio(session: Session, clerk_user_id: str) -> Dict[str, Any]:
     }
 
 
-def save_portfolio(session: Session, clerk_user_id: str, portfolio: Dict[str, Any]) -> Dict[str, Any]:
+def save_portfolio(
+    session: Session,
+    clerk_user_id: str,
+    portfolio: Dict[str, Any],
+    *,
+    clear_trade_history: bool = False,
+) -> Dict[str, Any]:
     touch_app_user(session, clerk_user_id)
     row = session.get(PaperPortfolio, clerk_user_id)
     now = utcnow()
@@ -706,7 +739,8 @@ def save_portfolio(session: Session, clerk_user_id: str, portfolio: Dict[str, An
 
     session.execute(delete(PaperEquityPosition).where(PaperEquityPosition.clerk_user_id == clerk_user_id))
     session.execute(delete(PaperOptionPosition).where(PaperOptionPosition.clerk_user_id == clerk_user_id))
-    session.execute(delete(PaperTradeEvent).where(PaperTradeEvent.clerk_user_id == clerk_user_id))
+    if clear_trade_history:
+        session.execute(delete(PaperTradeEvent).where(PaperTradeEvent.clerk_user_id == clerk_user_id))
     session.flush()
 
     for ticker, pos in (portfolio.get("positions", {}) or {}).items():
@@ -731,12 +765,21 @@ def save_portfolio(session: Session, clerk_user_id: str, portfolio: Dict[str, An
             )
         )
 
+    existing_event_ids = set(
+        session.scalars(
+            select(PaperTradeEvent.id).where(PaperTradeEvent.clerk_user_id == clerk_user_id)
+        ).all()
+    )
     for event in (portfolio.get("trade_history", []) or []):
         action = str(event.get("type", ""))
         asset_class = "option" if "OPTION" in action else "equity"
+        event_identity = event.get("id") or json.dumps(event, sort_keys=True, default=str)
+        event_id = _coerce_scoped_uuid(f"paper_trade:{clerk_user_id}", event_identity)
+        if event_id in existing_event_ids:
+            continue
         session.add(
             PaperTradeEvent(
-                id=_coerce_scoped_uuid(f"paper_trade:{clerk_user_id}", event.get("id") or uuid.uuid4()),
+                id=event_id,
                 clerk_user_id=clerk_user_id,
                 asset_class=asset_class,
                 action=action,
@@ -749,6 +792,7 @@ def save_portfolio(session: Session, clerk_user_id: str, portfolio: Dict[str, An
                 metadata_json={"raw": dict(event)},
             )
         )
+        existing_event_ids.add(event_id)
 
     return load_portfolio(session, clerk_user_id)
 
@@ -773,6 +817,237 @@ def record_portfolio_snapshot(
             recorded_at=_coerce_datetime(recorded_at) if recorded_at else utcnow(),
         )
     )
+
+
+def _positive_decimal(value: Any, field_name: str) -> Decimal:
+    try:
+        result = Decimal(str(value))
+    except Exception as exc:
+        raise PaperTradeExecutionError(f"{field_name} must be a finite positive number") from exc
+    if not result.is_finite() or result <= 0:
+        raise PaperTradeExecutionError(f"{field_name} must be a finite positive number")
+    return result
+
+
+def execute_paper_trade(
+    session: Session,
+    clerk_user_id: str,
+    *,
+    action: str,
+    symbol: str,
+    quantity: Any,
+    price: Any,
+    occurred_at: Any = None,
+    after_lock_fn: Optional[Callable[[], None]] = None,
+) -> Dict[str, Any]:
+    normalized_action = str(action or "").strip().upper()
+    if normalized_action not in {"BUY", "SELL", "BUY_OPTION", "SELL_OPTION"}:
+        raise PaperTradeExecutionError("Unsupported paper trade action")
+
+    normalized_symbol = str(symbol or "").strip().upper()
+    if not normalized_symbol:
+        raise PaperTradeExecutionError("A trade symbol is required")
+
+    quantity_value = _positive_decimal(quantity, "quantity")
+    price_value = _positive_decimal(price, "price")
+    is_option = normalized_action.endswith("_OPTION")
+    if is_option and quantity_value != quantity_value.to_integral_value():
+        raise PaperTradeExecutionError("Option quantity must be a positive whole number")
+
+    touch_app_user(session, clerk_user_id)
+    with session.no_autoflush:
+        portfolio_row = session.scalar(
+            select(PaperPortfolio)
+            .where(PaperPortfolio.clerk_user_id == clerk_user_id)
+            .with_for_update()
+        )
+    now = _coerce_datetime(occurred_at)
+    if portfolio_row is None:
+        portfolio_row = PaperPortfolio(
+            clerk_user_id=clerk_user_id,
+            cash=Decimal("100000"),
+            starting_cash=Decimal("100000"),
+            updated_at=now,
+            version=1,
+        )
+        session.add(portfolio_row)
+        session.flush()
+
+    if after_lock_fn is not None:
+        after_lock_fn()
+
+    multiplier = Decimal("100") if is_option else Decimal("1")
+    total = quantity_value * price_value * multiplier
+    cash = Decimal(portfolio_row.cash)
+    profit: Optional[Decimal] = None
+
+    if is_option:
+        position = session.scalar(
+            select(PaperOptionPosition)
+            .where(
+                PaperOptionPosition.clerk_user_id == clerk_user_id,
+                PaperOptionPosition.contract_symbol == normalized_symbol,
+            )
+            .with_for_update()
+        )
+        current_quantity = Decimal(position.quantity) if position else Decimal("0")
+        current_avg_cost = Decimal(position.avg_cost) if position else Decimal("0")
+
+        if normalized_action == "BUY_OPTION":
+            if total > cash:
+                raise PaperTradeExecutionError(
+                    f"Insufficient cash. Need ${float(total):.2f}, have ${float(cash):.2f}"
+                )
+            new_quantity = current_quantity + quantity_value
+            new_avg_cost = (
+                (current_avg_cost * current_quantity) + (price_value * quantity_value)
+            ) / new_quantity
+            if position is None:
+                position = PaperOptionPosition(
+                    clerk_user_id=clerk_user_id,
+                    contract_symbol=normalized_symbol,
+                    quantity=int(new_quantity),
+                    avg_cost=new_avg_cost,
+                    updated_at=now,
+                )
+                session.add(position)
+            else:
+                position.quantity = int(new_quantity)
+                position.avg_cost = new_avg_cost
+                position.updated_at = now
+            portfolio_row.cash = cash - total
+        else:
+            if position is None or current_quantity < quantity_value:
+                available = int(current_quantity)
+                raise PaperTradeExecutionError(
+                    f"Not enough contracts. You have {available}, trying to sell {int(quantity_value)}"
+                )
+            profit = total - (quantity_value * current_avg_cost * multiplier)
+            remaining = current_quantity - quantity_value
+            if remaining == 0:
+                session.delete(position)
+            else:
+                position.quantity = int(remaining)
+                position.updated_at = now
+            portfolio_row.cash = cash + total
+    else:
+        position = session.scalar(
+            select(PaperEquityPosition)
+            .where(
+                PaperEquityPosition.clerk_user_id == clerk_user_id,
+                PaperEquityPosition.ticker == normalized_symbol,
+            )
+            .with_for_update()
+        )
+        current_quantity = Decimal(position.shares) if position else Decimal("0")
+        current_avg_cost = Decimal(position.avg_cost) if position else Decimal("0")
+
+        if normalized_action == "BUY":
+            if total > cash:
+                raise PaperTradeExecutionError(
+                    f"Insufficient cash. Need ${float(total):.2f}, have ${float(cash):.2f}"
+                )
+            new_quantity = current_quantity + quantity_value
+            new_avg_cost = ((current_avg_cost * current_quantity) + total) / new_quantity
+            if position is None:
+                position = PaperEquityPosition(
+                    clerk_user_id=clerk_user_id,
+                    ticker=normalized_symbol,
+                    shares=new_quantity,
+                    avg_cost=new_avg_cost,
+                    updated_at=now,
+                )
+                session.add(position)
+            else:
+                position.shares = new_quantity
+                position.avg_cost = new_avg_cost
+                position.updated_at = now
+            portfolio_row.cash = cash - total
+        else:
+            if position is None or current_quantity < quantity_value:
+                available = float(current_quantity)
+                raise PaperTradeExecutionError(
+                    f"Not enough shares. You have {available:g}, trying to sell {float(quantity_value):g}"
+                )
+            profit = total - (quantity_value * current_avg_cost)
+            remaining = current_quantity - quantity_value
+            if remaining == 0:
+                session.delete(position)
+            else:
+                position.shares = remaining
+                position.updated_at = now
+            portfolio_row.cash = cash + total
+
+    portfolio_row.updated_at = now
+    event_id = uuid.uuid4()
+    event_payload: Dict[str, Any] = {
+        "id": str(event_id),
+        "type": normalized_action,
+        "ticker": normalized_symbol,
+        "shares": float(quantity_value),
+        "price": float(price_value),
+        "total": float(total),
+        "timestamp": now.isoformat(),
+    }
+    if profit is not None:
+        event_payload["profit"] = float(profit)
+
+    session.add(
+        PaperTradeEvent(
+            id=event_id,
+            clerk_user_id=clerk_user_id,
+            asset_class="option" if is_option else "equity",
+            action=normalized_action,
+            symbol=normalized_symbol,
+            quantity=quantity_value,
+            price=price_value,
+            total=total,
+            profit=profit,
+            occurred_at=now,
+            metadata_json={"raw": event_payload},
+        )
+    )
+    session.flush()
+
+    portfolio = load_portfolio(session, clerk_user_id)
+    record_portfolio_snapshot(session, clerk_user_id, portfolio)
+    return {
+        "portfolio": portfolio,
+        "trade": event_payload,
+        "profit": float(profit) if profit is not None else None,
+    }
+
+
+def execute_paper_trade_transaction(
+    database_url: str,
+    clerk_user_id: str,
+    *,
+    action: str,
+    symbol: str,
+    quantity: Any,
+    price: Any,
+    occurred_at: Any = None,
+    after_lock_fn: Optional[Callable[[], None]] = None,
+) -> Dict[str, Any]:
+    try:
+        with session_scope(database_url) as session:
+            return execute_paper_trade(
+                session,
+                clerk_user_id,
+                action=action,
+                symbol=symbol,
+                quantity=quantity,
+                price=price,
+                occurred_at=occurred_at,
+                after_lock_fn=after_lock_fn,
+            )
+    except PaperTradeExecutionError:
+        raise
+    except (StaleDataError, OperationalError) as exc:
+        raise PaperTradeExecutionError(
+            "Portfolio changed during execution; refresh and retry the order",
+            status_code=409,
+        ) from exc
 
 
 def load_prediction_portfolio(session: Session, clerk_user_id: str) -> Dict[str, Any]:
@@ -1249,56 +1524,51 @@ def export_user_state(session: Session, clerk_user_id: str) -> Dict[str, Any]:
     }
 
 
-def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
-    state = dict(state or {})
+def _delete_deliverable_graph(session: Session, deliverable_ids: Iterable[Any]) -> None:
+    ids = list(deliverable_ids)
+    if not ids:
+        return
+    for model in (
+        DeliverableLink,
+        DeliverableMemo,
+        DeliverablePreflight,
+        DeliverableReview,
+        DeliverableAssumption,
+    ):
+        session.execute(delete(model).where(model.deliverable_id.in_(ids)))
+    session.execute(delete(Deliverable).where(Deliverable.id.in_(ids)))
 
+
+def _clear_user_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> None:
     deliverable_ids = [
         _coerce_uuid(row.get("id"))
         for row in (state.get("deliverables", []) or [])
         if row.get("id")
     ]
-
-    if deliverable_ids:
-        session.execute(delete(DeliverableLink).where(DeliverableLink.deliverable_id.in_(deliverable_ids)))
-        session.execute(delete(DeliverableMemo).where(DeliverableMemo.deliverable_id.in_(deliverable_ids)))
-        session.execute(delete(DeliverablePreflight).where(DeliverablePreflight.deliverable_id.in_(deliverable_ids)))
-        session.execute(delete(DeliverableReview).where(DeliverableReview.deliverable_id.in_(deliverable_ids)))
-        session.execute(delete(DeliverableAssumption).where(DeliverableAssumption.deliverable_id.in_(deliverable_ids)))
-        session.execute(delete(Deliverable).where(Deliverable.id.in_(deliverable_ids)))
-
+    _delete_deliverable_graph(session, deliverable_ids)
     existing_deliverable_ids = session.scalars(
         select(Deliverable.id).where(Deliverable.clerk_user_id == clerk_user_id)
     ).all()
-    if existing_deliverable_ids:
-        session.execute(delete(DeliverableLink).where(DeliverableLink.deliverable_id.in_(existing_deliverable_ids)))
-        session.execute(delete(DeliverableMemo).where(DeliverableMemo.deliverable_id.in_(existing_deliverable_ids)))
-        session.execute(delete(DeliverablePreflight).where(DeliverablePreflight.deliverable_id.in_(existing_deliverable_ids)))
-        session.execute(delete(DeliverableReview).where(DeliverableReview.deliverable_id.in_(existing_deliverable_ids)))
-        session.execute(delete(DeliverableAssumption).where(DeliverableAssumption.deliverable_id.in_(existing_deliverable_ids)))
-        session.execute(delete(Deliverable).where(Deliverable.id.in_(existing_deliverable_ids)))
-
-    session.execute(
-        delete(PredictionMarketTrade).where(PredictionMarketTrade.clerk_user_id == clerk_user_id)
-    )
-    session.execute(
-        delete(PredictionMarketPosition).where(PredictionMarketPosition.clerk_user_id == clerk_user_id)
-    )
-    session.execute(
-        delete(PredictionPortfolio).where(PredictionPortfolio.clerk_user_id == clerk_user_id)
-    )
-    session.execute(
-        delete(PaperPortfolioSnapshot).where(PaperPortfolioSnapshot.clerk_user_id == clerk_user_id)
-    )
-    session.execute(delete(PaperTradeEvent).where(PaperTradeEvent.clerk_user_id == clerk_user_id))
-    session.execute(delete(PaperOptionPosition).where(PaperOptionPosition.clerk_user_id == clerk_user_id))
-    session.execute(delete(PaperEquityPosition).where(PaperEquityPosition.clerk_user_id == clerk_user_id))
-    session.execute(delete(PaperPortfolio).where(PaperPortfolio.clerk_user_id == clerk_user_id))
-    session.execute(delete(TriggeredAlert).where(TriggeredAlert.clerk_user_id == clerk_user_id))
-    session.execute(delete(AlertRule).where(AlertRule.clerk_user_id == clerk_user_id))
-    session.execute(delete(WatchlistItem).where(WatchlistItem.clerk_user_id == clerk_user_id))
-    session.execute(delete(AppUser).where(AppUser.clerk_user_id == clerk_user_id))
+    _delete_deliverable_graph(session, existing_deliverable_ids)
+    for model in (
+        PredictionMarketTrade,
+        PredictionMarketPosition,
+        PredictionPortfolio,
+        PaperPortfolioSnapshot,
+        PaperTradeEvent,
+        PaperOptionPosition,
+        PaperEquityPosition,
+        PaperPortfolio,
+        TriggeredAlert,
+        AlertRule,
+        WatchlistItem,
+        AppUser,
+    ):
+        session.execute(delete(model).where(model.clerk_user_id == clerk_user_id))
     session.flush()
 
+
+def _restore_account_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> None:
     app_user = state.get("app_user")
     if app_user:
         session.add(
@@ -1310,7 +1580,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 last_seen_at=_coerce_datetime(app_user.get("last_seen_at")),
             )
         )
-
     for row in state.get("watchlist_items", []) or []:
         session.add(
             WatchlistItem(
@@ -1319,7 +1588,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 created_at=_coerce_datetime(row.get("created_at")),
             )
         )
-
     for row in state.get("alert_rules", []) or []:
         session.add(
             AlertRule(
@@ -1334,7 +1602,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 created_at=_coerce_datetime(row.get("created_at")),
             )
         )
-
     for row in state.get("triggered_alerts", []) or []:
         alert_rule_id = row.get("alert_rule_id")
         session.add(
@@ -1349,17 +1616,18 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
             )
         )
 
-    paper_portfolio = state.get("paper_portfolio")
-    if paper_portfolio:
+
+def _restore_paper_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> None:
+    portfolio = state.get("paper_portfolio")
+    if portfolio:
         session.add(
             PaperPortfolio(
                 clerk_user_id=clerk_user_id,
-                cash=paper_portfolio.get("cash", 100000.0),
-                starting_cash=paper_portfolio.get("starting_cash", 100000.0),
-                updated_at=_coerce_datetime(paper_portfolio.get("updated_at")),
+                cash=portfolio.get("cash", 100000.0),
+                starting_cash=portfolio.get("starting_cash", 100000.0),
+                updated_at=_coerce_datetime(portfolio.get("updated_at")),
             )
         )
-
     for row in state.get("paper_equity_positions", []) or []:
         session.add(
             PaperEquityPosition(
@@ -1370,7 +1638,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 updated_at=_coerce_datetime(row.get("updated_at")),
             )
         )
-
     for row in state.get("paper_option_positions", []) or []:
         session.add(
             PaperOptionPosition(
@@ -1381,7 +1648,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 updated_at=_coerce_datetime(row.get("updated_at")),
             )
         )
-
     for row in state.get("paper_trade_events", []) or []:
         session.add(
             PaperTradeEvent(
@@ -1398,7 +1664,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 metadata_json=dict(row.get("metadata", {}) or {}),
             )
         )
-
     for row in state.get("paper_portfolio_snapshots", []) or []:
         session.add(
             PaperPortfolioSnapshot(
@@ -1408,17 +1673,18 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
             )
         )
 
-    prediction_portfolio = state.get("prediction_portfolio")
-    if prediction_portfolio:
+
+def _restore_prediction_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> None:
+    portfolio = state.get("prediction_portfolio")
+    if portfolio:
         session.add(
             PredictionPortfolio(
                 clerk_user_id=clerk_user_id,
-                cash=prediction_portfolio.get("cash", 10000.0),
-                starting_cash=prediction_portfolio.get("starting_cash", 10000.0),
-                updated_at=_coerce_datetime(prediction_portfolio.get("updated_at")),
+                cash=portfolio.get("cash", 10000.0),
+                starting_cash=portfolio.get("starting_cash", 10000.0),
+                updated_at=_coerce_datetime(portfolio.get("updated_at")),
             )
         )
-
     for row in state.get("prediction_market_positions", []) or []:
         session.add(
             PredictionMarketPosition(
@@ -1432,7 +1698,6 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
                 updated_at=_coerce_datetime(row.get("updated_at")),
             )
         )
-
     for row in state.get("prediction_market_trades", []) or []:
         session.add(
             PredictionMarketTrade(
@@ -1451,6 +1716,8 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
             )
         )
 
+
+def _restore_deliverable_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> None:
     for row in state.get("deliverables", []) or []:
         session.add(
             Deliverable(
@@ -1548,6 +1815,14 @@ def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, An
             )
         )
 
+
+def restore_user_state(session: Session, clerk_user_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
+    state = dict(state or {})
+    _clear_user_state(session, clerk_user_id, state)
+    _restore_account_state(session, clerk_user_id, state)
+    _restore_paper_state(session, clerk_user_id, state)
+    _restore_prediction_state(session, clerk_user_id, state)
+    _restore_deliverable_state(session, clerk_user_id, state)
     session.flush()
     return export_user_state(session, clerk_user_id)
 
@@ -1668,6 +1943,43 @@ def touch_public_api_key_last_used(
     return key
 
 
+def _get_or_create_public_api_usage_row(
+    session: Session,
+    *,
+    client_id: Any,
+    api_key_id: Any,
+    day_value: date,
+    route_group: str,
+) -> PublicApiDailyUsage:
+    normalized_key_id = _coerce_uuid(api_key_id)
+    normalized_day = day_value if isinstance(day_value, date) else utcnow().date()
+    normalized_route_group = str(route_group or "unknown").strip().lower()
+    row = session.scalar(
+        select(PublicApiDailyUsage).where(
+            PublicApiDailyUsage.api_key_id == normalized_key_id,
+            PublicApiDailyUsage.day == normalized_day,
+            PublicApiDailyUsage.route_group == normalized_route_group,
+        )
+    )
+    if row is not None:
+        return row
+
+    now = utcnow()
+    row = PublicApiDailyUsage(
+        client_id=_coerce_uuid(client_id),
+        api_key_id=normalized_key_id,
+        day=normalized_day,
+        route_group=normalized_route_group,
+        request_count=0,
+        cached_request_count=0,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
 def increment_public_api_daily_usage(
     session: Session,
     *,
@@ -1677,35 +1989,120 @@ def increment_public_api_daily_usage(
     route_group: str,
     cached: bool = False,
 ) -> PublicApiDailyUsage:
-    normalized_day = day_value if isinstance(day_value, date) else utcnow().date()
-    normalized_route_group = str(route_group or "unknown").strip().lower()
-    row = session.scalar(
-        select(PublicApiDailyUsage).where(
-            PublicApiDailyUsage.api_key_id == _coerce_uuid(api_key_id),
-            PublicApiDailyUsage.day == normalized_day,
-            PublicApiDailyUsage.route_group == normalized_route_group,
-        )
+    normalized_key_id = _coerce_uuid(api_key_id)
+    session.scalar(
+        select(PublicApiKey)
+        .where(PublicApiKey.id == normalized_key_id)
+        .with_for_update()
+    )
+    row = _get_or_create_public_api_usage_row(
+        session,
+        client_id=client_id,
+        api_key_id=normalized_key_id,
+        day_value=day_value,
+        route_group=route_group,
     )
     now = utcnow()
-    if row is None:
-        row = PublicApiDailyUsage(
-            client_id=_coerce_uuid(client_id),
-            api_key_id=_coerce_uuid(api_key_id),
-            day=normalized_day,
-            route_group=normalized_route_group,
-            request_count=0,
-            cached_request_count=0,
-            created_at=now,
-            updated_at=now,
-        )
-        session.add(row)
-        session.flush()
-
     row.request_count += 1
     if cached:
         row.cached_request_count += 1
     row.updated_at = now
     return row
+
+
+def reserve_public_api_daily_usage(
+    session: Session,
+    *,
+    client_id: Any,
+    api_key_id: Any,
+    day_value: date,
+    route_group: str,
+    daily_quota: int,
+) -> Dict[str, int]:
+    normalized_key_id = _coerce_uuid(api_key_id)
+    key = session.scalar(
+        select(PublicApiKey)
+        .where(PublicApiKey.id == normalized_key_id)
+        .with_for_update()
+    )
+    if key is None:
+        raise ValueError("Public API key no longer exists")
+
+    used_before = get_public_api_daily_request_total(
+        session,
+        api_key_id=normalized_key_id,
+        day_value=day_value,
+    )
+    quota = max(int(daily_quota), 1)
+    if used_before >= quota:
+        raise PublicApiQuotaExceeded(used=used_before, quota=quota)
+
+    row = _get_or_create_public_api_usage_row(
+        session,
+        client_id=client_id,
+        api_key_id=normalized_key_id,
+        day_value=day_value,
+        route_group=route_group,
+    )
+    row.request_count += 1
+    row.updated_at = utcnow()
+    key.last_used_at = row.updated_at
+    session.flush()
+    return {"used_before": used_before, "used_after": used_before + 1, "quota": quota}
+
+
+def mark_public_api_usage_cached(
+    session: Session,
+    *,
+    api_key_id: Any,
+    day_value: date,
+    route_group: str,
+) -> None:
+    normalized_day = day_value if isinstance(day_value, date) else utcnow().date()
+    normalized_route_group = str(route_group or "unknown").strip().lower()
+    row = session.scalar(
+        select(PublicApiDailyUsage)
+        .where(
+            PublicApiDailyUsage.api_key_id == _coerce_uuid(api_key_id),
+            PublicApiDailyUsage.day == normalized_day,
+            PublicApiDailyUsage.route_group == normalized_route_group,
+        )
+        .with_for_update()
+    )
+    if row is None:
+        raise ValueError("Reserved public API usage row was not found")
+    row.cached_request_count += 1
+    row.updated_at = utcnow()
+
+
+def _public_api_sqlite_lock(database_url: str, api_key_id: Any):
+    if not _is_sqlite_url(database_url):
+        return nullcontext()
+    lock_key = f"{_normalize_database_url(database_url)}:{_coerce_uuid(api_key_id)}"
+    with _PUBLIC_API_SQLITE_LOCKS_GUARD:
+        lock = _PUBLIC_API_SQLITE_LOCKS.setdefault(lock_key, threading.RLock())
+    return lock
+
+
+def reserve_public_api_daily_usage_transaction(
+    database_url: str,
+    *,
+    client_id: Any,
+    api_key_id: Any,
+    day_value: date,
+    route_group: str,
+    daily_quota: int,
+) -> Dict[str, int]:
+    with _public_api_sqlite_lock(database_url, api_key_id):
+        with session_scope(database_url) as session:
+            return reserve_public_api_daily_usage(
+                session,
+                client_id=client_id,
+                api_key_id=api_key_id,
+                day_value=day_value,
+                route_group=route_group,
+                daily_quota=daily_quota,
+            )
 
 
 def get_public_api_daily_request_total(

@@ -1,14 +1,14 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '../../auth';
 import { useNavigation } from '../../context/NavigationContext';
 import { API_ENDPOINTS, apiRequest } from '../../config/api';
 import useMarketMindAIData from './useMarketMindAIData';
 
-jest.mock('@clerk/clerk-react', () => ({ useAuth: jest.fn() }));
-jest.mock('../../context/NavigationContext', () => ({ useNavigation: jest.fn() }));
-jest.mock('../../config/api', () => ({
-    ...jest.requireActual('../../config/api'),
-    apiRequest: jest.fn(),
+vi.mock('../../auth', () => ({ useAuth: vi.fn() }));
+vi.mock('../../context/NavigationContext', () => ({ useNavigation: vi.fn() }));
+vi.mock('../../config/api', async () => ({
+    ...(await vi.importActual('../../config/api')),
+    apiRequest: vi.fn(),
 }));
 
 function route(url) {
@@ -27,9 +27,9 @@ function route(url) {
 }
 
 beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     useAuth.mockReturnValue({ isLoaded: true, isSignedIn: true });
-    useNavigation.mockReturnValue({ sharedAiPrompt: '', clearAiPrompt: jest.fn() });
+    useNavigation.mockReturnValue({ sharedAiPrompt: '', clearAiPrompt: vi.fn() });
     apiRequest.mockImplementation(route);
 });
 
@@ -49,7 +49,7 @@ describe('useMarketMindAIData', () => {
     });
 
     test('an incoming AI prompt seeds the composer and is consumed', async () => {
-        const clearAiPrompt = jest.fn();
+        const clearAiPrompt = vi.fn();
         useNavigation.mockReturnValue({ sharedAiPrompt: 'Analyze AAPL', clearAiPrompt });
         const { result } = renderHook(() => useMarketMindAIData());
 

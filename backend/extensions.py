@@ -9,11 +9,17 @@ import os
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+RATE_LIMIT_STORAGE_URL = (
+    os.getenv('RATE_LIMIT_STORAGE_URL', '').strip()
+    or os.getenv('PUBLIC_API_RATE_LIMIT_STORAGE_URL', '').strip()
+    or None
+)
+
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=[],
     headers_enabled=True,
-    storage_uri=os.getenv('PUBLIC_API_RATE_LIMIT_STORAGE_URL', '').strip() or None,
+    storage_uri=RATE_LIMIT_STORAGE_URL,
 )
 
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '../../auth';
 import { API_ENDPOINTS, apiRequest } from '../../config/api';
 
 export default function usePredictionMarketsData() {

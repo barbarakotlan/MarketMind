@@ -10,6 +10,7 @@ import requests
 import logging
 
 import sentiment_service
+from http_policy import DEFAULT_HTTP_TIMEOUT, ensure_success
 
 
 def get_watchlist_handler(*, get_current_user_id_fn, load_watchlist_fn, jsonify_fn=jsonify):
@@ -139,7 +140,8 @@ def get_stock_data_handler(
                     "https://www.alphavantage.co/query"
                     f"?function=OVERVIEW&symbol={sanitized_ticker.upper()}&apikey={alpha_vantage_api_key}"
                 )
-                response = requests_module.get(url)
+                response = requests_module.get(url, timeout=DEFAULT_HTTP_TIMEOUT)
+                ensure_success(response)
                 data = response.json()
                 if data and "Symbol" in data:
                     fundamentals = {
@@ -267,7 +269,8 @@ def get_query_news_handler(*, request_obj, news_api_key, requests_module=request
             f"q={query}&searchIn=title,description&language=en&pageSize=8"
             f"&sortBy=relevancy&apiKey={news_api_key}"
         )
-        response = requests_module.get(url)
+        response = requests_module.get(url, timeout=DEFAULT_HTTP_TIMEOUT)
+        ensure_success(response)
         data = response.json()
         if data.get("status") != "ok":
             return jsonify_fn({"error": data.get("message", "Failed to fetch news")}), 500

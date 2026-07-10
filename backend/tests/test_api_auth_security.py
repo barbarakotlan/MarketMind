@@ -45,6 +45,39 @@ class _FakeJWTModule:
 
 
 class ApiAuthSecurityTests(unittest.TestCase):
+    def test_local_auth_mode_is_development_only(self):
+        self.assertEqual(
+            api_auth_helpers.validate_auth_mode("local", is_production=False),
+            "local",
+        )
+        with self.assertRaisesRegex(ValueError, "not allowed in production"):
+            api_auth_helpers.validate_auth_mode("local", is_production=True)
+
+    def test_local_auth_token_resolves_a_fixed_non_admin_user(self):
+        payload = api_auth_helpers.verify_auth_token(
+            "local-token",
+            auth_mode="local",
+            is_production=False,
+            local_auth_token="local-token",
+            local_user_id="local_user",
+            verify_clerk_token_fn=lambda _token: self.fail("Clerk verifier should not run"),
+        )
+
+        self.assertEqual(payload["sub"], "local_user")
+        self.assertEqual(payload["auth_mode"], "local")
+        self.assertNotIn("roles", payload)
+
+    def test_local_auth_rejects_the_wrong_token(self):
+        with self.assertRaisesRegex(ValueError, "Invalid local development token"):
+            api_auth_helpers.verify_auth_token(
+                "wrong-token",
+                auth_mode="local",
+                is_production=False,
+                local_auth_token="local-token",
+                local_user_id="local_user",
+                verify_clerk_token_fn=lambda _token: self.fail("Clerk verifier should not run"),
+            )
+
     def test_validate_production_runtime_security_requires_pinned_clerk_and_seed_disabled(self):
         with self.assertRaises(ValueError) as exc:
             backend_api.validate_production_runtime_security(
@@ -52,6 +85,9 @@ class ApiAuthSecurityTests(unittest.TestCase):
                 clerk_jwks_url="",
                 clerk_issuer="",
                 allow_legacy_user_data_seed=True,
+                persistence_mode="json",
+                database_url="",
+                rate_limit_storage_url="",
             )
 
         message = str(exc.exception)
@@ -59,6 +95,20 @@ class ApiAuthSecurityTests(unittest.TestCase):
         self.assertIn("CLERK_JWKS_URL", message)
         self.assertIn("CLERK_ISSUER", message)
         self.assertIn("ALLOW_LEGACY_USER_DATA_SEED", message)
+        self.assertIn("PERSISTENCE_MODE", message)
+        self.assertIn("DATABASE_URL", message)
+        self.assertIn("RATE_LIMIT_STORAGE_URL", message)
+
+    def test_validate_production_runtime_security_accepts_postgres(self):
+        backend_api.validate_production_runtime_security(
+            flask_secret_key="secret",
+            clerk_jwks_url="https://clerk.example.com/.well-known/jwks.json",
+            clerk_issuer="https://clerk.example.com",
+            allow_legacy_user_data_seed=False,
+            persistence_mode="postgres",
+            database_url="postgresql+psycopg://user:pass@db.example.com/marketmind",
+            rate_limit_storage_url="rediss://redis.example.com:6380/0",
+        )
 
     def test_verify_clerk_token_uses_only_pinned_values_in_production(self):
         jwt_module = _FakeJWTModule(
@@ -85,7 +135,7 @@ class ApiAuthSecurityTests(unittest.TestCase):
         self.assertEqual(len(jwt_module.decode_calls), 1)
         self.assertEqual(
             requested_urls,
-            [("https://clerk.marketmind.com/.well-known/jwks.json", 5)],
+            [("https://clerk.marketmind.com/.well-known/jwks.json", (3.05, 5))],
         )
         verified_decode = jwt_module.decode_calls[0]
         self.assertEqual(verified_decode["issuer"], "https://clerk.marketmind.com")
@@ -116,7 +166,7 @@ class ApiAuthSecurityTests(unittest.TestCase):
         self.assertEqual(len(jwt_module.decode_calls), 2)
         self.assertEqual(
             requested_urls,
-            [("https://demo-account.clerk.accounts.dev/.well-known/jwks.json", 5)],
+            [("https://demo-account.clerk.accounts.dev/.well-known/jwks.json", (3.05, 5))],
         )
         verified_decode = jwt_module.decode_calls[1]
         self.assertEqual(verified_decode["issuer"], "https://demo-account.clerk.accounts.dev")
