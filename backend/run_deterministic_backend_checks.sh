@@ -55,6 +55,7 @@ fi
   backend.tests.test_import_is_ml_free \
   backend.tests.test_macro_overview_handler \
   backend.tests.test_marketmind_ai_api \
+  backend.tests.test_paper_trading_security \
   backend.tests.test_portfolio_optimization_route \
   backend.tests.test_portfolio_optimization_service \
   backend.tests.test_prediction_market_analysis \

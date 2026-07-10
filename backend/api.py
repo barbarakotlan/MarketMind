@@ -1625,24 +1625,38 @@ def sell_stock():
 @api_bp.route('/paper/options/buy', methods=['POST'])
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
+@limiter.limit(RateLimits.WRITE)
+@validate_request_json(['contractSymbol', 'quantity', 'price'])
 def buy_option():
     return paper_handlers.buy_option_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
+        resolve_option_price_fn=lambda symbol, side: paper_handlers.resolve_option_market_price(
+            symbol,
+            side,
+            yf_module=yf,
+        ),
     )
 
 
 @api_bp.route('/paper/options/sell', methods=['POST'])
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
+@limiter.limit(RateLimits.WRITE)
+@validate_request_json(['contractSymbol', 'quantity', 'price'])
 def sell_option():
     return paper_handlers.sell_option_handler(
         request_obj=request,
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
+        resolve_option_price_fn=lambda symbol, side: paper_handlers.resolve_option_market_price(
+            symbol,
+            side,
+            yf_module=yf,
+        ),
     )
 
 

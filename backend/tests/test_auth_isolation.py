@@ -27,6 +27,7 @@ class AuthIsolationTests(unittest.TestCase):
             "PREDICTION_PORTFOLIO_FILE": backend_api.PREDICTION_PORTFOLIO_FILE,
             "ALLOW_LEGACY_USER_DATA_SEED": backend_api.ALLOW_LEGACY_USER_DATA_SEED,
             "verify_clerk_token": backend_api.verify_clerk_token,
+            "resolve_option_market_price": backend_api.paper_handlers.resolve_option_market_price,
             "pm_get_prices": backend_api.pm_get_prices,
         }
 
@@ -45,6 +46,7 @@ class AuthIsolationTests(unittest.TestCase):
         backend_api._JWKS_CACHE.clear()
         backend_api.init_db()
         backend_api.pm_get_prices = lambda _market_id, _exchange=None: {}
+        backend_api.paper_handlers.resolve_option_market_price = lambda _symbol, _side, **_kwargs: 2.5
 
         def fake_verify(token):
             return {"sub": token}
@@ -64,6 +66,9 @@ class AuthIsolationTests(unittest.TestCase):
         backend_api.PREDICTION_PORTFOLIO_FILE = self.original_state["PREDICTION_PORTFOLIO_FILE"]
         backend_api.ALLOW_LEGACY_USER_DATA_SEED = self.original_state["ALLOW_LEGACY_USER_DATA_SEED"]
         backend_api.verify_clerk_token = self.original_state["verify_clerk_token"]
+        backend_api.paper_handlers.resolve_option_market_price = self.original_state[
+            "resolve_option_market_price"
+        ]
         backend_api.pm_get_prices = self.original_state["pm_get_prices"]
         reset_runtime_state()
         self.tmpdir.cleanup()
@@ -170,7 +175,7 @@ class AuthIsolationTests(unittest.TestCase):
         buy_response = self.client.post(
             "/paper/options/buy",
             headers=self._auth_headers("user_a"),
-            json={"contractSymbol": "TEST_OPT", "quantity": 1, "price": 2.5},
+            json={"contractSymbol": "AAPL260116C00150000", "quantity": 1, "price": 2.5},
         )
         self.assertEqual(buy_response.status_code, 200)
 

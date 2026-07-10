@@ -6,6 +6,104 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import logging
+import math
+import re
+
+
+OPTION_CONTRACT_PATTERN = re.compile(
+    r"^(?P<underlying>[A-Z]{1,6})(?P<expiration>\d{6})(?P<option_type>[CP])(?P<strike>\d{8})$"
+)
+MAX_OPTION_CONTRACTS_PER_ORDER = 1_000
+
+
+class OptionOrderValidationError(ValueError):
+    pass
+
+
+class OptionQuoteUnavailableError(RuntimeError):
+    pass
+
+
+def _finite_positive_number(value, field_name):
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise OptionOrderValidationError(f"{field_name} must be a finite positive number") from exc
+    if not math.isfinite(number) or number <= 0:
+        raise OptionOrderValidationError(f"{field_name} must be a finite positive number")
+    return number
+
+
+def _normalize_option_order(data):
+    payload = data if isinstance(data, dict) else {}
+    contract_symbol = str(payload.get("contractSymbol") or "").strip().upper()
+    if not OPTION_CONTRACT_PATTERN.fullmatch(contract_symbol):
+        raise OptionOrderValidationError("contractSymbol must be a valid OCC option symbol")
+
+    raw_quantity = payload.get("quantity")
+    if isinstance(raw_quantity, bool):
+        raise OptionOrderValidationError("quantity must be a positive whole number")
+    quantity_number = _finite_positive_number(raw_quantity, "quantity")
+    if not quantity_number.is_integer() or quantity_number > MAX_OPTION_CONTRACTS_PER_ORDER:
+        raise OptionOrderValidationError(
+            f"quantity must be a whole number between 1 and {MAX_OPTION_CONTRACTS_PER_ORDER}"
+        )
+
+    displayed_price = _finite_positive_number(payload.get("price"), "price")
+    return contract_symbol, int(quantity_number), displayed_price
+
+
+def resolve_option_market_price(contract_symbol, side, *, yf_module=yf):
+    try:
+        option_ticker = yf_module.Ticker(contract_symbol)
+        info = option_ticker.info or {}
+    except Exception as exc:
+        raise OptionQuoteUnavailableError(
+            f"No executable market quote is available for {contract_symbol}"
+        ) from exc
+    preferred_fields = (
+        ("ask", "regularMarketPrice", "lastPrice", "bid")
+        if side == "buy"
+        else ("bid", "regularMarketPrice", "lastPrice", "ask")
+    )
+    candidates = [info.get(field) for field in preferred_fields]
+
+    try:
+        candidates.append((option_ticker.fast_info or {}).get("last_price"))
+    except Exception:
+        pass
+
+    try:
+        history = option_ticker.history(period="1d")
+        if not history.empty:
+            candidates.append(history["Close"].iloc[-1])
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        try:
+            price = float(candidate)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(price) and price > 0:
+            return price
+    raise OptionQuoteUnavailableError(f"No executable market quote is available for {contract_symbol}")
+
+
+def _resolve_server_option_price(resolve_option_price_fn, contract_symbol, side):
+    try:
+        candidate = float(resolve_option_price_fn(contract_symbol, side))
+    except OptionQuoteUnavailableError:
+        raise
+    except Exception as exc:
+        raise OptionQuoteUnavailableError(
+            f"No executable market quote is available for {contract_symbol}"
+        ) from exc
+    if not math.isfinite(candidate) or candidate <= 0:
+        raise OptionQuoteUnavailableError(
+            f"No executable market quote is available for {contract_symbol}"
+        )
+    return candidate
 
 
 def optimize_paper_portfolio_handler(
@@ -307,20 +405,17 @@ def buy_option_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
+    resolve_option_price_fn,
     jsonify_fn=jsonify,
     datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
     portfolio = load_portfolio_fn(user_id)
     try:
-        data = request_obj.get_json()
-        contract_symbol = data.get('contractSymbol')
-        quantity = int(data.get('quantity', 0))
-        price = float(data.get('price', 0))
-        if quantity <= 0:
-            return jsonify_fn({'error': 'Quantity must be positive'}), 400
-        if price == 0:
-            return jsonify_fn({'error': 'Cannot buy an option with no premium.'}), 400
+        contract_symbol, quantity, _displayed_price = _normalize_option_order(
+            request_obj.get_json(silent=True)
+        )
+        price = _resolve_server_option_price(resolve_option_price_fn, contract_symbol, "buy")
         total_cost = quantity * price * 100
         if total_cost > portfolio['cash']:
             return jsonify_fn({'error': f'Insufficient cash. Need ${total_cost:.2f}, have ${portfolio["cash"]:.2f}'}), 400
@@ -340,8 +435,12 @@ def buy_option_handler(
         portfolio['trade_history'].append(trade)
         save_portfolio_with_snapshot_fn(portfolio, user_id)
         return jsonify_fn({'success': True, 'message': f'Bought {quantity} {contract_symbol} contract(s) at ${price:.2f}'}), 200
-    except Exception as exc:
-        return jsonify_fn({'error': str(exc)}), 500
+    except OptionOrderValidationError as exc:
+        return jsonify_fn({'error': str(exc)}), 400
+    except OptionQuoteUnavailableError as exc:
+        return jsonify_fn({'error': str(exc)}), 503
+    except Exception:
+        return jsonify_fn({'error': 'Failed to execute option buy order'}), 500
 
 
 def sell_option_handler(
@@ -350,20 +449,17 @@ def sell_option_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
+    resolve_option_price_fn,
     jsonify_fn=jsonify,
     datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
     portfolio = load_portfolio_fn(user_id)
     try:
-        data = request_obj.get_json()
-        contract_symbol = data.get('contractSymbol')
-        quantity = int(data.get('quantity', 0))
-        price = float(data.get('price', 0))
-        if quantity <= 0:
-            return jsonify_fn({'error': 'Quantity must be positive'}), 400
-        if price == 0:
-            return jsonify_fn({'error': 'Cannot sell an option for no premium.'}), 400
+        contract_symbol, quantity, _displayed_price = _normalize_option_order(
+            request_obj.get_json(silent=True)
+        )
+        price = _resolve_server_option_price(resolve_option_price_fn, contract_symbol, "sell")
         pos = portfolio['options_positions'].get(contract_symbol)
         if not pos or pos['quantity'] < quantity:
             return jsonify_fn({'error': f'Not enough contracts. You have {pos.get("quantity", 0)}, trying to sell {quantity}'}), 400
@@ -385,8 +481,12 @@ def sell_option_handler(
         portfolio['trade_history'].append(trade)
         save_portfolio_with_snapshot_fn(portfolio, user_id)
         return jsonify_fn({'success': True, 'message': f'Sold {quantity} {contract_symbol} contract(s) at ${price:.2f}', 'profit': round(profit, 2)}), 200
-    except Exception as exc:
-        return jsonify_fn({'error': str(exc)}), 500
+    except OptionOrderValidationError as exc:
+        return jsonify_fn({'error': str(exc)}), 400
+    except OptionQuoteUnavailableError as exc:
+        return jsonify_fn({'error': str(exc)}), 503
+    except Exception:
+        return jsonify_fn({'error': 'Failed to execute option sell order'}), 500
 
 
 def get_paper_history_handler(
