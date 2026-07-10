@@ -10,6 +10,8 @@ import numpy as np
 import requests
 from flask import Flask, Blueprint, jsonify, request, g, send_file
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
+from sqlalchemy import text as sql_text
 from datetime import datetime, timedelta, date, timezone
 import json
 import sqlite3
@@ -19,6 +21,10 @@ import threading
 import uuid  # For unique notification IDs
 import re  # Added for Smart Alert parsing
 import math
+try:
+    import redis as redis_module
+except ImportError:  # pragma: no cover - installed in the production graph
+    redis_module = None
 from io import BytesIO
 from functools import wraps
 
@@ -163,6 +169,23 @@ import api_public as api_public_helpers
 import api_prediction_runtime as api_prediction_runtime_helpers
 import api_scheduler as api_scheduler_helpers
 import api_state as api_state_helpers
+from request_contracts import (
+    DeliverableAssumptionsPayload,
+    DeliverableCreatePayload,
+    DeliverablePatchPayload,
+    DeliverableReviewPayload,
+    MarketMindArtifactPayload,
+    MarketMindArtifactPreflightPayload,
+    MarketMindChatPayload,
+    NotificationPayload,
+    OptionTradePayload,
+    PaperTradePayload,
+    PortfolioOptimizationPayload,
+    PredictionMarketAnalysisPayload,
+    PredictionMarketTradePayload,
+    SmartNotificationPayload,
+    validate_json_payload,
+)
 
 # Initialize logger
 import logging
@@ -209,11 +232,45 @@ api_bp = Blueprint('api', __name__)
 # --- Security Headers Middleware ---
 @api_bp.before_app_request
 def begin_public_api_request():
+    supplied_request_id = request.headers.get('X-Request-ID', '').strip()
+    if supplied_request_id and re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', supplied_request_id):
+        g.request_id = supplied_request_id
+    else:
+        g.request_id = uuid.uuid4().hex
     api_public_helpers.begin_public_request()
 
 
 @api_bp.after_app_request
 def add_security_headers(response):
+    request_id = getattr(g, 'request_id', None)
+    if request_id:
+        response.headers['X-Request-ID'] = request_id
+
+    if response.status_code >= 400 and not api_public_helpers.is_public_api_request(request.path):
+        payload = response.get_json(silent=True) if response.is_json else None
+        if isinstance(payload, dict):
+            raw_error = payload.get('error')
+            if isinstance(raw_error, dict):
+                message = str(raw_error.get('message') or 'Request failed.')
+                code = str(raw_error.get('code') or payload.get('code') or 'request_failed')
+            else:
+                message = str(raw_error or payload.get('message') or 'Request failed.')
+                code = str(payload.get('code') or {
+                    400: 'bad_request',
+                    401: 'unauthorized',
+                    403: 'forbidden',
+                    404: 'not_found',
+                    405: 'method_not_allowed',
+                    413: 'request_too_large',
+                    429: 'rate_limited',
+                    503: 'service_unavailable',
+                }.get(response.status_code, 'internal_error'))
+            payload['error'] = message
+            payload['code'] = code
+            payload['request_id'] = request_id
+            response.set_data(json.dumps(payload, separators=(',', ':')))
+            response.content_type = 'application/json'
+
     # Prevent MIME type sniffing
     response.headers['X-Content-Type-Options'] = 'nosniff'
     # Prevent clickjacking
@@ -246,7 +303,17 @@ def add_security_headers(response):
 def handle_rate_limit_exceeded(_exc):
     if api_public_helpers.is_public_api_request(request.path):
         return _public_api_error_response(429, "rate_limited", "Rate limit exceeded for this API key.")
-    return jsonify({"error": "Rate limit exceeded"}), 429
+    return jsonify({"error": "Rate limit exceeded", "code": "rate_limited"}), 429
+
+
+@api_bp.app_errorhandler(HTTPException)
+def handle_http_exception(exc):
+    if api_public_helpers.is_public_api_request(request.path):
+        return _public_api_error_response(exc.code or 500, exc.name.lower().replace(' ', '_'), exc.description)
+    return jsonify({
+        "error": exc.description,
+        "code": exc.name.lower().replace(' ', '_'),
+    }), exc.code or 500
 
 
 def create_app(config=None):
@@ -259,13 +326,15 @@ def create_app(config=None):
     """
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(32))
+    app.config['MAX_CONTENT_LENGTH'] = MAX_REQUEST_BODY_BYTES
     if config:
         app.config.update(config)
     CORS(
         app,
         resources={r"/*": {"origins": allowed_origins}},
         supports_credentials=False,
-        allow_headers=["Content-Type", "Authorization", "Accept"],
+        allow_headers=["Content-Type", "Authorization", "Accept", "X-Request-ID"],
+        expose_headers=["X-Request-ID"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )
     limiter.init_app(app)
@@ -300,6 +369,10 @@ PUBLIC_API_CACHE_URL = os.getenv('PUBLIC_API_CACHE_URL', '').strip()
 PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT = os.getenv('PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT', '30/minute').strip()
 PUBLIC_API_DEFAULT_PER_HOUR_LIMIT = os.getenv('PUBLIC_API_DEFAULT_PER_HOUR_LIMIT', '500/hour').strip()
 PUBLIC_API_DEFAULT_DAILY_QUOTA = int(os.getenv('PUBLIC_API_DEFAULT_DAILY_QUOTA', '2500'))
+MAX_REQUEST_BODY_BYTES = max(
+    1_024,
+    min(int(os.getenv('MAX_REQUEST_BODY_BYTES', str(1024 * 1024))), 10 * 1024 * 1024),
+)
 PUBLIC_API_GLOBAL_EMERGENCY_LIMIT = os.getenv('PUBLIC_API_GLOBAL_EMERGENCY_LIMIT', '5000/hour').strip()
 PUBLIC_API_FALLBACK_IP_LIMIT = os.getenv('PUBLIC_API_FALLBACK_IP_LIMIT', '120/hour').strip()
 
@@ -552,6 +625,28 @@ def require_capability(capability):
     return decorator
 
 
+def require_capability_for_methods(capabilities_by_method):
+    """Guard a mixed-method route with the capability for the active method."""
+
+    normalized = {
+        str(method).upper(): capability
+        for method, capability in capabilities_by_method.items()
+    }
+
+    def decorator(view_fn):
+        @wraps(view_fn)
+        def wrapper(*args, **kwargs):
+            capability = normalized.get(request.method)
+            principal = get_current_principal()
+            if capability is None or principal is None or not principal.has(capability):
+                return jsonify({"error": "You do not have access to this action."}), 403
+            return view_fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
 def require_auth(f):
     return api_auth_helpers.build_require_auth(
         f,
@@ -681,36 +776,6 @@ def _public_dispatch(handler_fn, *args, **kwargs):
         return jsonify(payload), status_code
     except api_public_helpers.PublicApiError as exc:
         return _public_api_error_response(exc.status_code, exc.code, exc.message)
-
-def validate_request_json(required_fields):
-    """
-    Decorator to ensure that the incoming JSON request contains
-    all required fields. Returns 400 with missing fields if not.
-    
-    Usage:
-        @api_bp.route('/buy', methods=['POST'])
-        @validate_request_json(['ticker', 'shares'])
-        def buy_stock():
-            data = request.get_json()
-            ...
-    """
-    def decorator(f):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            # Ensure request is JSON
-            if not request.is_json:
-                return jsonify({"error": "Request must be JSON"}), 400
-            
-            data = request.get_json()
-            # Check for missing fields
-            missing = [field for field in required_fields if field not in data]
-            if missing:
-                return jsonify({"error": f"Missing required fields: {missing}"}), 400
-            
-            # Everything is fine, call the route function
-            return f(*args, **kwargs)
-        return wrapper
-    return decorator
 
 def _load_json(path, default):
     return api_state_helpers.load_json(path, default)
@@ -1019,6 +1084,7 @@ def get_deliverables():
 @require_auth
 @require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(DeliverableCreatePayload)
 def post_deliverable():
     payload = request.get_json(silent=True) or {}
     return deliverables_handlers.create_deliverable_handler(
@@ -1056,6 +1122,7 @@ def get_deliverable(deliverable_id):
 @require_auth
 @require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(DeliverablePatchPayload)
 def patch_deliverable(deliverable_id):
     payload = request.get_json(silent=True) or {}
     return deliverables_handlers.patch_deliverable_handler(
@@ -1076,6 +1143,7 @@ def patch_deliverable(deliverable_id):
 @require_auth
 @require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(DeliverableAssumptionsPayload)
 def put_deliverable_assumptions(deliverable_id):
     payload = request.get_json(silent=True) or {}
     return deliverables_handlers.put_deliverable_assumptions_handler(
@@ -1096,6 +1164,7 @@ def put_deliverable_assumptions(deliverable_id):
 @require_auth
 @require_capability(authz.Capabilities.DELIVERABLES_WRITE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(DeliverableReviewPayload)
 def post_deliverable_review(deliverable_id):
     payload = request.get_json(silent=True) or {}
     return deliverables_handlers.post_deliverable_review_handler(
@@ -1316,6 +1385,7 @@ def get_marketmind_ai_retrieval_status_route():
 @require_auth
 @require_capability(authz.Capabilities.AI_WRITE)
 @limiter.limit(RateLimits.HEAVY)
+@validate_json_payload(MarketMindChatPayload)
 def post_marketmind_ai_chat():
     payload = request.get_json(silent=True) or {}
     return marketmind_ai_handlers.post_chat_handler(
@@ -1335,6 +1405,7 @@ def post_marketmind_ai_chat():
 @require_auth
 @require_capability(authz.Capabilities.AI_WRITE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(MarketMindArtifactPreflightPayload)
 def post_marketmind_ai_artifact_preflight():
     payload = request.get_json(silent=True) or {}
     return marketmind_ai_handlers.post_artifact_preflight_handler(
@@ -1370,6 +1441,7 @@ def get_marketmind_ai_artifacts():
 @require_auth
 @require_capability(authz.Capabilities.AI_WRITE)
 @limiter.limit(RateLimits.HEAVY)
+@validate_json_payload(MarketMindArtifactPayload)
 def post_marketmind_ai_artifact_generate():
     payload = request.get_json(silent=True) or {}
     return marketmind_ai_handlers.generate_artifact_handler(
@@ -1644,6 +1716,7 @@ def get_paper_portfolio():
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.STANDARD)
+@validate_json_payload(PortfolioOptimizationPayload)
 def optimize_paper_portfolio():
     return paper_handlers.optimize_paper_portfolio_handler(
         request_obj=request,
@@ -1658,7 +1731,7 @@ def optimize_paper_portfolio():
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.WRITE)
-@validate_request_json(['ticker', 'shares'])
+@validate_json_payload(PaperTradePayload)
 def buy_stock():
     return paper_handlers.buy_stock_handler(
         request_obj=request,
@@ -1676,7 +1749,7 @@ def buy_stock():
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.WRITE)
-@validate_request_json(['ticker', 'shares'])
+@validate_json_payload(PaperTradePayload)
 def sell_stock():
     return paper_handlers.sell_stock_handler(
         request_obj=request,
@@ -1694,7 +1767,7 @@ def sell_stock():
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.WRITE)
-@validate_request_json(['contractSymbol', 'quantity', 'price'])
+@validate_json_payload(OptionTradePayload)
 def buy_option():
     return paper_handlers.buy_option_handler(
         request_obj=request,
@@ -1715,7 +1788,7 @@ def buy_option():
 @require_auth
 @require_capability(authz.Capabilities.PAPER_TRADE)
 @limiter.limit(RateLimits.WRITE)
-@validate_request_json(['contractSymbol', 'quantity', 'price'])
+@validate_json_payload(OptionTradePayload)
 def sell_option():
     return paper_handlers.sell_option_handler(
         request_obj=request,
@@ -1770,7 +1843,11 @@ def reset_portfolio():
 # --- NEW: Notification Endpoints ---
 @api_bp.route('/notifications', methods=['GET', 'POST'])
 @require_auth
-@require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
+@require_capability_for_methods({
+    'GET': authz.Capabilities.NOTIFICATIONS_READ,
+    'POST': authz.Capabilities.NOTIFICATIONS_WRITE,
+})
+@validate_json_payload(NotificationPayload)
 def handle_notifications():
     return notification_handlers.handle_notifications_handler(
         request_obj=request,
@@ -1784,6 +1861,7 @@ def handle_notifications():
 @api_bp.route('/notifications/smart', methods=['POST'])
 @require_auth
 @require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
+@validate_json_payload(SmartNotificationPayload)
 def create_smart_alert():
     return notification_handlers.create_smart_alert_handler(
         request_obj=request,
@@ -1808,7 +1886,10 @@ def delete_notification(alert_id):
 
 @api_bp.route('/notifications/triggered', methods=['GET', 'DELETE'])
 @require_auth
-@require_capability(authz.Capabilities.NOTIFICATIONS_WRITE)
+@require_capability_for_methods({
+    'GET': authz.Capabilities.NOTIFICATIONS_READ,
+    'DELETE': authz.Capabilities.NOTIFICATIONS_WRITE,
+})
 def get_triggered_notifications():
     return notification_handlers.get_triggered_notifications_handler(
         request_obj=request,
@@ -1967,6 +2048,7 @@ def list_prediction_exchanges():
 @require_auth
 @require_capability(authz.Capabilities.PREDICTION_MARKETS_TRADE)
 @limiter.limit(RateLimits.WRITE)
+@validate_json_payload(PredictionMarketAnalysisPayload)
 def analyze_prediction_market():
     return prediction_markets_handlers.analyze_prediction_market_handler(
         request_obj=request,
@@ -2004,7 +2086,7 @@ def get_prediction_portfolio():
 @require_auth
 @require_capability(authz.Capabilities.PREDICTION_MARKETS_TRADE)
 @limiter.limit(RateLimits.WRITE)
-@validate_request_json(['market_id', 'outcome', 'contracts'])
+@validate_json_payload(PredictionMarketTradePayload)
 def buy_prediction_contract():
     return prediction_markets_handlers.buy_prediction_contract_handler(
         request_obj=request,
@@ -2020,7 +2102,7 @@ def buy_prediction_contract():
 @require_auth
 @require_capability(authz.Capabilities.PREDICTION_MARKETS_TRADE)
 @limiter.limit(RateLimits.WRITE)
-@validate_request_json(['market_id', 'outcome', 'contracts'])
+@validate_json_payload(PredictionMarketTradePayload)
 def sell_prediction_contract():
     return prediction_markets_handlers.sell_prediction_contract_handler(
         request_obj=request,
@@ -2884,6 +2966,74 @@ def healthz():
             "public_api_enabled": _public_api_enabled(),
         }
     ), 200
+
+
+def _probe_redis(url):
+    if redis_module is None:
+        raise RuntimeError("redis package is not installed")
+    client = redis_module.from_url(
+        url,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+    )
+    try:
+        if not client.ping():
+            raise RuntimeError("Redis ping failed")
+    finally:
+        client.close()
+
+
+def _readiness_checks():
+    checks = {}
+
+    try:
+        if _sql_persistence_enabled():
+            _ensure_user_state_storage_ready()
+            with user_state_session_scope(DATABASE_URL) as session:
+                session.execute(sql_text('SELECT 1'))
+        else:
+            os.makedirs(USER_DATA_DIR, exist_ok=True)
+            if not os.access(USER_DATA_DIR, os.R_OK | os.W_OK):
+                raise PermissionError("User data directory is not writable")
+        checks['storage'] = {'status': 'ok'}
+    except Exception as exc:
+        logger.error("Readiness storage probe failed: %s", exc)
+        checks['storage'] = {'status': 'error', 'type': type(exc).__name__}
+
+    redis_urls = {
+        'rate_limit_store': RATE_LIMIT_STORAGE_URL,
+        'public_api_cache': PUBLIC_API_CACHE_URL,
+    }
+    probed_urls = {}
+    for name, url in redis_urls.items():
+        normalized_url = str(url or '').strip()
+        if not normalized_url:
+            checks[name] = {'status': 'not_configured'}
+            continue
+        if normalized_url in probed_urls:
+            checks[name] = dict(probed_urls[normalized_url])
+            continue
+        try:
+            _probe_redis(normalized_url)
+            result = {'status': 'ok'}
+        except Exception as exc:
+            logger.error("Readiness %s probe failed: %s", name, exc)
+            result = {'status': 'error', 'type': type(exc).__name__}
+        probed_urls[normalized_url] = result
+        checks[name] = dict(result)
+
+    is_ready = all(check['status'] in {'ok', 'not_configured'} for check in checks.values())
+    return is_ready, checks
+
+
+@api_bp.route('/readyz', methods=['GET'])
+def readyz():
+    is_ready, checks = _readiness_checks()
+    return jsonify({
+        'status': 'ready' if is_ready else 'not_ready',
+        'service': 'marketmind-backend',
+        'checks': checks,
+    }), 200 if is_ready else 503
 
 
 # WSGI / module-level application instance. Built here — after every route and

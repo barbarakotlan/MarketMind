@@ -5,7 +5,7 @@ This is the first real hosted deployment plan for MarketMind.
 ## Recommended launch order
 
 1. Deploy the backend first.
-2. Verify the backend at `/healthz`.
+2. Verify liveness at `/healthz` and dependency readiness at `/readyz`.
 3. Configure Clerk/backend secrets.
 4. Deploy the frontend against the live backend URL.
 5. Verify the signed-in app flow.
@@ -19,7 +19,7 @@ Recommended: Render web service
 - Runtime: Python
 - Build command: `pip install -r requirements.txt`
 - Start command: `gunicorn -w 4 -b 0.0.0.0:$PORT api:app`
-- Health check path: `/healthz`
+- Health check path: `/readyz`
 
 Provision a separate background worker from the same backend image:
 
@@ -35,6 +35,7 @@ Provision a separate background worker from the same backend image:
 - `PERSISTENCE_MODE=postgres`
 - `DATABASE_URL=<postgres connection string>`
 - `RATE_LIMIT_STORAGE_URL=<redis url>`
+- `MAX_REQUEST_BODY_BYTES=1048576`
 - `CLERK_SECRET_KEY=<live secret>`
 - `CLERK_JWKS_URL=<clerk jwks url>`
 - `CLERK_AUDIENCE=<optional audience if used>`
@@ -76,7 +77,7 @@ Recommended: Vercel
 
 - Root directory: `frontend/`
 - Build command: `npm run build`
-- Output directory: `build`
+- Output directory: `dist`
 
 ## Frontend required env vars
 
@@ -88,6 +89,7 @@ Recommended: Vercel
 Backend:
 
 - `GET /healthz`
+- `GET /readyz` returns `200` with storage and Redis checks ready
 - `GET /news`
 - `GET /search-symbols?q=AAPL`
 - authenticated `GET /auth/me`

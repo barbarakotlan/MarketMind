@@ -130,7 +130,7 @@ def build_public_api_readiness(
 def begin_public_request() -> None:
     if not is_public_api_request(request.path):
         return
-    g.public_api_request_id = uuid.uuid4().hex
+    g.public_api_request_id = getattr(g, "request_id", None) or uuid.uuid4().hex
     g.public_api_started_at = time.time()
     g.public_api_cache_status = "BYPASS"
     g.public_api_account_request = False

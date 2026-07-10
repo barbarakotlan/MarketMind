@@ -44,6 +44,7 @@ fi
   backend.tests.test_akshare_service \
   backend.tests.test_alert_worker \
   backend.tests.test_api_auth_security \
+  backend.tests.test_api_contracts \
   backend.tests.test_api_state_json \
   backend.tests.test_app_factory \
   backend.tests.test_asset_identity \
