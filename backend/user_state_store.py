@@ -3,8 +3,9 @@ from __future__ import annotations
 import base64
 import json
 import os
+import threading
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional
@@ -47,6 +48,17 @@ class PaperTradeExecutionError(ValueError):
     def __init__(self, message: str, *, status_code: int = 400):
         super().__init__(message)
         self.status_code = status_code
+
+
+class PublicApiQuotaExceeded(ValueError):
+    def __init__(self, *, used: int, quota: int):
+        super().__init__("Daily quota exceeded for this API key")
+        self.used = int(used)
+        self.quota = int(quota)
+
+
+_PUBLIC_API_SQLITE_LOCKS: Dict[str, threading.RLock] = {}
+_PUBLIC_API_SQLITE_LOCKS_GUARD = threading.Lock()
 
 
 class AppUser(Base):
@@ -414,6 +426,8 @@ def reset_runtime_state() -> None:
         engine.dispose()
     _ENGINES.clear()
     _SESSION_FACTORIES.clear()
+    with _PUBLIC_API_SQLITE_LOCKS_GUARD:
+        _PUBLIC_API_SQLITE_LOCKS.clear()
 
 
 def get_session_factory(database_url: str) -> sessionmaker[Session]:
@@ -1929,6 +1943,43 @@ def touch_public_api_key_last_used(
     return key
 
 
+def _get_or_create_public_api_usage_row(
+    session: Session,
+    *,
+    client_id: Any,
+    api_key_id: Any,
+    day_value: date,
+    route_group: str,
+) -> PublicApiDailyUsage:
+    normalized_key_id = _coerce_uuid(api_key_id)
+    normalized_day = day_value if isinstance(day_value, date) else utcnow().date()
+    normalized_route_group = str(route_group or "unknown").strip().lower()
+    row = session.scalar(
+        select(PublicApiDailyUsage).where(
+            PublicApiDailyUsage.api_key_id == normalized_key_id,
+            PublicApiDailyUsage.day == normalized_day,
+            PublicApiDailyUsage.route_group == normalized_route_group,
+        )
+    )
+    if row is not None:
+        return row
+
+    now = utcnow()
+    row = PublicApiDailyUsage(
+        client_id=_coerce_uuid(client_id),
+        api_key_id=normalized_key_id,
+        day=normalized_day,
+        route_group=normalized_route_group,
+        request_count=0,
+        cached_request_count=0,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
 def increment_public_api_daily_usage(
     session: Session,
     *,
@@ -1938,35 +1989,120 @@ def increment_public_api_daily_usage(
     route_group: str,
     cached: bool = False,
 ) -> PublicApiDailyUsage:
-    normalized_day = day_value if isinstance(day_value, date) else utcnow().date()
-    normalized_route_group = str(route_group or "unknown").strip().lower()
-    row = session.scalar(
-        select(PublicApiDailyUsage).where(
-            PublicApiDailyUsage.api_key_id == _coerce_uuid(api_key_id),
-            PublicApiDailyUsage.day == normalized_day,
-            PublicApiDailyUsage.route_group == normalized_route_group,
-        )
+    normalized_key_id = _coerce_uuid(api_key_id)
+    session.scalar(
+        select(PublicApiKey)
+        .where(PublicApiKey.id == normalized_key_id)
+        .with_for_update()
+    )
+    row = _get_or_create_public_api_usage_row(
+        session,
+        client_id=client_id,
+        api_key_id=normalized_key_id,
+        day_value=day_value,
+        route_group=route_group,
     )
     now = utcnow()
-    if row is None:
-        row = PublicApiDailyUsage(
-            client_id=_coerce_uuid(client_id),
-            api_key_id=_coerce_uuid(api_key_id),
-            day=normalized_day,
-            route_group=normalized_route_group,
-            request_count=0,
-            cached_request_count=0,
-            created_at=now,
-            updated_at=now,
-        )
-        session.add(row)
-        session.flush()
-
     row.request_count += 1
     if cached:
         row.cached_request_count += 1
     row.updated_at = now
     return row
+
+
+def reserve_public_api_daily_usage(
+    session: Session,
+    *,
+    client_id: Any,
+    api_key_id: Any,
+    day_value: date,
+    route_group: str,
+    daily_quota: int,
+) -> Dict[str, int]:
+    normalized_key_id = _coerce_uuid(api_key_id)
+    key = session.scalar(
+        select(PublicApiKey)
+        .where(PublicApiKey.id == normalized_key_id)
+        .with_for_update()
+    )
+    if key is None:
+        raise ValueError("Public API key no longer exists")
+
+    used_before = get_public_api_daily_request_total(
+        session,
+        api_key_id=normalized_key_id,
+        day_value=day_value,
+    )
+    quota = max(int(daily_quota), 1)
+    if used_before >= quota:
+        raise PublicApiQuotaExceeded(used=used_before, quota=quota)
+
+    row = _get_or_create_public_api_usage_row(
+        session,
+        client_id=client_id,
+        api_key_id=normalized_key_id,
+        day_value=day_value,
+        route_group=route_group,
+    )
+    row.request_count += 1
+    row.updated_at = utcnow()
+    key.last_used_at = row.updated_at
+    session.flush()
+    return {"used_before": used_before, "used_after": used_before + 1, "quota": quota}
+
+
+def mark_public_api_usage_cached(
+    session: Session,
+    *,
+    api_key_id: Any,
+    day_value: date,
+    route_group: str,
+) -> None:
+    normalized_day = day_value if isinstance(day_value, date) else utcnow().date()
+    normalized_route_group = str(route_group or "unknown").strip().lower()
+    row = session.scalar(
+        select(PublicApiDailyUsage)
+        .where(
+            PublicApiDailyUsage.api_key_id == _coerce_uuid(api_key_id),
+            PublicApiDailyUsage.day == normalized_day,
+            PublicApiDailyUsage.route_group == normalized_route_group,
+        )
+        .with_for_update()
+    )
+    if row is None:
+        raise ValueError("Reserved public API usage row was not found")
+    row.cached_request_count += 1
+    row.updated_at = utcnow()
+
+
+def _public_api_sqlite_lock(database_url: str, api_key_id: Any):
+    if not _is_sqlite_url(database_url):
+        return nullcontext()
+    lock_key = f"{_normalize_database_url(database_url)}:{_coerce_uuid(api_key_id)}"
+    with _PUBLIC_API_SQLITE_LOCKS_GUARD:
+        lock = _PUBLIC_API_SQLITE_LOCKS.setdefault(lock_key, threading.RLock())
+    return lock
+
+
+def reserve_public_api_daily_usage_transaction(
+    database_url: str,
+    *,
+    client_id: Any,
+    api_key_id: Any,
+    day_value: date,
+    route_group: str,
+    daily_quota: int,
+) -> Dict[str, int]:
+    with _public_api_sqlite_lock(database_url, api_key_id):
+        with session_scope(database_url) as session:
+            return reserve_public_api_daily_usage(
+                session,
+                client_id=client_id,
+                api_key_id=api_key_id,
+                day_value=day_value,
+                route_group=route_group,
+                daily_quota=daily_quota,
+            )
 
 
 def get_public_api_daily_request_total(

@@ -293,7 +293,7 @@ def build_require_public_api_auth(
     token_getter: Callable[[], str | None],
     authenticate_key_fn: Callable[[str | None], Dict[str, Any]],
     get_daily_quota_fn: Callable[[Dict[str, Any]], int],
-    get_daily_usage_total_fn: Callable[[Dict[str, Any], date], int],
+    reserve_daily_usage_fn: Callable[[Dict[str, Any], date, str, int], Dict[str, Any]],
     logger=logging.getLogger("marketmind_api"),
     error_response_fn: Callable[[int, str, str], Any],
     set_principal_fn: Callable[[Dict[str, Any]], None] | None = None,
@@ -321,20 +321,29 @@ def build_require_public_api_auth(
 
         today = datetime.now(timezone.utc).date()
         daily_quota = max(int(get_daily_quota_fn(identity)), 1)
-        daily_used = int(get_daily_usage_total_fn(identity, today))
-        if daily_used >= daily_quota:
+        try:
+            reservation = reserve_daily_usage_fn(identity, today, route_group, daily_quota)
+        except PublicApiError as exc:
+            logger.warning("public_api quota reservation failed route=%s code=%s", route_group, exc.code)
+            return error_response_fn(exc.status_code, exc.code, exc.message)
+
+        daily_used_before = int(reservation.get("used_before", 0))
+        daily_used_after = int(reservation.get("used_after", daily_used_before))
+        if not reservation.get("allowed", True):
             g.public_api_identity = identity
             g.public_api_authenticated = True
             g.public_api_daily_quota = daily_quota
-            g.public_api_daily_used_before = daily_used
-            g.public_api_account_request = False
+            g.public_api_daily_used_before = daily_used_before
+            g.public_api_daily_used_after = daily_used_after
+            g.public_api_usage_reserved = False
             return error_response_fn(429, "quota_exceeded", "Daily quota exceeded for this API key.")
 
         g.public_api_identity = identity
         g.public_api_authenticated = True
         g.public_api_daily_quota = daily_quota
-        g.public_api_daily_used_before = daily_used
-        g.public_api_account_request = True
+        g.public_api_daily_used_before = daily_used_before
+        g.public_api_daily_used_after = daily_used_after
+        g.public_api_usage_reserved = True
         return view_fn(*args, **kwargs)
 
     wrapper.__name__ = getattr(view_fn, "__name__", "public_api_wrapper")
@@ -347,8 +356,7 @@ def finalize_public_response(
     *,
     session_scope_fn,
     database_url: str,
-    increment_public_api_daily_usage_fn,
-    touch_public_api_key_last_used_fn,
+    mark_public_api_usage_cached_fn,
     logger=logging.getLogger("marketmind_api"),
 ):
     if not is_public_api_request(getattr(request, "path", "")):
@@ -365,26 +373,25 @@ def finalize_public_response(
     identity = getattr(g, "public_api_identity", None)
     quota = int(getattr(g, "public_api_daily_quota", 0) or 0)
     used_before = int(getattr(g, "public_api_daily_used_before", 0) or 0)
-    incremented = False
+    used_after = int(getattr(g, "public_api_daily_used_after", used_before) or used_before)
 
-    if identity and getattr(g, "public_api_account_request", False):
+    if (
+        identity
+        and getattr(g, "public_api_usage_reserved", False)
+        and str(cache_status or "").upper() == "HIT"
+    ):
         try:
             with session_scope_fn(database_url) as session:
-                increment_public_api_daily_usage_fn(
+                mark_public_api_usage_cached_fn(
                     session,
-                    client_id=identity["client_id"],
                     api_key_id=identity["api_key_id"],
                     day_value=datetime.now(timezone.utc).date(),
                     route_group=getattr(g, "public_api_route_group", "unknown"),
-                    cached=str(cache_status or "").upper() == "HIT",
                 )
-                touch_public_api_key_last_used_fn(session, identity["api_key_id"])
-            incremented = True
         except Exception as exc:  # pragma: no cover - defensive path
-            logger.warning("public_api accounting failed request_id=%s error=%s", request_id, exc)
+            logger.warning("public_api cache accounting failed request_id=%s error=%s", request_id, exc)
 
     if identity:
-        used_after = used_before + (1 if incremented else 0)
         if quota > 0:
             response.headers["X-Public-API-Daily-Quota"] = str(quota)
             response.headers["X-Public-API-Daily-Remaining"] = str(max(quota - used_after, 0))

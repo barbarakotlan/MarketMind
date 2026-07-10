@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -35,6 +36,7 @@ class PublicApiBetaTests(unittest.TestCase):
             "macro_handler": backend_api.reference_data_handlers.get_macro_overview_handler,
             "get_general_news": backend_api.get_general_news,
             "get_symbol_suggestions": backend_api.get_symbol_suggestions,
+            "reserve_daily_usage": backend_api.reserve_public_api_daily_usage_transaction_db,
         }
 
         reset_runtime_state()
@@ -159,6 +161,9 @@ class PublicApiBetaTests(unittest.TestCase):
         backend_api.reference_data_handlers.get_macro_overview_handler = self.original["macro_handler"]
         backend_api.get_general_news = self.original["get_general_news"]
         backend_api.get_symbol_suggestions = self.original["get_symbol_suggestions"]
+        backend_api.reserve_public_api_daily_usage_transaction_db = self.original[
+            "reserve_daily_usage"
+        ]
         backend_api.api_public_helpers._PUBLIC_CACHE_BACKEND = None
         backend_api.api_public_helpers._PUBLIC_CACHE_BACKEND_KEY = None
         reset_runtime_state()
@@ -233,6 +238,33 @@ class PublicApiBetaTests(unittest.TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(third.status_code, 429)
         self.assertEqual(third.get_json()["error"]["code"], "quota_exceeded")
+
+    def test_concurrent_requests_cannot_oversubscribe_daily_quota(self):
+        headers = self._public_headers()
+
+        def request_health(_index):
+            with backend_api.app.test_client() as client:
+                return client.get("/api/public/v1/health", headers=headers).status_code
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            statuses = list(executor.map(request_health, range(8)))
+
+        self.assertEqual(statuses.count(200), 2)
+        self.assertEqual(statuses.count(429), 6)
+        with backend_api.user_state_session_scope(self.database_url) as session:
+            rows = backend_api.list_public_api_daily_usage_db(session)
+        self.assertEqual(sum(row.request_count for row in rows), 2)
+
+    def test_quota_storage_failure_fails_closed_before_endpoint_execution(self):
+        def fail_reservation(*_args, **_kwargs):
+            raise RuntimeError("database unavailable")
+
+        backend_api.reserve_public_api_daily_usage_transaction_db = fail_reservation
+
+        response = self.client.get("/api/public/v1/health", headers=self._public_headers())
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["error"]["code"], "quota_unavailable")
 
     def test_cache_hit_still_updates_usage_accounting(self):
         first = self.client.get("/api/public/v1/stock/AAPL", headers=self._public_headers())

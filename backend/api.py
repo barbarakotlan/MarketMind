@@ -105,14 +105,13 @@ from marketmind_ai import (
 from user_state_store import (
     AppUser,
     PaperTradeExecutionError,
+    PublicApiQuotaExceeded,
     create_public_api_client as create_public_api_client_db,
     create_public_api_key as create_public_api_key_db,
     ensure_database_ready as ensure_user_state_database_ready,
     execute_paper_trade_transaction as execute_paper_trade_transaction_db,
     get_public_api_client as get_public_api_client_db,
-    get_public_api_daily_request_total as get_public_api_daily_request_total_db,
     get_public_api_key_by_prefix as get_public_api_key_by_prefix_db,
-    increment_public_api_daily_usage as increment_public_api_daily_usage_db,
     list_app_user_ids as list_app_user_ids_db,
     list_public_api_clients as list_public_api_clients_db,
     list_public_api_daily_usage as list_public_api_daily_usage_db,
@@ -121,14 +120,15 @@ from user_state_store import (
     load_portfolio as load_portfolio_db,
     load_prediction_portfolio as load_prediction_portfolio_db,
     load_watchlist as load_watchlist_db,
+    mark_public_api_usage_cached as mark_public_api_usage_cached_db,
     record_portfolio_snapshot as record_portfolio_snapshot_db,
+    reserve_public_api_daily_usage_transaction as reserve_public_api_daily_usage_transaction_db,
     save_notifications as save_notifications_db,
     save_portfolio as save_portfolio_db,
     save_prediction_portfolio as save_prediction_portfolio_db,
     save_watchlist as save_watchlist_db,
     session_scope as user_state_session_scope,
     set_public_api_key_status as set_public_api_key_status_db,
-    touch_public_api_key_last_used as touch_public_api_key_last_used_db,
     touch_app_user as touch_app_user_db,
 )
 
@@ -239,8 +239,7 @@ def add_security_headers(response):
         response,
         session_scope_fn=user_state_session_scope,
         database_url=DATABASE_URL,
-        increment_public_api_daily_usage_fn=increment_public_api_daily_usage_db,
-        touch_public_api_key_last_used_fn=touch_public_api_key_last_used_db,
+        mark_public_api_usage_cached_fn=mark_public_api_usage_cached_db,
     )
 
 @api_bp.app_errorhandler(RateLimitExceeded)
@@ -608,14 +607,32 @@ def _public_api_daily_quota(_identity):
     return PUBLIC_API_DEFAULT_DAILY_QUOTA
 
 
-def _public_api_daily_usage_total(identity, day_value):
+def _public_api_reserve_daily_usage(identity, day_value, route_group, daily_quota):
     _ensure_user_state_storage_ready()
-    with user_state_session_scope(DATABASE_URL) as session:
-        return get_public_api_daily_request_total_db(
-            session,
+    try:
+        reservation = reserve_public_api_daily_usage_transaction_db(
+            DATABASE_URL,
+            client_id=identity["client_id"],
             api_key_id=identity["api_key_id"],
             day_value=day_value,
+            route_group=route_group,
+            daily_quota=daily_quota,
         )
+        return {"allowed": True, **reservation}
+    except PublicApiQuotaExceeded as exc:
+        return {
+            "allowed": False,
+            "used_before": exc.used,
+            "used_after": exc.used,
+            "quota": exc.quota,
+        }
+    except Exception as exc:
+        logger.error("Public API quota reservation failed: %s", exc)
+        raise api_public_helpers.PublicApiError(
+            503,
+            "quota_unavailable",
+            "Public API quota enforcement is temporarily unavailable.",
+        ) from exc
 
 
 def require_public_api_auth(route_group):
@@ -628,7 +645,7 @@ def require_public_api_auth(route_group):
             token_getter=_get_bearer_token,
             authenticate_key_fn=_public_api_authenticate,
             get_daily_quota_fn=_public_api_daily_quota,
-            get_daily_usage_total_fn=_public_api_daily_usage_total,
+            reserve_daily_usage_fn=_public_api_reserve_daily_usage,
             error_response_fn=_public_api_error_response,
             set_principal_fn=lambda identity: setattr(
                 g, 'principal', authz.principal_for_api_key(identity)
