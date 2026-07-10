@@ -21,6 +21,13 @@ Recommended: Render web service
 - Start command: `gunicorn -w 4 -b 0.0.0.0:$PORT api:app`
 - Health check path: `/healthz`
 
+Provision a separate background worker from the same backend image:
+
+- Start command: `python alert_worker.py`
+- Use the same `DATABASE_URL`, auth, and market-data environment variables as the web service.
+- Do not start the scheduler inside the Gunicorn web process. The worker holds a
+  PostgreSQL advisory lock, so only one replica actively checks alerts.
+
 ## Backend required env vars
 
 - `FLASK_ENV=production`
