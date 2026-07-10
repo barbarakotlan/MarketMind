@@ -29,5 +29,17 @@ jobs:
         run: npm ci
         working-directory: frontend
 
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=moderate
+        working-directory: frontend
+
       - name: Run frontend checks
         run: bash frontend/run_frontend_checks.sh
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Run browser journeys
+        run: npm run test:e2e
+        working-directory: frontend

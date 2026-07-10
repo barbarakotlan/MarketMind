@@ -17,6 +17,20 @@ on:
 jobs:
   backend-deterministic-checks:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: marketmind_ci
+          POSTGRES_PASSWORD: marketmind_ci
+          POSTGRES_USER: marketmind_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U marketmind_ci -d marketmind_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Check out repository
@@ -37,9 +51,18 @@ jobs:
       - name: Audit backend dependencies
         run: python -m pip_audit -r backend/requirements.txt --strict
 
+      - name: Apply production database migrations
+        run: python -m alembic upgrade head
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://marketmind_ci:marketmind_ci@localhost:5432/marketmind_ci
+
       - name: Run deterministic backend checks
         run: |
           bash backend/run_deterministic_backend_checks.sh
 
       - name: Build production image
-        run: docker build --file backend/Dockerfile backend
+        run: docker build --tag marketmind-backend:ci --file backend/Dockerfile backend
+
+      - name: Smoke-test production image imports
+        run: docker run --rm --entrypoint python marketmind-backend:ci -c "from api import app; assert app is not None"

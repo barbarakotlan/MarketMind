@@ -40,7 +40,7 @@ fi
 # once B3 made `import api` ML-free and the numpy-ABI-sensitive deps
 # (duckdb/numexpr) match the pinned versions; earlier this gated only a curated
 # subset.
-"$PYTHON_BIN" -m unittest \
+"$PYTHON_BIN" -m coverage run --branch --source=backend --omit='backend/tests/*' -m unittest \
   backend.tests.test_akshare_service \
   backend.tests.test_alert_worker \
   backend.tests.test_api_auth_security \
@@ -81,3 +81,5 @@ fi
   backend.tests.test_user_journey_harness \
   backend.tests.test_user_journey_state \
   backend.tests.test_user_state_persistence_modes
+
+"$PYTHON_BIN" -m coverage report --skip-covered --fail-under=60
