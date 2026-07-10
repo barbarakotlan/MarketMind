@@ -285,6 +285,8 @@ def buy_stock_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
+    execute_trade_fn=None,
+    trade_error_cls=(),
     jsonify_fn=jsonify,
     yf_module=yf,
     log_api_error_fn,
@@ -292,20 +294,35 @@ def buy_stock_handler(
     datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
-    portfolio = load_portfolio_fn(user_id)
     try:
-        data = request_obj.get_json()
+        data = request_obj.get_json(silent=True) or {}
         ticker = data.get('ticker', '').upper()
-        shares = float(data.get('shares', 0))
-        if shares <= 0:
-            return jsonify_fn({'error': 'Shares must be positive'}), 400
+        shares = _finite_positive_number(data.get('shares'), 'shares')
         stock = yf_module.Ticker(ticker)
         info = stock.info
         price = info.get('regularMarketPrice')
-        if price is None or price == 0:
+        if price is None or not math.isfinite(float(price)) or float(price) <= 0:
             price = info.get('previousClose', 0)
-        if price is None or price == 0:
+        if price is None or not math.isfinite(float(price)) or float(price) <= 0:
             return jsonify_fn({'error': f'Could not get price for {ticker}'}), 404
+        price = float(price)
+        timestamp = datetime_cls.now()
+        if execute_trade_fn is not None:
+            execution = execute_trade_fn(
+                user_id,
+                action='BUY',
+                symbol=ticker,
+                quantity=shares,
+                price=price,
+                occurred_at=timestamp,
+            )
+            if execution is not None:
+                return jsonify_fn({
+                    'success': True,
+                    'message': f'Bought {shares} shares of {ticker} at ${price:.2f}',
+                }), 200
+
+        portfolio = load_portfolio_fn(user_id)
         total_cost = shares * price
         if total_cost > portfolio['cash']:
             return jsonify_fn({'error': f'Insufficient cash. Need ${total_cost:.2f}, have ${portfolio["cash"]:.2f}'}), 400
@@ -320,11 +337,11 @@ def buy_stock_handler(
             'shares': shares,
             'price': price,
             'total': total_cost,
-            'timestamp': datetime_cls.now().isoformat(),
+            'timestamp': timestamp.isoformat(),
         }
         portfolio['trade_history'].append(trade)
         portfolio['transactions'].append({
-            'date': datetime_cls.now().strftime('%Y-%m-%d'),
+            'date': timestamp.strftime('%Y-%m-%d'),
             'type': 'BUY',
             'ticker': ticker,
             'shares': shares,
@@ -333,6 +350,10 @@ def buy_stock_handler(
         })
         save_portfolio_with_snapshot_fn(portfolio, user_id)
         return jsonify_fn({'success': True, 'message': f'Bought {shares} shares of {ticker} at ${price:.2f}'}), 200
+    except OptionOrderValidationError as exc:
+        return jsonify_fn({'error': str(exc)}), 400
+    except trade_error_cls as exc:
+        return jsonify_fn({'error': str(exc)}), getattr(exc, 'status_code', 400)
     except Exception as exc:
         log_api_error_fn(logger, '/paper/buy', exc)
         return jsonify_fn({'error': 'Failed to execute buy order'}), 500
@@ -344,6 +365,8 @@ def sell_stock_handler(
     get_current_user_id_fn,
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
+    execute_trade_fn=None,
+    trade_error_cls=(),
     jsonify_fn=jsonify,
     yf_module=yf,
     log_api_error_fn,
@@ -351,23 +374,41 @@ def sell_stock_handler(
     datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
-    portfolio = load_portfolio_fn(user_id)
     try:
-        data = request_obj.get_json()
+        data = request_obj.get_json(silent=True) or {}
         ticker = data.get('ticker', '').upper()
-        shares = float(data.get('shares', 0))
-        if shares <= 0:
-            return jsonify_fn({'error': 'Shares must be positive'}), 400
-        pos = portfolio['positions'].get(ticker)
-        if not pos or pos['shares'] < shares:
-            return jsonify_fn({'error': f'Not enough shares. You have {pos.get("shares", 0)}, trying to sell {shares}'}), 400
+        shares = _finite_positive_number(data.get('shares'), 'shares')
         stock = yf_module.Ticker(ticker)
         info = stock.info
         price = info.get('regularMarketPrice')
-        if price is None or price == 0:
+        if price is None or not math.isfinite(float(price)) or float(price) <= 0:
             price = info.get('previousClose', 0)
-        if price is None or price == 0:
+        if price is None or not math.isfinite(float(price)) or float(price) <= 0:
             return jsonify_fn({'error': f'Could not get price for {ticker}'}), 404
+        price = float(price)
+        timestamp = datetime_cls.now()
+        if execute_trade_fn is not None:
+            execution = execute_trade_fn(
+                user_id,
+                action='SELL',
+                symbol=ticker,
+                quantity=shares,
+                price=price,
+                occurred_at=timestamp,
+            )
+            if execution is not None:
+                profit = execution.get('profit') or 0
+                return jsonify_fn({
+                    'success': True,
+                    'message': f'Sold {shares} shares of {ticker} at ${price:.2f}',
+                    'profit': round(profit, 2),
+                }), 200
+
+        portfolio = load_portfolio_fn(user_id)
+        pos = portfolio['positions'].get(ticker)
+        if not pos or pos['shares'] < shares:
+            available = pos.get('shares', 0) if pos else 0
+            return jsonify_fn({'error': f'Not enough shares. You have {available}, trying to sell {shares}'}), 400
         proceeds = shares * price
         profit = proceeds - (shares * pos['avg_cost'])
         pos['shares'] -= shares
@@ -381,11 +422,11 @@ def sell_stock_handler(
             'price': price,
             'total': proceeds,
             'profit': profit,
-            'timestamp': datetime_cls.now().isoformat(),
+            'timestamp': timestamp.isoformat(),
         }
         portfolio['trade_history'].append(trade)
         portfolio['transactions'].append({
-            'date': datetime_cls.now().strftime('%Y-%m-%d'),
+            'date': timestamp.strftime('%Y-%m-%d'),
             'type': 'SELL',
             'ticker': ticker,
             'shares': shares,
@@ -394,6 +435,10 @@ def sell_stock_handler(
         })
         save_portfolio_with_snapshot_fn(portfolio, user_id)
         return jsonify_fn({'success': True, 'message': f'Sold {shares} shares of {ticker} at ${price:.2f}', 'profit': round(profit, 2)}), 200
+    except OptionOrderValidationError as exc:
+        return jsonify_fn({'error': str(exc)}), 400
+    except trade_error_cls as exc:
+        return jsonify_fn({'error': str(exc)}), getattr(exc, 'status_code', 400)
     except Exception as exc:
         log_api_error_fn(logger, '/paper/sell', exc)
         return jsonify_fn({'error': 'Failed to execute sell order'}), 500
@@ -406,16 +451,34 @@ def buy_option_handler(
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
     resolve_option_price_fn,
+    execute_trade_fn=None,
+    trade_error_cls=(),
     jsonify_fn=jsonify,
     datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
-    portfolio = load_portfolio_fn(user_id)
     try:
         contract_symbol, quantity, _displayed_price = _normalize_option_order(
             request_obj.get_json(silent=True)
         )
         price = _resolve_server_option_price(resolve_option_price_fn, contract_symbol, "buy")
+        timestamp = datetime_cls.now()
+        if execute_trade_fn is not None:
+            execution = execute_trade_fn(
+                user_id,
+                action='BUY_OPTION',
+                symbol=contract_symbol,
+                quantity=quantity,
+                price=price,
+                occurred_at=timestamp,
+            )
+            if execution is not None:
+                return jsonify_fn({
+                    'success': True,
+                    'message': f'Bought {quantity} {contract_symbol} contract(s) at ${price:.2f}',
+                }), 200
+
+        portfolio = load_portfolio_fn(user_id)
         total_cost = quantity * price * 100
         if total_cost > portfolio['cash']:
             return jsonify_fn({'error': f'Insufficient cash. Need ${total_cost:.2f}, have ${portfolio["cash"]:.2f}'}), 400
@@ -430,7 +493,7 @@ def buy_option_handler(
             'shares': quantity,
             'price': price,
             'total': total_cost,
-            'timestamp': datetime_cls.now().isoformat(),
+            'timestamp': timestamp.isoformat(),
         }
         portfolio['trade_history'].append(trade)
         save_portfolio_with_snapshot_fn(portfolio, user_id)
@@ -439,6 +502,8 @@ def buy_option_handler(
         return jsonify_fn({'error': str(exc)}), 400
     except OptionQuoteUnavailableError as exc:
         return jsonify_fn({'error': str(exc)}), 503
+    except trade_error_cls as exc:
+        return jsonify_fn({'error': str(exc)}), getattr(exc, 'status_code', 400)
     except Exception:
         return jsonify_fn({'error': 'Failed to execute option buy order'}), 500
 
@@ -450,19 +515,40 @@ def sell_option_handler(
     load_portfolio_fn,
     save_portfolio_with_snapshot_fn,
     resolve_option_price_fn,
+    execute_trade_fn=None,
+    trade_error_cls=(),
     jsonify_fn=jsonify,
     datetime_cls=datetime,
 ):
     user_id = get_current_user_id_fn()
-    portfolio = load_portfolio_fn(user_id)
     try:
         contract_symbol, quantity, _displayed_price = _normalize_option_order(
             request_obj.get_json(silent=True)
         )
         price = _resolve_server_option_price(resolve_option_price_fn, contract_symbol, "sell")
+        timestamp = datetime_cls.now()
+        if execute_trade_fn is not None:
+            execution = execute_trade_fn(
+                user_id,
+                action='SELL_OPTION',
+                symbol=contract_symbol,
+                quantity=quantity,
+                price=price,
+                occurred_at=timestamp,
+            )
+            if execution is not None:
+                profit = execution.get('profit') or 0
+                return jsonify_fn({
+                    'success': True,
+                    'message': f'Sold {quantity} {contract_symbol} contract(s) at ${price:.2f}',
+                    'profit': round(profit, 2),
+                }), 200
+
+        portfolio = load_portfolio_fn(user_id)
         pos = portfolio['options_positions'].get(contract_symbol)
         if not pos or pos['quantity'] < quantity:
-            return jsonify_fn({'error': f'Not enough contracts. You have {pos.get("quantity", 0)}, trying to sell {quantity}'}), 400
+            available = pos.get('quantity', 0) if pos else 0
+            return jsonify_fn({'error': f'Not enough contracts. You have {available}, trying to sell {quantity}'}), 400
         proceeds = quantity * price * 100
         profit = proceeds - (quantity * pos['avg_cost'] * 100)
         pos['quantity'] -= quantity
@@ -476,7 +562,7 @@ def sell_option_handler(
             'price': price,
             'total': proceeds,
             'profit': profit,
-            'timestamp': datetime_cls.now().isoformat(),
+            'timestamp': timestamp.isoformat(),
         }
         portfolio['trade_history'].append(trade)
         save_portfolio_with_snapshot_fn(portfolio, user_id)
@@ -485,6 +571,8 @@ def sell_option_handler(
         return jsonify_fn({'error': str(exc)}), 400
     except OptionQuoteUnavailableError as exc:
         return jsonify_fn({'error': str(exc)}), 503
+    except trade_error_cls as exc:
+        return jsonify_fn({'error': str(exc)}), getattr(exc, 'status_code', 400)
     except Exception:
         return jsonify_fn({'error': 'Failed to execute option sell order'}), 500
 

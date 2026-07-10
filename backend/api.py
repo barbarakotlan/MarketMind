@@ -104,9 +104,11 @@ from marketmind_ai import (
 )
 from user_state_store import (
     AppUser,
+    PaperTradeExecutionError,
     create_public_api_client as create_public_api_client_db,
     create_public_api_key as create_public_api_key_db,
     ensure_database_ready as ensure_user_state_database_ready,
+    execute_paper_trade_transaction as execute_paper_trade_transaction_db,
     get_public_api_client as get_public_api_client_db,
     get_public_api_daily_request_total as get_public_api_daily_request_total_db,
     get_public_api_key_by_prefix as get_public_api_key_by_prefix_db,
@@ -813,7 +815,12 @@ def save_portfolio_with_snapshot(portfolio, user_id=None, *, reset_snapshots=Fal
 
         _ensure_user_state_storage_ready()
         with user_state_session_scope(DATABASE_URL) as session:
-            save_portfolio_db(session, user_id, portfolio)
+            save_portfolio_db(
+                session,
+                user_id,
+                portfolio,
+                clear_trade_history=reset_snapshots,
+            )
             if reset_snapshots:
                 session.query(PaperPortfolioSnapshot).filter_by(clerk_user_id=user_id).delete()
             record_portfolio_snapshot_db(session, user_id, portfolio)
@@ -823,6 +830,24 @@ def save_portfolio_with_snapshot(portfolio, user_id=None, *, reset_snapshots=Fal
 
     _save_portfolio_json(portfolio, user_id)
     record_portfolio_snapshot(portfolio, user_id)
+
+
+def execute_paper_trade_atomic(user_id, *, action, symbol, quantity, price, occurred_at=None):
+    if not user_id or not _sql_persistence_enabled():
+        return None
+    _ensure_user_state_storage_ready()
+    result = execute_paper_trade_transaction_db(
+        DATABASE_URL,
+        user_id,
+        action=action,
+        symbol=symbol,
+        quantity=quantity,
+        price=price,
+        occurred_at=occurred_at,
+    )
+    if _json_mirror_enabled():
+        _save_portfolio_json(result["portfolio"], user_id)
+    return result
 
 
 def _load_notifications_json(user_id=None):
@@ -1601,6 +1626,8 @@ def buy_stock():
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
+        execute_trade_fn=execute_paper_trade_atomic,
+        trade_error_cls=PaperTradeExecutionError,
         yf_module=yf,
         log_api_error_fn=log_api_error,
     )
@@ -1617,6 +1644,8 @@ def sell_stock():
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
+        execute_trade_fn=execute_paper_trade_atomic,
+        trade_error_cls=PaperTradeExecutionError,
         yf_module=yf,
         log_api_error_fn=log_api_error,
     )
@@ -1633,6 +1662,8 @@ def buy_option():
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
+        execute_trade_fn=execute_paper_trade_atomic,
+        trade_error_cls=PaperTradeExecutionError,
         resolve_option_price_fn=lambda symbol, side: paper_handlers.resolve_option_market_price(
             symbol,
             side,
@@ -1652,6 +1683,8 @@ def sell_option():
         get_current_user_id_fn=get_current_user_id,
         load_portfolio_fn=load_portfolio,
         save_portfolio_with_snapshot_fn=save_portfolio_with_snapshot,
+        execute_trade_fn=execute_paper_trade_atomic,
+        trade_error_cls=PaperTradeExecutionError,
         resolve_option_price_fn=lambda symbol, side: paper_handlers.resolve_option_market_price(
             symbol,
             side,
