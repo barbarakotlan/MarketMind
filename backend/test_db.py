@@ -3,13 +3,15 @@
 
 import requests
 
+HTTP_TIMEOUT = (3.05, 10)
+
 # Test API endpoints
 base_url = 'http://localhost:5001'
 print('🧪 Testing API endpoints...')
 
 # Test watchlist endpoints
 try:
-    response = requests.get(f'{base_url}/watchlist')
+    response = requests.get(f'{base_url}/watchlist', timeout=HTTP_TIMEOUT)
     print(f'✅ GET /watchlist: {response.status_code}')
     if response.status_code == 200:
         print(f'   Watchlist: {response.json()}')
@@ -18,7 +20,7 @@ except Exception as e:
 
 # Test portfolio endpoint
 try:
-    response = requests.get(f'{base_url}/paper/portfolio')
+    response = requests.get(f'{base_url}/paper/portfolio', timeout=HTTP_TIMEOUT)
     print(f'✅ GET /paper/portfolio: {response.status_code}')
     if response.status_code == 200:
         portfolio = response.json()
@@ -30,7 +32,7 @@ except Exception as e:
 
 # Test analytics endpoint
 try:
-    response = requests.get(f'{base_url}/paper/analytics')
+    response = requests.get(f'{base_url}/paper/analytics', timeout=HTTP_TIMEOUT)
     print(f'✅ GET /paper/analytics: {response.status_code}')
     if response.status_code == 200:
         analytics = response.json()
@@ -41,7 +43,7 @@ except Exception as e:
 
 # Test adding to watchlist
 try:
-    response = requests.post(f'{base_url}/watchlist/AAPL')
+    response = requests.post(f'{base_url}/watchlist/AAPL', timeout=HTTP_TIMEOUT)
     print(f'✅ POST /watchlist/AAPL: {response.status_code}')
     if response.status_code == 201:
         print(f'   Response: {response.json()}')
@@ -51,7 +53,7 @@ except Exception as e:
 # Test buy endpoint
 try:
     buy_data = {"ticker": "AAPL", "shares": 10}
-    response = requests.post(f'{base_url}/paper/buy', json=buy_data)
+    response = requests.post(f'{base_url}/paper/buy', json=buy_data, timeout=HTTP_TIMEOUT)
     print(f'✅ POST /paper/buy: {response.status_code}')
     if response.status_code == 200:
         print(f'   Response: {response.json()}')

@@ -4,6 +4,7 @@ Forex (Foreign Exchange) data fetcher using Alpha Vantage
 import requests
 
 from config import ALPHA_VANTAGE_API_KEY
+from http_policy import DEFAULT_HTTP_TIMEOUT
 
 
 def get_exchange_rate(from_currency='USD', to_currency='EUR'):
@@ -26,7 +27,8 @@ def get_exchange_rate(from_currency='USD', to_currency='EUR'):
             'apikey': ALPHA_VANTAGE_API_KEY
         }
         
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, timeout=DEFAULT_HTTP_TIMEOUT)
+        response.raise_for_status()
         data = response.json()
         
         if 'Realtime Currency Exchange Rate' not in data:

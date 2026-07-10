@@ -87,6 +87,7 @@ class ApiAuthSecurityTests(unittest.TestCase):
                 allow_legacy_user_data_seed=True,
                 persistence_mode="json",
                 database_url="",
+                rate_limit_storage_url="",
             )
 
         message = str(exc.exception)
@@ -96,6 +97,7 @@ class ApiAuthSecurityTests(unittest.TestCase):
         self.assertIn("ALLOW_LEGACY_USER_DATA_SEED", message)
         self.assertIn("PERSISTENCE_MODE", message)
         self.assertIn("DATABASE_URL", message)
+        self.assertIn("RATE_LIMIT_STORAGE_URL", message)
 
     def test_validate_production_runtime_security_accepts_postgres(self):
         backend_api.validate_production_runtime_security(
@@ -105,6 +107,7 @@ class ApiAuthSecurityTests(unittest.TestCase):
             allow_legacy_user_data_seed=False,
             persistence_mode="postgres",
             database_url="postgresql+psycopg://user:pass@db.example.com/marketmind",
+            rate_limit_storage_url="rediss://redis.example.com:6380/0",
         )
 
     def test_verify_clerk_token_uses_only_pinned_values_in_production(self):
@@ -132,7 +135,7 @@ class ApiAuthSecurityTests(unittest.TestCase):
         self.assertEqual(len(jwt_module.decode_calls), 1)
         self.assertEqual(
             requested_urls,
-            [("https://clerk.marketmind.com/.well-known/jwks.json", 5)],
+            [("https://clerk.marketmind.com/.well-known/jwks.json", (3.05, 5))],
         )
         verified_decode = jwt_module.decode_calls[0]
         self.assertEqual(verified_decode["issuer"], "https://clerk.marketmind.com")
@@ -163,7 +166,7 @@ class ApiAuthSecurityTests(unittest.TestCase):
         self.assertEqual(len(jwt_module.decode_calls), 2)
         self.assertEqual(
             requested_urls,
-            [("https://demo-account.clerk.accounts.dev/.well-known/jwks.json", 5)],
+            [("https://demo-account.clerk.accounts.dev/.well-known/jwks.json", (3.05, 5))],
         )
         verified_decode = jwt_module.decode_calls[1]
         self.assertEqual(verified_decode["issuer"], "https://demo-account.clerk.accounts.dev")

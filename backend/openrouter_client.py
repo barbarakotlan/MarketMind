@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from http_policy import timeout
+
 
 OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
@@ -54,7 +56,7 @@ def _post_chat_completion(
         OPENROUTER_CHAT_COMPLETIONS_URL,
         headers=_build_headers(api_key),
         json=payload,
-        timeout=timeout_seconds,
+        timeout=timeout(timeout_seconds),
     )
     response.raise_for_status()
     response_json = response.json()

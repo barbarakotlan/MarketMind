@@ -10,6 +10,8 @@ import logging
 import csv
 from io import StringIO
 
+from http_policy import DEFAULT_HTTP_TIMEOUT, ensure_success
+
 
 _OPENBB_MACRO_SUPPORT_CACHE = {}
 
@@ -138,7 +140,8 @@ def get_fundamentals_handler(
                     "https://www.alphavantage.co/query"
                     f"?function=OVERVIEW&symbol={sanitized_ticker}&apikey={alpha_vantage_api_key}"
                 )
-                av_resp = requests_module.get(url, timeout=10)
+                av_resp = requests_module.get(url, timeout=DEFAULT_HTTP_TIMEOUT)
+                ensure_success(av_resp)
                 av_json = av_resp.json()
                 if av_json and "Symbol" in av_json:
                     av_data = av_json
@@ -235,7 +238,7 @@ def get_economic_calendar_handler(
             ),
             "Accept": "application/json, text/plain, */*",
         }
-        response = requests_module.get(url, headers=headers)
+        response = requests_module.get(url, headers=headers, timeout=DEFAULT_HTTP_TIMEOUT)
 
         if response.status_code != 200:
             if calendar_cache["data"] is not None:
@@ -636,7 +639,7 @@ def _fetch_macro_rows_from_fred(*, indicator, requests_module=requests):
     series_id = indicator.get("series_id") or indicator["symbol"]
     response = requests_module.get(
         f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}",
-        timeout=10,
+        timeout=DEFAULT_HTTP_TIMEOUT,
     )
     status_code = getattr(response, "status_code", 200)
     if status_code >= 400:

@@ -11,6 +11,8 @@ import jwt
 import requests
 from sqlalchemy.exc import OperationalError
 
+from http_policy import timeout
+
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +99,7 @@ def fetch_jwks(
     if cached and (now - cached["fetched_at"]) < cache_ttl_seconds:
         return cached["jwks"]
 
-    response = requests_get(jwks_url, timeout=5)
+    response = requests_get(jwks_url, timeout=timeout(5))
     response.raise_for_status()
     jwks = response.json()
     cache[jwks_url] = {"jwks": jwks, "fetched_at": now}

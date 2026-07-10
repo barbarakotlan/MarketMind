@@ -7,6 +7,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from sklearn.ensemble import RandomForestClassifier
 from datetime import datetime
 import warnings
+from http_policy import DEFAULT_HTTP_TIMEOUT
 warnings.filterwarnings('ignore')
 
 # --- 1. QUANTITATIVE ML MODEL (CLASSIFICATION) ---
@@ -150,7 +151,8 @@ def get_sentiment_signal(ticker):
         if not NEWS_API_KEY: return {'direction': 'Neutral', 'score': 0}
         
         url = f"https://newsapi.org/v2/everything?q={ticker}&searchIn=title,description&language=en&pageSize=10&sortBy=relevancy&apiKey={NEWS_API_KEY}"
-        response = requests.get(url)
+        response = requests.get(url, timeout=DEFAULT_HTTP_TIMEOUT)
+        response.raise_for_status()
         data = response.json()
 
         if data.get('status') != 'ok' or data.get('totalResults') == 0:

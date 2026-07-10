@@ -54,6 +54,7 @@ fi
   backend.tests.test_deliverables_api \
   backend.tests.test_exchange_session_routes \
   backend.tests.test_exchange_session_service \
+  backend.tests.test_http_policy \
   backend.tests.test_import_is_ml_free \
   backend.tests.test_macro_overview_handler \
   backend.tests.test_marketmind_ai_api \

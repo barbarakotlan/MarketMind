@@ -5,6 +5,8 @@ import logging
 import yfinance as yf
 import numpy as np
 
+from http_policy import DEFAULT_HTTP_TIMEOUT, ensure_success
+
 
 def clean_value(val, *, pd_module=pd, np_module=np):
     if val is None or pd_module.isna(val):
@@ -25,7 +27,8 @@ def get_symbol_suggestions(query, *, alpha_vantage_api_key, requests_get, logger
             "https://www.alphavantage.co/query"
             f"?function=SYMBOL_SEARCH&keywords={query}&apikey={alpha_vantage_api_key}"
         )
-        response = requests_get(url)
+        response = requests_get(url, timeout=DEFAULT_HTTP_TIMEOUT)
+        ensure_success(response)
         data = response.json()
         matches = data.get("bestMatches", [])
         formatted_matches = []

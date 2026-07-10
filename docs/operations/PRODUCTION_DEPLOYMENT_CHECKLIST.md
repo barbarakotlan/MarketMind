@@ -34,6 +34,7 @@ Provision a separate background worker from the same backend image:
 - `CORS_ORIGINS=<your frontend origin>`
 - `PERSISTENCE_MODE=postgres`
 - `DATABASE_URL=<postgres connection string>`
+- `RATE_LIMIT_STORAGE_URL=<redis url>`
 - `CLERK_SECRET_KEY=<live secret>`
 - `CLERK_JWKS_URL=<clerk jwks url>`
 - `CLERK_AUDIENCE=<optional audience if used>`

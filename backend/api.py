@@ -293,6 +293,10 @@ PUBLIC_API_ENABLED = os.getenv('PUBLIC_API_ENABLED', 'false').strip()
 PUBLIC_API_DOCS_ENABLED = os.getenv('PUBLIC_API_DOCS_ENABLED', 'false').strip()
 PUBLIC_API_KEY_HASH_PEPPER = os.getenv('PUBLIC_API_KEY_HASH_PEPPER', '').strip()
 PUBLIC_API_RATE_LIMIT_STORAGE_URL = os.getenv('PUBLIC_API_RATE_LIMIT_STORAGE_URL', '').strip()
+RATE_LIMIT_STORAGE_URL = (
+    os.getenv('RATE_LIMIT_STORAGE_URL', '').strip()
+    or PUBLIC_API_RATE_LIMIT_STORAGE_URL
+)
 PUBLIC_API_CACHE_URL = os.getenv('PUBLIC_API_CACHE_URL', '').strip()
 PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT = os.getenv('PUBLIC_API_DEFAULT_PER_MINUTE_LIMIT', '30/minute').strip()
 PUBLIC_API_DEFAULT_PER_HOUR_LIMIT = os.getenv('PUBLIC_API_DEFAULT_PER_HOUR_LIMIT', '500/hour').strip()
@@ -330,6 +334,7 @@ def validate_production_runtime_security(
     allow_legacy_user_data_seed: bool,
     persistence_mode: str,
     database_url: str,
+    rate_limit_storage_url: str,
 ):
     errors = []
 
@@ -348,6 +353,9 @@ def validate_production_runtime_security(
         ('postgresql://', 'postgresql+psycopg://', 'postgres://')
     ):
         errors.append("DATABASE_URL must be a PostgreSQL connection string in production")
+    normalized_rate_limit_url = str(rate_limit_storage_url or '').strip().lower()
+    if not normalized_rate_limit_url.startswith(('redis://', 'rediss://')):
+        errors.append("RATE_LIMIT_STORAGE_URL must use Redis in production")
 
     if errors:
         raise ValueError("; ".join(errors))
@@ -361,6 +369,7 @@ if IS_PRODUCTION:
         allow_legacy_user_data_seed=ALLOW_LEGACY_USER_DATA_SEED,
         persistence_mode=PERSISTENCE_MODE,
         database_url=DATABASE_URL,
+        rate_limit_storage_url=RATE_LIMIT_STORAGE_URL,
     )
 
 
@@ -1474,7 +1483,7 @@ def get_chart_data(ticker):
         request_obj=request,
         yf_module=yf,
         clean_value_fn=clean_value,
-        chart_prediction_points_fn=_chart_prediction_points,
+        chart_prediction_points_fn=lambda _ticker: [],
         resolve_asset_fn=_resolve_market_asset,
         akshare_service_module=akshare_service,
     )
@@ -1526,9 +1535,10 @@ def get_option_suggestion(ticker):
 
 # --- ML Endpoints ---
 @api_bp.route('/predict/<string:model>/<string:ticker>')
-@limiter.limit(RateLimits.STANDARD)
+@require_auth
+@require_capability(authz.Capabilities.PREDICTIONS_RUN)
+@limiter.limit(RateLimits.HEAVY)
 def predict_stock(model, ticker):
-    _try_authenticate_optional_request()
     response = market_data_handlers.predict_stock_handler(
         model,
         ticker,
@@ -1569,9 +1579,10 @@ def _chart_prediction_points(sanitized_ticker):
 
 
 @api_bp.route('/predict/ensemble/<string:ticker>')
-@limiter.limit(RateLimits.STANDARD)
+@require_auth
+@require_capability(authz.Capabilities.PREDICTIONS_RUN)
+@limiter.limit(RateLimits.HEAVY)
 def predict_ensemble(ticker):
-    _try_authenticate_optional_request()
     response = market_data_handlers.predict_ensemble_handler(
         ticker,
         request_obj=request,
@@ -1841,6 +1852,8 @@ def news_api():
 
 
 @api_bp.route('/evaluate/<string:ticker>')
+@require_auth
+@require_capability(authz.Capabilities.PREDICTIONS_RUN)
 @limiter.limit(RateLimits.HEAVY)
 def evaluate_models(ticker):
     return market_data_handlers.evaluate_models_handler(
